@@ -106,6 +106,37 @@ TEAMMATE_RESULT:
 
 如果没有修改文件，`changed_files` 写空列表并说明原因。只有 scope 内工作完成、授权验证通过或有明确替代证据、自审查通过或问题已修复、并且 `final_worker_verdict: pass` 时，`status` 才能写 `completed`。
 
+## Parallel-plan Worker 模式
+
+收到 coordinator 基于 `parallel-plan` 分派的单个 module 时，使用这个轻量模式。输入必须包含 `module_id`、`task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和 `parent_goal`；缺少任一字段时返回 `blocked`，不要推断。
+
+执行循环严格限定为：
+
+```text
+确认 child_goal -> 检查 scope -> 实现 -> 验证 -> 检查自身 diff -> 最多修复一次 -> WORKER_RESULT
+```
+
+- `writable_paths` 是本模式唯一可写范围；跨 scope、共享契约冲突、未完成依赖和未经授权的命令必须返回 `needs_fix` 或 `blocked`。
+- 本模式以自检替代额外 reviewer-subagent：检查 changed files 是否都在 scope 内、`done_when` 是否满足、验证是否通过或有明确替代证据、diff 是否聚焦且不覆盖用户改动。
+- 验证或 `diff_self_check` 失败时最多修复一次。第二次失败、范围不清或依赖缺失时停止并返回非完成状态。
+- 该例外只适用于带 `parallel-plan` 标记的模块，不改变普通分派任务的既有自审查门禁。
+
+```text
+WORKER_RESULT:
+- module_id: "M1"
+- status: completed | needs_fix | blocked
+- changed_files:
+  - "<path>"
+- verification:
+  - "<命令或替代证据及结果>"
+- diff_self_check: pass | failed
+- goal_alignment: "<done_when 如何被满足>"
+- risks:
+  - "<none 或剩余风险>"
+```
+
+只有验证已通过或有明确替代证据，并且 `diff_self_check: pass` 时才可返回 `completed`。不要以 `TEAMMATE_RESULT` 替代该结果；coordinator 仍可在普通模式消费 `TEAMMATE_RESULT`。
+
 ## 正向检查清单
 
 - 先解析分派字段，再执行。

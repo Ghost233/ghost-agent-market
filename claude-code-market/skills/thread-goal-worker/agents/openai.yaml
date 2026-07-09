@@ -1,4 +1,4 @@
 interface:
   display_name: "Thread Goal Worker"
-  short_description: "Claude Code team 队员按 scope 执行并自审查"
-  default_prompt: "使用 $thread-goal-worker 作为 Claude Code agent team 队员接收 coordinator 分派：先确认 parent_goal、owner_domain、goal_id、scope、constraints 和 verification，再在授权范围内执行；完成后进行验证、自审查、审查后修复和自验收，再返回 TEAMMATE_RESULT。"
+  short_description: "队员执行单一 scope，支持轻量并发模块模式"
+  default_prompt: "使用 $thread-goal-worker 执行一个 Claude Code 队员任务；收到 parallel-plan module 时按 scope 实现、验证、diff 自检并最多修复一次，最后返回 WORKER_RESULT。"

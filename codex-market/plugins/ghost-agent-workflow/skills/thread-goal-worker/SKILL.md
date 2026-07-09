@@ -168,6 +168,38 @@ COORDINATOR_RESULT:
 
 `needs_main_review` 不是成功状态，只表示 worker 已停在授权边界，等待主线程做总任务判断或重新分派。除非 `final_worker_verdict: pass`，不要把 `needs_main_review: false` 和 `status: completed` 写在一起。
 
+## Parallel-plan Worker 模式
+
+收到协调线程基于 `parallel-plan` 分派的单个 module 时，使用这个轻量模式。输入必须包含 `module_id`、`task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和 `parent_goal`；缺少任一字段时返回 `blocked`，不要推断。
+
+执行循环严格限定为：
+
+```text
+设置或确认 child goal -> 检查 scope -> 实现 -> 验证 -> 检查自身 diff -> 最多修复一次 -> WORKER_RESULT
+```
+
+- 仍必须遵循现有 active `/goal` 读取、设置和二次确认门禁；`writable_paths` 是本模式唯一可写范围。
+- 跨 scope、共享契约冲突、未完成依赖和未经授权的命令必须返回 `needs_fix` 或 `blocked`。
+- 本模式以自检替代额外 reviewer-subagent：检查 changed files 是否都在 scope 内、`done_when` 是否满足、验证是否通过或有明确替代证据、diff 是否聚焦且不覆盖用户改动。
+- 验证或 `diff_self_check` 失败时最多修复一次。第二次失败、范围不清或依赖缺失时停止并返回非完成状态。
+- 该例外只适用于带 `parallel-plan` 标记的模块，不改变普通分派任务的既有只读 reviewer-subagent 审查门禁。
+
+```text
+WORKER_RESULT:
+- module_id: "M1"
+- status: completed | needs_fix | blocked
+- changed_files:
+  - "<path>"
+- verification:
+  - "<命令或替代证据及结果>"
+- diff_self_check: pass | failed
+- goal_alignment: "<done_when 如何被满足>"
+- risks:
+  - "<none 或剩余风险>"
+```
+
+只有 active goal 已确认、验证已通过或有明确替代证据，并且 `diff_self_check: pass` 时才可返回 `completed`。不要以 `COORDINATOR_RESULT` 替代该结果；协调线程仍可在普通模式消费 `COORDINATOR_RESULT`。
+
 ## 反模式
 
 - 收到自然语言分派后直接开始改文件，没有先设置 active `/goal`。

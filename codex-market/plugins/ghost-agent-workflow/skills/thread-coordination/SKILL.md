@@ -251,6 +251,36 @@ main_total_review:
 - 只有用户要求新建、没有合适 thread、旧 thread 已归档/不可访问，或旧上下文明显错误时，才新建 thread。
 - 选定或创建 thread 后，在协调记录或最终回复中记录 thread id 和职责，方便未来同类任务复用。
 
+## Parallel-plan 模式
+
+当 `$parallel-task-planner` 提供一个 `safety.status: parallel_safe` 的计划路径时，进入此轻量模式。计划是唯一的模块交接契约；不要重新按 ownership 拆解，也不要维护永久模块或 thread registry。
+
+1. 读取计划，确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。
+2. 仅对当前 batch 中依赖已满足的 module 分派 worker thread；每个 worker 只收到 `id`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
+3. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
+4. 等待每个 worker 返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
+5. 对每个失败或不完整模块最多向原 worker 发起一次定向补修；不得由协调线程自行修改实现文件，也不得无限重试。
+6. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
+
+此模式使用可访问的 Codex worker thread，但 thread 复用只取决于本轮可见的近期上下文，不构成长期 ownership。最终返回：
+
+```text
+PARALLEL_PLAN_RESULT:
+- status: completed | partial | blocked
+- plan_path: "<absolute path>"
+- modules:
+  - id: M1
+    worker_thread: "<thread id 或标签>"
+    status: completed | needs_fix | blocked
+    verification: "<摘要>"
+- completion_check:
+  - parent_goal_coverage: pass | partial | blocked
+  - writable_path_conflicts: none | found
+  - unresolved_items: "<none 或摘要>"
+```
+
+`sequential_only` 与 `needs_user_review` 计划不得自动分派；说明计划路径和未自动执行原因。
+
 ## 最终回复
 
 默认用简洁中文。包含：

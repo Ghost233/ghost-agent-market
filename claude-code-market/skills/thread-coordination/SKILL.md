@@ -142,6 +142,36 @@ TEAMMATE_RESULT:
 - 用户要求编译/测试/构建时，确认负责队员已运行并报告最终结果；主会话执行命令需要用户明确授权。
 - 证据不足时，要求队员补充证明，或把该项标为未验证。
 
+## Parallel-plan 模式
+
+当 `$parallel-task-planner` 提供一个 `safety.status: parallel_safe` 的计划路径时，进入此轻量模式。计划是唯一的模块交接契约；不要重新按 ownership 拆解，也不要维护永久模块或队员 registry。
+
+1. 读取计划，确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。
+2. 仅对当前 batch 中依赖已满足的 module 分派队员；每个队员只收到 `id`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
+3. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
+4. 等待每个队员返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
+5. 对每个失败或不完整模块最多向原队员发起一次定向补修；不得由 coordinator 自行修改实现文件，也不得无限重试。
+6. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
+
+此模式使用 agent team 的稳定队员 name，但稳定 name 只服务本会话的模块执行，不构成长期 ownership。最终返回：
+
+```text
+PARALLEL_PLAN_RESULT:
+- status: completed | partial | blocked
+- plan_path: "<absolute path>"
+- modules:
+  - id: M1
+    teammate: "<stable agent name>"
+    status: completed | needs_fix | blocked
+    verification: "<摘要>"
+- completion_check:
+  - parent_goal_coverage: pass | partial | blocked
+  - writable_path_conflicts: none | found
+  - unresolved_items: "<none 或摘要>"
+```
+
+`sequential_only` 与 `needs_user_review` 计划不得自动分派；说明计划路径和未自动执行原因。
+
 ## 最终回复
 
 默认用简洁中文。包含：

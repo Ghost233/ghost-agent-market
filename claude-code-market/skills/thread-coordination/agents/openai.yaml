@@ -1,4 +1,4 @@
 interface:
   display_name: "Thread 协调"
-  short_description: "按 ownership 构建 Claude Code agent team 并复用队员"
-  default_prompt: "使用 $thread-coordination 协调一个 /goal 驱动的 Claude Code agent team：先按目标域 ownership 拆分，建立 team roster，通过稳定队员 name 复用 teammate；每个队员使用 $thread-goal-worker 在授权 scope 内执行、验证、自审查并返回 TEAMMATE_RESULT，主会话负责轮询与总验收。"
+  short_description: "按 ownership 协调队员，或执行安全并发计划"
+  default_prompt: "使用 $thread-coordination 协调 Claude Code agent team：普通任务按目标域 ownership 拆分；收到 parallel_safe 计划时使用 parallel-plan 模式按 batch 分派队员、收集 WORKER_RESULT、做总校验，并且每个模块最多补修一次。"

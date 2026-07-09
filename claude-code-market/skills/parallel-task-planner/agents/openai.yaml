@@ -1,0 +1,4 @@
+interface:
+  display_name: "并发任务规划"
+  short_description: "生成安全并发模块计划并自动协调执行"
+  default_prompt: "使用 $parallel-task-planner 将需求或已有计划转为并发模块计划；仅在安全门禁通过时，自动调用 $thread-coordination 的 parallel-plan 模式分派 Claude Code agent team。"
