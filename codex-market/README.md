@@ -28,7 +28,7 @@ codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 
-`rtk-hook` 依赖包含 `rtk hook codex` 的 RTK CLI（RTK PR #2816 或后续版本）。安装后，在 Codex 配置中开启 hooks：
+`rtk-hook` 依赖包含 `rtk hook codex` 的 RTK 版本或本地构建版。安装后，在 Codex 配置中开启 hooks：
 
 ```toml
 [features]
