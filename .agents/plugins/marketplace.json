@@ -1,0 +1,32 @@
+{
+  "name": "ghost-agent-market",
+  "interface": {
+    "displayName": "Ghost Agent Market"
+  },
+  "plugins": [
+    {
+      "name": "ghost-agent-workflow",
+      "source": {
+        "source": "local",
+        "path": "./codex-market/plugins/ghost-agent-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "rtk-hook",
+      "source": {
+        "source": "local",
+        "path": "./codex-market/plugins/rtk-hook"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
