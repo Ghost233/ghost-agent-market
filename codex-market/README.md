@@ -9,13 +9,19 @@
 
 ## 安装
 
-把这个目录添加为 Codex marketplace：
+把远程 marketplace 添加到 Codex：
 
 ```bash
-codex plugin marketplace add /path/to/ghost-agent-market/codex-market
+codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 ```
 
-然后打开 Codex 插件市场，安装 `thread-goal-workflow`。
+安装插件：
+
+```bash
+codex plugin add thread-goal-workflow@ghost-agent-market
+```
+
+如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。
 
 Marketplace 文件位置：
 

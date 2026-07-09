@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-这是一个本地 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
+这是一个 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 内置 skill：
 
@@ -34,51 +34,35 @@ ghost-agent-market/
 
 ## 安装 Claude Code Market
 
-先克隆仓库：
-
-```bash
-git clone https://github.com/Ghost233/ghost-agent-market.git
-```
-
-然后在 Claude Code 里添加 Claude Code market：
+在 Claude Code 里添加远程 marketplace：
 
 ```text
-/plugin marketplace add /path/to/ghost-agent-market/claude-code-market
+/plugin marketplace add Ghost233/ghost-agent-market --sparse claude-code-market
 ```
 
-安装内置插件：
+安装插件：
 
 ```text
-/plugin install thread-goal-workflow
+/plugin install thread-goal-workflow@ghost-agent-market
 ```
 
-如果你把仓库克隆在当前项目旁边，也可以使用相对路径：
-
-```text
-/plugin marketplace add ./ghost-agent-market/claude-code-market
-```
+如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。
 
 ## 安装 Codex Marketplace
 
-先克隆仓库：
+把远程 marketplace 添加到 Codex：
 
 ```bash
-git clone https://github.com/Ghost233/ghost-agent-market.git
+codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 ```
 
-把 Codex marketplace 添加到 Codex：
+安装插件：
 
 ```bash
-codex plugin marketplace add /path/to/ghost-agent-market/codex-market
+codex plugin add thread-goal-workflow@ghost-agent-market
 ```
 
-如果你把仓库克隆在当前项目旁边，也可以使用相对路径：
-
-```bash
-codex plugin marketplace add ./ghost-agent-market/codex-market
-```
-
-然后打开 Codex 插件市场，安装 `thread-goal-workflow`。
+如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。
 
 Codex marketplace 文件位置：
 
