@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git 智能提交"
+  short_description: "当前 Claude Code 会话分析改动并按 submodule 到主工程顺序提交"
+  default_prompt: "使用 $git-commit 分析当前改动并直接完成提交。当前 Claude Code 会话直接执行 git status、git diff、git submodule status、stage 和 commit；执行面固定为当前 checkout / same-directory；如有脏 submodule，先在 submodule 内提交，再回到主工程提交 submodule 指针和其他改动。"

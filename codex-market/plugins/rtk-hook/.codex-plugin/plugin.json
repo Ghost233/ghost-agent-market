@@ -1,0 +1,23 @@
+{
+  "name": "rtk-hook",
+  "version": "0.2.0",
+  "description": "Codex plugin that registers RTK's native PreToolUse hook.",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "repository": "https://github.com/rtk-ai/rtk",
+  "license": "MIT",
+  "keywords": ["codex", "hooks", "rtk"],
+  "interface": {
+    "displayName": "RTK Hook",
+    "shortDescription": "Registers RTK's native Codex command rewrite hook.",
+    "longDescription": "Registers the native `rtk hook codex` PreToolUse command from RTK. The hook lets RTK rewrite Bash tool input through Codex updatedInput, while Codex keeps handling command approval.",
+    "developerName": "Ghost233",
+    "category": "Productivity",
+    "capabilities": ["Hooks"],
+    "defaultPrompt": [
+      "Use RTK's native Codex hook for shell commands."
+    ]
+  }
+}

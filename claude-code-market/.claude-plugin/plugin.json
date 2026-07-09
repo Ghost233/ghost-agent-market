@@ -1,7 +1,7 @@
 {
-  "name": "thread-goal-workflow",
-  "description": "Claude Code skills for /goal-driven thread coordination and worker execution handoffs.",
-  "version": "0.1.0",
+  "name": "ghost-agent-workflow",
+  "description": "Claude Code skills for coordinated agent workflows, worker execution handoffs, and smart git commits.",
+  "version": "0.2.0",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -11,7 +11,10 @@
   "license": "MIT",
   "keywords": [
     "thread-coordination",
+    "thread-goal-worker",
+    "git-commit",
     "goal",
+    "git",
     "agent-skills",
     "claude-code",
     "codex"

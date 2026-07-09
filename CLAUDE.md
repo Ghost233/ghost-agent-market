@@ -24,4 +24,11 @@ git config user.email only.yesc@gmail.com
 - Codex 本地 marketplace/plugin 入口：`codex-market/`
 - Microsoft SkillOpt 上游子模块：`SkillOpt/`
 
-本地 market 部分分发 `thread-coordination` 和 `thread-goal-worker` 两个 skill。
+## Skill 同步规则
+
+更新任意 skill 内容时，必须同时更新 Claude Code 和 Codex 两端对应内容：
+
+- Claude Code：`claude-code-market/skills/<skill>/`
+- Codex：`codex-market/plugins/ghost-agent-workflow/skills/<skill>/`
+
+只有用户明确要求单端差异化实现时，才允许两端内容不同；这种差异必须在对应 skill 中写清平台原因。

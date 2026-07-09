@@ -1,9 +1,10 @@
 # Claude Code Market
 
-这个目录提供 Claude Code 可安装插件，包含以下两个 skill：
+这个目录提供 Claude Code 可安装插件，包含以下三个 skill：
 
 - `thread-coordination`
 - `thread-goal-worker`
+- `git-commit`
 
 ## 安装
 
@@ -16,7 +17,5 @@
 安装插件：
 
 ```text
-/plugin install thread-goal-workflow@ghost-agent-market
+/plugin install ghost-agent-workflow@ghost-agent-market
 ```
-
-如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。

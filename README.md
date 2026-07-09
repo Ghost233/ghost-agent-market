@@ -6,10 +6,15 @@
 
 - `thread-coordination`
 - `thread-goal-worker`
+- `git-commit`
 
 上游子模块：
 
 - `SkillOpt/`：`microsoft/SkillOpt`
+
+Codex hook 插件：
+
+- `rtk-hook`：调用 RTK 原生 `rtk hook codex` PreToolUse hook
 
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
@@ -22,14 +27,20 @@ ghost-agent-market/
 │   ├── .claude-plugin/plugin.json
 │   └── skills/
 │       ├── thread-coordination/
-│       └── thread-goal-worker/
+│       ├── thread-goal-worker/
+│       └── git-commit/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
-    └── plugins/thread-goal-workflow/
-        ├── .codex-plugin/plugin.json
-        └── skills/
-            ├── thread-coordination/
-            └── thread-goal-worker/
+    └── plugins/
+        ├── ghost-agent-workflow/
+        │   ├── .codex-plugin/plugin.json
+        │   └── skills/
+        │       ├── thread-coordination/
+        │       ├── thread-goal-worker/
+        │       └── git-commit/
+        └── rtk-hook/
+            ├── .codex-plugin/plugin.json
+            └── hooks/
 ```
 
 ## 安装 Claude Code Market
@@ -43,10 +54,8 @@ ghost-agent-market/
 安装插件：
 
 ```text
-/plugin install thread-goal-workflow@ghost-agent-market
+/plugin install ghost-agent-workflow@ghost-agent-market
 ```
-
-如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。
 
 ## 安装 Codex Marketplace
 
@@ -59,10 +68,18 @@ codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 安装插件：
 
 ```bash
-codex plugin add thread-goal-workflow@ghost-agent-market
+codex plugin add ghost-agent-workflow@ghost-agent-market
+codex plugin add rtk-hook@ghost-agent-market
 ```
 
-如果需要使用 SSH 认证，把 `Ghost233/ghost-agent-market` 换成 `git@github.com:Ghost233/ghost-agent-market.git`。
+`rtk-hook` 依赖包含 `rtk hook codex` 的 RTK CLI（RTK PR #2816 或后续版本）。安装后，在 Codex 配置中开启 hooks：
+
+```toml
+[features]
+hooks = true
+```
+
+然后开启新的 Codex 线程，并通过 `/hooks` 信任 `RTK Hook`。
 
 Codex marketplace 文件位置：
 
