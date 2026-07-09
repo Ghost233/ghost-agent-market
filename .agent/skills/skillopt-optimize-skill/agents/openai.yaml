@@ -1,0 +1,4 @@
+interface:
+  display_name: "SkillOpt 优化 Skill"
+  short_description: "用 SkillOpt-Sleep 优化 SKILL.md"
+  default_prompt: "使用 $skillopt-optimize-skill 为这个 skill 运行一轮带 gate 的 SkillOpt-Sleep 优化流程。"
