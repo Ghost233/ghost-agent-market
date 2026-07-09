@@ -11,7 +11,7 @@
 - `thread-goal-worker`
 - `git-commit`
 
-`rtk-hook` 调用 RTK 原生 `rtk hook codex` PreToolUse hook，通过 Codex `updatedInput` 改写 Bash 命令。
+`rtk-hook` 基于 `Ghost233/rtk-hook`，通过 PreToolUse hook 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 ## 安装
 
@@ -28,14 +28,7 @@ codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 
-`rtk-hook` 依赖包含 `rtk hook codex` 的 RTK 版本或本地构建版。安装后，在 Codex 配置中开启 hooks：
-
-```toml
-[features]
-hooks = true
-```
-
-然后开启新的 Codex 线程，并通过 `/hooks` 信任 `RTK Hook`。
+安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。
 
 Marketplace 文件位置：
 

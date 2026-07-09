@@ -1,0 +1,10 @@
+{
+  "prefix": "rtk",
+  "mode": "deny-retry",
+  "scope": "all-shell",
+  "allow_prefixed": true,
+  "allow_exact": [
+    "which rtk",
+    "command -v rtk"
+  ]
+}

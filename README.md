@@ -14,7 +14,7 @@
 
 Codex hook 插件：
 
-- `rtk-hook`：调用 RTK 原生 `rtk hook codex` PreToolUse hook
+- `rtk-hook`：基于 `Ghost233/rtk-hook` 的 PreToolUse hook，对未通过 `rtk` 前缀执行的 shell 命令给出重试提示
 
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
@@ -40,7 +40,9 @@ ghost-agent-market/
         │       └── git-commit/
         └── rtk-hook/
             ├── .codex-plugin/plugin.json
-            └── hooks/
+            ├── hooks/
+            ├── scripts/
+            └── rules.json
 ```
 
 ## 安装 Claude Code Market
@@ -72,14 +74,7 @@ codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 
-`rtk-hook` 依赖包含 `rtk hook codex` 的 RTK 版本或本地构建版。安装后，在 Codex 配置中开启 hooks：
-
-```toml
-[features]
-hooks = true
-```
-
-然后开启新的 Codex 线程，并通过 `/hooks` 信任 `RTK Hook`。
+安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。
 
 Codex marketplace 文件位置：
 

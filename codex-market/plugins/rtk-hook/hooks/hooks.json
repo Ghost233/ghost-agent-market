@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rtk hook codex",
-            "statusMessage": "RTK rewrite",
-            "timeout": 30
+            "command": "python3 ${PLUGIN_ROOT}/scripts/rtk-codex-hook.py",
+            "statusMessage": "Applying RTK hook rules",
+            "timeout": 5
           }
         ]
       }
