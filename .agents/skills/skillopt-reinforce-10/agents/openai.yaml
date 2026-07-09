@@ -1,0 +1,4 @@
+interface:
+  display_name: "SkillOpt 十轮强化"
+  short_description: "通过验证门控连续执行十轮 SkillOpt 技能强化流程"
+  default_prompt: "使用 $skillopt-reinforce-10 对我的目标 skill 执行十轮验证门控强化。"
