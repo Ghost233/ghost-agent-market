@@ -1,0 +1,4 @@
+interface:
+  display_name: "Thread 协调"
+  short_description: "按 ownership 拆分，用 /goal 分派并总验收"
+  default_prompt: "使用 $thread-coordination 协调一个 /goal 驱动的多线程任务：先按目标域 ownership 拆分，再复用 Codex 子线程；要求每个 worker 用 $thread-goal-worker 设置 active /goal，完成自验证和只读子代理审查后提交，主线程只做轮询与总验收。"

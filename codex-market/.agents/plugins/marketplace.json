@@ -1,0 +1,20 @@
+{
+  "name": "ghost-agent-market",
+  "interface": {
+    "displayName": "Ghost Agent Market"
+  },
+  "plugins": [
+    {
+      "name": "thread-goal-workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/thread-goal-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

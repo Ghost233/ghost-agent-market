@@ -1,0 +1,4 @@
+interface:
+  display_name: "Thread Goal Worker"
+  short_description: "子线程设置 /goal，执行并自审查自验收"
+  default_prompt: "使用 $thread-goal-worker 接收主协调线程分派：先读取并设置 active /goal，再按 owner domain 和授权 scope 执行；完成后进行验证、只读子代理审查、审查后修复和自验收，再返回 COORDINATOR_RESULT。"
