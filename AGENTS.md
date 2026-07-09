@@ -20,9 +20,10 @@ git config user.email
 
 ## 范围
 
-这个仓库合并了 Claude Code 和 Codex 的本地 market / marketplace：
+这个仓库当前包含：
 
-- `claude-code-market/`：Claude Code 本地 market/plugin
-- `codex-market/`：Codex 本地 marketplace/plugin
+- `claude-code-market/`：Claude Code 本地插件入口
+- `codex-market/`：Codex 本地 marketplace/plugin 入口
+- `SkillOpt/`：`microsoft/SkillOpt` Git submodule
 
-两个 market 都包含 `thread-coordination` 和 `thread-goal-worker` 两个 skill。
+本地 market 部分分发 `thread-coordination` 和 `thread-goal-worker` 两个 skill。

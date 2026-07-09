@@ -1,6 +1,6 @@
 # Claude Code Market
 
-这是 Claude Code 的本地 market/plugin，内置以下两个 skill：
+这个目录提供 Claude Code 可安装的本地插件，包含以下两个 skill：
 
 - `thread-coordination`
 - `thread-goal-worker`

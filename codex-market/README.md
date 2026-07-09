@@ -1,6 +1,6 @@
 # Codex Marketplace
 
-这是 Codex 的本地 marketplace，内置 `thread-goal-workflow` 插件。
+这个目录提供 Codex 可安装的 marketplace 条目，包含 `thread-goal-workflow` 插件。
 
 插件包含以下两个 skill：
 

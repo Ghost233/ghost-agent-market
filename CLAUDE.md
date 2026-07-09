@@ -18,9 +18,10 @@ git config user.email only.yesc@gmail.com
 
 ## 仓库用途
 
-这个仓库合并打包两套本地 market：
+这个仓库用于维护本地 agent marketplace 相关内容：
 
-- Claude Code：`claude-code-market/`
-- Codex：`codex-market/`
+- Claude Code 本地插件入口：`claude-code-market/`
+- Codex 本地 marketplace/plugin 入口：`codex-market/`
+- Microsoft SkillOpt 上游子模块：`SkillOpt/`
 
-它们共同分发 `thread-coordination` 和 `thread-goal-worker` 两个 skill。
+本地 market 部分分发 `thread-coordination` 和 `thread-goal-worker` 两个 skill。

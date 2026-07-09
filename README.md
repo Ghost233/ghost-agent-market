@@ -1,11 +1,15 @@
 # Ghost Agent Market
 
-这是一个合并仓库，同时提供 Claude Code 和 Codex 的本地 market / marketplace。
+这是一个本地 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 内置 skill：
 
 - `thread-coordination`
 - `thread-goal-worker`
+
+上游子模块：
+
+- `SkillOpt/`：`microsoft/SkillOpt`
 
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
@@ -13,6 +17,7 @@
 
 ```text
 ghost-agent-market/
+├── SkillOpt/
 ├── claude-code-market/
 │   ├── .claude-plugin/plugin.json
 │   └── skills/
