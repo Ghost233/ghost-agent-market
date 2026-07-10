@@ -31,10 +31,9 @@ description: |
 3. `parent_goal` 必须非空；`safety.status` 必须严格等于 `parallel_safe`，并保留 planner 写出的判定理由。`sequential_only` 和 `needs_user_review` 一律不分派。
 4. `modules` 至少包含两个可执行 module。每个 module 必须有唯一非空 `id`，以及完整的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile` 和 `reviewer_subagent_profile`。
 5. 每个 `worker_profile` 和 `reviewer_subagent_profile` 都必须显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承默认值、不猜测、不补字段。
-6. 每个 module 必须包含 `reviewer_profile_preflight`（requested/effective/status/evidence）；普通 module 在 worker 设置 goal 前 status 必须为 `ready`/`applied` 且 effective 为固定平台默认，parallel-plan diff_self_check 例外为 `not_required` 并有证据，否则 blocked。
-7. `depends_on` 只能引用计划内 module，依赖图无环。`dispatch.batches` 必须存在，每个 module id 恰好出现一次，且依赖 module 位于更早 batch。
-8. 用当前工作区重新检查安全证据：同一 batch 的可写路径没有精确、父子或 glob 相交；没有共享 API、迁移、生成输出、全局配置或验证环境冲突；现有用户改动没有落入将被写入的范围。无关 dirty 文件不单独构成冲突。
-9. 计划内容与调用摘要一致，计划未过期，全部 module 合起来仍覆盖 `parent_goal`。证据不足按冲突处理，不允许凭感觉继续。
+6. `depends_on` 只能引用计划内 module，依赖图无环。`dispatch.batches` 必须存在，每个 module id 恰好出现一次，且依赖 module 位于更早 batch。
+7. 用当前工作区重新检查安全证据：同一 batch 的可写路径没有精确、父子或 glob 相交；没有共享 API、迁移、生成输出、全局配置或验证环境冲突；现有用户改动没有落入将被写入的范围。无关 dirty 文件不单独构成冲突。
+8. 计划内容与调用摘要一致，计划未过期，全部 module 合起来仍覆盖 `parent_goal`。证据不足按冲突处理，不允许凭感觉继续。
 
 任一条件失败时，不创建或复用 teammate，不设置 `/goal`，不把输入送给 worker，也不尝试修复计划。只返回：
 
@@ -73,6 +72,8 @@ main_thread_profile:
 ### Module profile
 
 Claude Code 计划的默认 worker 与 reviewer profile 是 `sonnet/max`。module 可以在 planner 阶段显式覆盖 worker profile；coordinator 只执行计划中已经解析完成的值。`reviewer_subagent_profile` 必须完整且严格等于 `sonnet/max`；其他值说明计划没有满足当前 planner 契约，返回 `invalid_plan`。
+
+`reviewer_profile_preflight` 是 coordinator 在分派前生成的运行时证据，不属于 planner 计划。普通 module 只有在 reviewer 执行面确认能应用并读取 `sonnet/max` 时才写 `status: ready`；已预建并确认实际 profile 时可写 `applied`。只有 `parallel-plan` 的 `diff_self_check` 例外可写 `not_required`，并必须记录例外证据。无法生成可信 preflight 时不分派。
 
 对每个 ready module，在创建或复用 teammate 前验证调度接口能应用并读取所请求的 `model` 与 `reasoning_effort`：
 

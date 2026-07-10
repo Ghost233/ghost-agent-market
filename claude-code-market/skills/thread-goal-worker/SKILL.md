@@ -30,7 +30,7 @@ description: |
 
 ## Plan Binding
 
-在设置 goal 或任何文件操作前，读取绝对 `plan_path`。验证顶层 `planner`、`plan_format_version`、`execution_platform`、`parent_goal`，并逐字段比较 `module_id` 对应原文的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile`、`reviewer_subagent_profile`、`reviewer_profile_preflight`。手工包或任一字段与计划原文不一致时返回 blocked。
+在设置 goal 或任何文件操作前，读取绝对 `plan_path`。验证顶层 `planner`、`plan_format_version`、`execution_platform`、`parent_goal`，并逐字段比较 `module_id` 对应原文的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile`、`reviewer_subagent_profile`。手工包或任一字段与计划原文不一致时返回 blocked。`reviewer_profile_preflight` 是 coordinator 追加的运行时证据，不与计划原文比较，但仍必须通过输入和 profile 门禁。
 
 真实回归场景：缺少 planner 来源链、profile 和计划字段的包必须返回 `WORKER_RESULT` blocked、`goal_set_evidence: not_set`、`changed_files: []`。
 
