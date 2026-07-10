@@ -1,4 +1,4 @@
 interface:
   display_name: "Thread Goal Worker"
-  short_description: "在 active goal 和授权 scope 内执行 Codex 模块并自检"
-  default_prompt: "使用 $thread-goal-worker 执行一个 Codex worker 任务；先确认 active goal，parallel-plan 模式只处理单一模块、验证、diff 自检并最多修复一次。"
+  short_description: "校验 Codex 计划来源与 profile 后执行单模块"
+  default_prompt: "使用 $thread-goal-worker 校验 Codex 单 module 的计划来源和运行时 profile，设置 active goal 后执行、验证并返回 WORKER_RESULT。"

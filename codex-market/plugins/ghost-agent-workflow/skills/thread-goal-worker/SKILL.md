@@ -1,215 +1,131 @@
 ---
 name: thread-goal-worker
 description: |
-  让 Codex worker thread 在设置 active `/goal` 后执行主协调线程分派的限定任务，自验证、自审查并返回
-  结构化结果。worker 收到普通 owner-domain 任务，或收到 `parallel-plan` 单模块并需按 `writable_paths`
-  执行、diff 自检、最多修复一次并返回 `WORKER_RESULT` 时使用；防止越权和无证据完成声明。
+  当 Codex worker thread 收到 coordinator 从 `parallel-task-planner` 版本化计划派发的单一 module 包，
+  需要校验来源链、运行时 profile、active `/goal`、scope、验证与 diff，并返回带 profile evidence 的
+  `WORKER_RESULT` 时使用。自然语言、普通 owner-domain 或缺字段分派也会触发，但只能返回 `blocked`。
 ---
 
 # Thread Goal Worker
 
 ## 概述
 
-把当前会话作为子执行线程使用：先用 Codex 的 `/goal` 机制设置或激活主线程分派的子目标，再在授权范围内实现、调查或验证。修改完成后，worker 必须完成自己的验证、只读子代理审查、审查后修复和自验收，再提交给主线程。自然语言说明只是设置 `/goal` 的输入材料，不等于目标已经设置。
+把当前 Codex worker thread 作为 coordinator 派发的单一 plan module 执行者。唯一执行入口是 coordinator 从 `$parallel-task-planner` 计划原样转发的单 module 包。先校验来源链、平台、module 边界和运行时 profile；全部通过后才设置 active `/goal`、修改 scope 内文件、验证、自检或审查，并返回 `WORKER_RESULT`。
 
-## 硬门禁
+不要接受自然语言任务、普通 owner-domain 包、手工 module、计划全文或多个 module。不要自行补计划字段、切换 profile、选择替代模型、降低 reasoning effort、创建或协调其他 thread。入口不合法时必须在设置 goal 或修改文件前返回 `blocked`。
 
-- 必须先读取当前 goal 状态，再设置或激活 active `/goal`。没有 active `/goal`、`goal_id` 不一致、或无法确认 `/goal` 已设置时，不要修改文件、运行写入型命令、stage、commit、push，或宣称开始执行。
-- 自然语言目标不算 `/goal`。不要把“我会以 X 为目标”当作完成设置；必须使用当前环境提供的 `/goal` 指令或目标工具。
-- 如果环境无法设置或读取 `/goal`，立即返回 `COORDINATOR_RESULT`，`status: blocked`，`goal_status: not_set`，说明缺少的机制。
-- 只执行主协调线程分派的子目标。不要重写父级 `/goal`、扩大 scope、重新拆全局任务、创建新 thread，或把执行任务转交临时子代理。
-- 修改型任务完成后必须使用只读子代理审查本次 scope 内改动。审查子代理不是 owner，不允许改文件、扩大 scope、创建 thread、替代当前 worker 回报最终结果，或接管后续修复。
-- 除非分派明确允许，否则不要触碰禁止文件、无关模块、用户未授权的重构、全局格式化、依赖安装、stage、commit、push。
-- 完成声明必须以 `COORDINATOR_RESULT` 为准；普通“完成了”不是有效回报。
+## 输入门禁
 
-## 输入契约
+执行任何 goal 或文件操作前，逐项验证：
 
-收到分派后，提取以下字段；缺少关键字段时先阻塞，不要猜：
+1. `planner` 严格等于 `parallel-task-planner`，`plan_format_version` 严格等于整数 `1`，`execution_platform` 严格等于 `codex`。
+2. 包含绝对、可读的 `plan_path`，以及非空 `parent_goal` 和唯一 `module_id`；只包含该 `module_id` 的权限，不携带其他 module 的写入范围。
+3. module 包含非空 `task`、`writable_paths`、`depends_on`、`done_when`、`verification` 和 `worker_context`。`writable_paths` 是唯一可写 scope；`done_when` 和 `verification` 都必须可执行或可观察。
+4. 包含完整 `worker_profile` 和 `reviewer_subagent_profile`；两者都显式给出非空 `model` 与 `reasoning_effort`。同时包含 coordinator/thread 运行时提供的 worker profile evidence。
+5. `reviewer_subagent_profile` 必须严格等于 Codex 平台固定默认值 `terra/xhigh`。planner 可以为 module 完整覆盖 `worker_profile`，worker 不把 `terra/xhigh` 强加给 worker 覆盖。
+6. 包含 `repair_round: 0 | 1`、保护边界和 `result_contract: WORKER_RESULT`。`repair_round: 1` 只授权处理 coordinator 指出的原 finding，不开启新的补修轮次。
 
-| 字段 | 必需性 | 用途 |
-| --- | --- | --- |
-| parent_goal | 必需 | 父级 `/goal` 的摘要；只用于对齐，不可改写。 |
-| owner_domain | 修改型任务必需 | 本 worker 负责的目标域 ownership；缺失时只能从 `child_goal` / `scope` 做一次保守推断，无法推断就阻塞。 |
-| finding_evidence | 可选 | 归入本 owner domain 的 finding、报错或需求证据；只作为输入证据。 |
-| goal_id | 必需 | 本子线程负责的目标编号。 |
-| child_goal | 必需 | 要设置为 active `/goal` 的子目标正文。 |
-| scope | 必需 | 允许读取、修改、验证的文件/模块/职责范围。 |
-| constraints | 必需 | 禁止事项、用户改动保护、命令限制。 |
-| verification | 必需 | 需要执行或明确跳过的检查。 |
-| worker_self_review_required | 修改型任务默认必需 | 是否要求 worker 在提交前完成只读子代理审查和自验收；未给出时按 `true` 处理。 |
-| main_acceptance_hint | 可选 | 主线程最终总审查会看的证据面；只用于让 worker 补齐证据，不代表主线程会替 worker 审局部实现。 |
-| result_contract | 必需 | 主线程要求的最终结果格式。 |
+任一必需字段缺失、为空、无法解析、值不匹配或来源不是 coordinator 分派时，立即返回 blocked 结果。此时不要读取、设置或更新 `/goal`，不要修改文件、运行写入型命令、stage、commit 或 push。不要从聊天上下文、平台默认值或计划其他位置补齐缺失字段。
 
-常见中文字段等价于上表：`父级 /goal` -> `parent_goal`，`目标域` / `职责域` -> `owner_domain`，`证据` / `finding` -> `finding_evidence`，`范围` -> `scope`，`禁止事项` -> `constraints`，`验证要求` -> `verification`，`自审查要求` -> `worker_self_review_required`，`返回要求` -> `result_contract`。如果分派包在 XML、Markdown 或列表里，先做字段映射再判断是否缺失，不要因为字段名语言不同而误判阻塞。
+## Profile 门禁
 
-## 运行流程
+Codex worker 默认请求是 `terra/xhigh`，但 planner module 可以提供完整的其他 worker profile。coordinator 传入的 worker profile evidence 必须完整包含 `requested`、`effective`、`status` 和 `evidence`：requested 与 module 的 `worker_profile` 完全一致，effective 与当前 worker 的实际 model 和 reasoning effort 完全一致，status 为 `applied`，evidence 来自可读取两个实际字段的 thread 创建或复用接口，才允许继续。
 
-1. 解析分派，确认 `goal_id`、`child_goal`、owner domain、scope、constraints、verification 和 self-review 要求。
-2. 读取当前 goal 状态并记录证据；如果已有 active goal 与 `goal_id` 和 `child_goal` 一致，可以继续使用，否则使用 `/goal` 机制设置 active goal。
-3. 目标正文必须包含 `goal_id`、owner domain、子目标、scope、禁止事项、验收标准。
-4. 再次读取 active `/goal` 并检查与分派一致；不一致时修正一次，仍不一致就阻塞。
-5. 在 scope 内做必要只读检查，保护用户已有改动。
-6. 按 active `/goal` 执行修改或调查。发现需要扩大范围时，停止并请求主线程确认。
-7. 执行被授权的验证；不能执行时说明原因和替代证据。
-8. 如果产生了修改，启动只读子代理审查本次 diff、scope、goal alignment、验证证据和风险。
-9. 处理审查结果：scope 内问题必须修复并复验；超出 scope、无法判断或无可用审查机制时，返回 `needs_main_review` 或 `blocked`，不要写 completed。
-10. 根据验证和 worker 自审查结果更新 goal 状态：全部完成才标记 complete；阻塞或失败时标记 blocked/failed 或保持 active 并说明。
-11. 返回 `COORDINATOR_RESULT`，包含 goal 状态、修改范围、验证、worker 自审查和目标对齐证据。
+提示词、自述、skill 默认值、计划文本和“推荐模型”都不是运行时 evidence。任一实际字段不可读时用 `unavailable`；实际值与 requested 不一致时用 `mismatch`。两种状态都必须在设置 goal 或修改文件前 `blocked`。worker 不得自行切换 profile，也不得静默使用默认值、近似模型或较低 reasoning effort。
 
-## `/goal` 模板
+普通修改型 module 必须使用只读 reviewer subagent，requested profile 固定为 `terra/xhigh`。启动 reviewer 后记录其实际 profile；只有 evidence 完整、effective 完全匹配且 status 为 `applied` 才能接受审查结论。reviewer profile 不接受 planner module 覆盖，不能由 worker 自行改成其他值，无法应用或证明时返回 `blocked` 或 `needs_main_review`，不得完成。
 
-设置 active goal 时使用这种结构；不要只把它写在普通回复里：
+只有 coordinator 明确标记为 `parallel-plan` 且要求本 worker 执行 `diff_self_check` 的 module，才不创建 reviewer subagent。此例外必须把 reviewer effective 两字段和 status 写为 `not_required`，evidence 明确写 `parallel-plan diff_self_check exception`；不能伪造 reviewer `applied` evidence。
 
-```text
-/goal
-goal_id: <Gx-...>
-parent_goal: <父级目标摘要，只读对齐>
-owner_domain: <本线程负责的目标域 ownership>
-child_goal: <本线程唯一目标>
-scope: <允许触碰的文件/模块/职责面>
-constraints:
-- <禁止事项>
-verification:
-- <验收检查>
-done_when:
-- <完成定义>
-```
-
-如果当前客户端把 `/goal` 暴露为工具而不是文本指令，使用对应目标工具建立同等内容。
-
-`goal_set_evidence` 至少说明三件事：首次读取到的 goal 状态、用于设置或复用 active goal 的机制、二次读取确认到的 `goal_id` 和状态。
-
-## Scope 控制
-
-- 修改前先确认每个候选文件都属于 scope；不属于就不要改。
-- 修改前用只读方式检查候选文件状态；如果已有用户改动，只在同一文件内最小合并，不覆盖、不重排无关内容，并在结果中说明。
-- 同一文件或接口契约如果看起来被其他线程负责，先阻塞并报告冲突。
-- 需要新增文件时，确认它属于本子目标的职责面。
-- 需要运行构建、测试、生成或格式化命令时，确认分派允许；未授权时只说明建议命令。
-- 发现父级目标、子目标或限制互相冲突时，不自行裁决，返回 `blocked`。
-
-## 授权门禁
-
-- 每次编辑前确认：文件在 `scope` 内、不是禁止文件、改动直接服务 `child_goal`。
-- 每次命令前确认：命令属于 `verification` 或必要只读检查，不会安装依赖、生成项目产物、调用外部模型、创建 thread、stage、commit、push。
-- 如果必须扩大 scope 或运行未授权命令，先停止并返回 `needs_main_review`；不要用“顺手修复”或“验证需要”绕过限制。
-
-## Worker 自审查与自验收
-
-- worker 是本子目标 owner。子代理只做只读审查，不接管实现，不修改文件，不创建或协调 thread。
-- 审查发生在 worker 完成修改和初次验证之后、标记 `/goal` complete 之前。
-- 审查输入只给必要上下文：`goal_id`、owner domain、scope、父级 `/goal` 摘要、本次 diff 摘要、验证输出和 constraints。不要转发完整聊天记录。
-- 审查重点：是否越过 scope、是否满足 child_goal、是否破坏 constraints、是否缺少验证、是否引入无关改动、是否存在明显 bug 或遗漏。
-- 审查发现 scope 内问题时，worker 必须修复、重新运行授权验证，并在 `fixes_after_review` 记录处理结果。
-- 审查发现超 scope 问题时，不要自行扩大修改；在 `out_of_scope` 和 `risks` 中说明，并把 `status` 设为 `needs_main_review`。
-- 如果环境没有可用子代理审查机制，修改型任务不能写 `completed`；返回 `needs_main_review`，并在 `worker_self_review.status` 写 `unavailable`。
-- 没有文件修改的调查型任务可以不启动子代理，但必须在 `worker_self_review` 里说明 `not_required` 的原因。
-
-只读审查子代理提示词使用这种形状，避免把执行权交出去：
-
-```text
-你是只读 reviewer，不是执行者。不要修改文件、不要创建 thread、不要扩大 scope。
-审查 goal_id=<...> owner_domain=<...> 的本次结果。
-输入：parent_goal 摘要、child_goal、scope、constraints、changed_files、diff 摘要、verification 输出。
-输出：
-- verdict: pass | findings
-- findings:
-  - severity: P0 | P1 | P2 | P3
-    scope: in_scope | out_of_scope
-    issue: <具体问题>
-    required_action: <worker 应修复、复验、或交给主线程判断>
-```
-
-自验收门禁：
-
-| 审查结果 | worker 动作 | 最终状态 |
-| --- | --- | --- |
-| `pass` | 记录 `findings: none`，可标记 `/goal` complete。 | `completed` |
-| `findings` 且全在 scope 内 | 修复、复验、记录 fixes。 | 修复成功后 `completed` |
-| 有 out-of-scope finding | 不扩 scope，记录风险。 | `needs_main_review` |
-| reviewer 不可用 | 记录 unavailable。 | `needs_main_review` |
-| 验证失败或未授权验证缺替代证据 | 不标 complete。 | `failed` 或 `needs_main_review` |
-
-## 回报契约
-
-最终回复遵守 `result_contract`；如果主协调线程要求“最终只返回 COORDINATOR_RESULT”，不要添加寒暄、过程旁白或额外 Markdown。结果块必须保留协调线程要求的额外字段，例如 `round_log`、`needs_main_review` 或特定验收摘要。
-
-```text
-COORDINATOR_RESULT:
-- status: completed | blocked | failed | needs_main_review
-- goal_id: "<Gx-...>"
-- goal_status: active | completed | blocked | not_set
-- goal_set_evidence:
-  - "<如何设置/确认 active /goal；无法确认则写 unavailable>"
-- changed_files:
-  - "<path/to/file>"
-- verification:
-  - "<已执行检查、结果，或明确跳过原因>"
-- worker_self_review:
-  - reviewer: subagent | unavailable | not_required
-  - status: passed | findings_fixed | unresolved | unavailable | not_required
-  - findings:
-    - "<审查发现或 none>"
-  - fixes_after_review:
-    - "<根据审查做了什么修复；没有则写 none>"
-  - final_worker_verdict: pass | needs_main_review | blocked
-- goal_alignment:
-  - "<本结果如何满足 child_goal 和父级 /goal 的对应部分>"
-- out_of_scope:
-  - "<未处理但可能相关的事项>"
-- risks:
-  - "<剩余风险或阻塞>"
-- extra_fields_from_result_contract:
-  - "<如 round_log；未要求时省略>"
-- needs_main_review: true | false
-```
-
-如果没有修改文件，`changed_files` 写空列表并说明原因。只有 active goal 已确认、scope 内工作完成、授权验证通过或有明确替代证据、worker 子代理审查通过或问题已修复、并且 `final_worker_verdict: pass` 时，`status` 才能写 `completed`。验收失败、验证未运行、goal 未确认、自审查不可用或已有部分工作时，`status` 用 `needs_main_review`、`blocked` 或 `failed`，不要伪装成完成。
-
-`needs_main_review` 不是成功状态，只表示 worker 已停在授权边界，等待主线程做总任务判断或重新分派。除非 `final_worker_verdict: pass`，不要把 `needs_main_review: false` 和 `status: completed` 写在一起。
-
-## Parallel-plan Worker 模式
-
-收到协调线程基于 `parallel-plan` 分派的单个 module 时，使用这个轻量模式。协调线程必须把 plan 中的 `id` 映射为 `module_id`。输入必须包含 `module_id`、`task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和 `parent_goal`；缺少任一字段时返回 `blocked`，不要推断。
-
-执行循环严格限定为：
-
-```text
-设置或确认 child goal -> 检查 scope -> 实现 -> 验证 -> 检查自身 diff -> 最多修复一次 -> WORKER_RESULT
-```
-
-- 仍必须遵循现有 active `/goal` 读取、设置和二次确认门禁；`writable_paths` 是本模式唯一可写范围。
-- 跨 scope、共享契约冲突、未完成依赖和未经授权的命令必须返回 `needs_fix` 或 `blocked`。
-- 把 `worker_context` 中的约束、保护范围和来源证据视为执行边界，不得把它当作扩张 scope 的授权。
-- 本模式以自检替代额外 reviewer-subagent：检查 changed files 是否都在 `writable_paths` 内、没有覆盖既有用户改动、`done_when` 已满足、验证通过或有明确替代证据、diff 聚焦且没有共享文件冲突。
-- 验证或 `diff_self_check` 失败时最多修复一次。第二次失败、范围不清或依赖缺失时停止并返回非完成状态。
-- 该例外只适用于带 `parallel-plan` 标记的模块，不改变普通分派任务的既有只读 reviewer-subagent 审查门禁。
+入口 profile 失败时使用下列结果形状；缺失值写 `unavailable`，不要省略 profile 块：
 
 ```text
 WORKER_RESULT:
-- module_id: "M1"
-- status: completed | needs_fix | blocked
+- status: blocked
+- module_id: "<Mx | unavailable>"
+- goal_set_evidence: "not_set: input/profile gate failed"
+- changed_files: []
+- verification:
+  - "not_run: input/profile gate failed"
+- diff_self_check: "not_run"
+- worker_profile:
+  requested: {model: "<requested | unavailable>", reasoning_effort: "<requested | unavailable>"}
+  effective: {model: "<effective | unavailable>", reasoning_effort: "<effective | unavailable>"}
+  status: applied | unavailable | mismatch
+  evidence: "<runtime evidence or exact missing/mismatch reason>"
+- reviewer_subagent_profile:
+  requested: {model: "terra", reasoning_effort: "xhigh"}
+  effective: {model: "<effective | unavailable | not_required>", reasoning_effort: "<effective | unavailable | not_required>"}
+  status: applied | unavailable | mismatch | not_required
+  evidence: "<runtime evidence, exact gate reason, or parallel-plan exception>"
+- goal_alignment:
+  - "not_started"
+- risks:
+  - "<blocking reason>"
+```
+
+## Active Goal 与 Scope
+
+通过输入和 worker profile 门禁后，先读取当前 goal 状态，再设置或复用只对应该 module 的 active `/goal`。goal 至少包含 `module_id`、`parent_goal`、`task`、`writable_paths`、保护边界、`verification` 和 `done_when`。二次读取必须确认 active goal 与分派一致；无法读取、设置或确认时返回 `blocked`，不要修改文件。
+
+`goal_set_evidence` 必须记录首次 goal 状态、使用的 goal 机制，以及二次读取确认到的 module id 和 active 状态。自然语言里的目标声明不算 evidence。
+
+- 每次编辑前确认文件属于 `writable_paths`，不是禁止文件，并且改动直接满足 `task` 与 `done_when`。
+- 先只读检查候选文件和已有用户改动；最小合并，不覆盖或重排无关内容。
+- 共享契约冲突、未满足依赖、并行 owner 冲突、需要扩大 scope 或运行未授权命令时停止并返回非完成状态。
+- 构建、测试、生成或格式化只能使用 `verification` 或保护边界明确授权的命令；不得安装依赖。
+
+## 有上限的执行循环
+
+执行循环固定为：
+
+```text
+确认 active goal -> 检查 scope -> 实现 -> 验证 -> diff 自检或只读 reviewer -> 最多补修一次 -> WORKER_RESULT
+```
+
+1. 在 `writable_paths` 内实现当前 module，保护已有改动。
+2. 执行全部授权 `verification`；不能执行时记录原因和明确替代证据。
+3. `parallel-plan` module 自检 changed files、scope、用户改动、`done_when`、验证证据、diff 聚焦度和共享文件冲突，并记录 `diff_self_check`。
+4. 非 `parallel-plan` 修改型 module 使用固定 `terra/xhigh` 的只读 reviewer；reviewer 不修改文件、不扩大 scope、不创建 thread、不接管最终回报。
+5. 验证、自检或 reviewer 发现 scope 内问题时，只允许修复并复验一次。`repair_round: 1` 或第二次失败时停止；超 scope finding 不自行修复。
+
+## 结果契约
+
+最终只返回 `WORKER_RESULT`：
+
+```text
+WORKER_RESULT:
+- status: completed | blocked | failed | needs_main_review
+- module_id: "<Mx>"
+- goal_set_evidence: "<active goal runtime evidence>"
 - changed_files:
   - "<path>"
 - verification:
-  - "<命令或替代证据及结果>"
-- diff_self_check: pass | failed
-- goal_alignment: "<done_when 如何被满足>"
+  - "<command or alternative evidence and result>"
+- diff_self_check: "<pass | failed, with scope/done_when evidence>"
+- worker_profile:
+  requested: {model: "<plan value>", reasoning_effort: "<plan value>"}
+  effective: {model: "<runtime value>", reasoning_effort: "<runtime value>"}
+  status: applied | unavailable | mismatch
+  evidence: "<runtime evidence>"
+- reviewer_subagent_profile:
+  requested: {model: "terra", reasoning_effort: "xhigh"}
+  effective: {model: "<runtime value | not_required>", reasoning_effort: "<runtime value | not_required>"}
+  status: applied | unavailable | mismatch | not_required
+  evidence: "<runtime evidence or parallel-plan diff_self_check exception>"
+- goal_alignment:
+  - "<how done_when and parent_goal are satisfied>"
 - risks:
-  - "<none 或剩余风险>"
+  - "<none or remaining risk>"
 ```
 
-只有 active goal 已确认、验证已通过或有明确替代证据，并且 `diff_self_check: pass` 时才可返回 `completed`。若本轮是协调线程发回的唯一补修，先读取现有改动并只处理原 finding；不得开启第二轮自修。不要以 `COORDINATOR_RESULT` 替代该结果；协调线程仍可在普通模式消费 `COORDINATOR_RESULT`。
+`completed` 必须同时满足：active goal 已确认；全部 changed files 在 scope 内；`done_when` 已满足；验证通过或有明确替代证据；`diff_self_check` 通过；worker profile 为 `applied`；普通修改型 module 的 reviewer profile 为 `applied` 且审查通过，或 `parallel-plan` reviewer 明确为 `not_required`；唯一补修上限未被突破。任何必需 profile 为 `unavailable` 或 `mismatch` 时都不能完成。
 
 ## 反模式
 
-- 收到自然语言分派后直接开始改文件，没有先设置 active `/goal`。
-- 回复“我会以这个为目标”，但没有使用 `/goal` 机制。
-- 把父级 `/goal` 重新解释成更大的任务。
-- 越过 scope 修复顺手看到的问题。
-- 创建、复用、协调其他 thread；这是主协调线程职责。
-- 把执行任务交给子代理，或让审查子代理修改文件、扩大 scope、代替 worker 做最终回报。
-- 修改后跳过只读子代理审查、自验收或审查后复验就写 `completed`。
-- 缺少 `goal_set_evidence` 或 `goal_alignment` 就报告完成。
-- 缺少 `worker_self_review`、审查不可用或审查仍有未解决问题时仍写 `completed`。
-- 验证失败、未运行验证或无法确认 `/goal` 时仍写 `completed`。
+- 接受没有 planner 来源链的自然语言、owner-domain 或手工 module 包。
+- 缺字段后先设置 goal、查看实现或改文件，再补 blocked 结果。
+- 用提示词、自述或计划值代替实际 profile evidence。
+- 把 planner 的 worker override 改回平台默认，或把 reviewer 改成非 `terra/xhigh`。
+- `parallel-plan` 没启动 reviewer，却伪造 reviewer `applied`。
+- 越过 scope、跳过验证或 diff 自检、开启第二轮补修后仍写 `completed`。
