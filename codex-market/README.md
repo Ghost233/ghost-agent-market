@@ -5,11 +5,14 @@
 - `ghost-agent-workflow`
 - `rtk-hook`
 
-`ghost-agent-workflow` 包含以下三个 skill：
+`ghost-agent-workflow` 包含以下四个 skill：
 
+- `parallel-task-planner`
 - `thread-coordination`
 - `thread-goal-worker`
 - `git-commit`
+
+其中前三个 skill 使用 v2 并发计划：在用户明确授权后，协调器会为每个 module 创建保留在侧边栏的 Codex 子线程，并让它们共享当前项目的本地工作区。
 
 `rtk-hook` 基于 `Ghost233/rtk-hook`，通过 PreToolUse hook 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 

@@ -4,6 +4,7 @@
 
 内置 skill：
 
+- `parallel-task-planner`
 - `thread-coordination`
 - `thread-goal-worker`
 - `git-commit`
@@ -26,6 +27,7 @@ ghost-agent-market/
 ├── claude-code-market/
 │   ├── .claude-plugin/plugin.json
 │   └── skills/
+│       ├── parallel-task-planner/
 │       ├── thread-coordination/
 │       ├── thread-goal-worker/
 │       └── git-commit/
@@ -35,6 +37,7 @@ ghost-agent-market/
         ├── ghost-agent-workflow/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
+        │       ├── parallel-task-planner/
         │       ├── thread-coordination/
         │       ├── thread-goal-worker/
         │       └── git-commit/

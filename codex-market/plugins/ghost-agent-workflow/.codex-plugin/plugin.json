@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.3.3+codex.20260710091700",
-  "description": "Codex skills for versioned parallel planning, profile-bound subagent coordination, scoped workers, and safe Git commits.",
+  "version": "0.4.0+codex.20260710161033",
+  "description": "Codex skills for versioned parallel planning, profile-bound child thread coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -15,7 +15,7 @@
     "thread-goal-worker",
     "parallel-task-planner",
     "worker-profile",
-    "subagent",
+    "child-thread",
     "git-commit",
     "goal",
     "git",
@@ -25,17 +25,17 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "Plan parallel work, dispatch scoped subagents, and commit safely.",
-    "longDescription": "Packages parallel-task-planner, thread-coordination, thread-goal-worker, and git-commit. Parallel execution flows through versioned plans, Codex modules default to gpt-5.6-terra with xhigh thinking in profile-bound implementation subagents rather than user-visible threads, workers remain inside scoped goals, and reviewed changes are committed in the required order.",
+    "shortDescription": "Plan parallel work, coordinate scoped child threads, and commit safely.",
+    "longDescription": "Packages parallel-task-planner, thread-coordination, thread-goal-worker, and git-commit. Parallel execution flows through versioned v2 plans, each Codex module runs in a retained user-visible child thread on the current local workspace with its requested profile, workers remain inside scoped goals, and reviewed changes are committed in the required order.",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "Use $parallel-task-planner to generate a versioned parallel plan with complete worker profiles.",
-      "Use $thread-coordination to execute a validated parallel-task-planner plan path with Codex implementation subagents.",
-      "Use $thread-goal-worker for the single scoped module dispatched to a subagent by the coordinator.",
+      "Use $parallel-task-planner to generate a v2 parallel plan with complete child-thread worker profiles.",
+      "Use $thread-coordination to execute an explicitly authorized validated v2 plan path with retained Codex child threads.",
+      "Use $thread-goal-worker for one scoped module bound to a child thread by the coordinator.",
       "Use $git-commit to analyze current changes and commit them."
     ]
   }
