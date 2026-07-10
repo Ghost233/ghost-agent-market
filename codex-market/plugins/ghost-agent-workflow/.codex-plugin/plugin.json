@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.2.0",
-  "description": "Codex skills for coordinated agent workflows, worker execution handoffs, and smart git commits.",
+  "version": "0.3.0+codex.20260710073611",
+  "description": "Codex skills for versioned parallel planning, profile-bound thread coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -13,6 +13,8 @@
   "keywords": [
     "thread-coordination",
     "thread-goal-worker",
+    "parallel-task-planner",
+    "worker-profile",
     "git-commit",
     "goal",
     "git",
@@ -22,16 +24,17 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "Coordinate agent workflows, handoffs, and git commits.",
-    "longDescription": "Packages the thread-coordination, thread-goal-worker, and git-commit skills for workflows that coordinate persistent execution surfaces, assign scoped child goals, require worker self-review, and commit reviewed changes in the right submodule-to-root order.",
+    "shortDescription": "Plan parallel work, enforce worker profiles, and commit safely.",
+    "longDescription": "Packages parallel-task-planner, thread-coordination, thread-goal-worker, and git-commit. Parallel execution flows through versioned plans, model and reasoning profiles are verified before dispatch, workers remain inside scoped goals, and reviewed changes are committed in the required order.",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "Use $thread-coordination to coordinate a /goal workflow.",
-      "Use $thread-goal-worker for this scoped child goal.",
+      "Use $parallel-task-planner to generate a versioned parallel plan with complete worker profiles.",
+      "Use $thread-coordination to execute a validated parallel-task-planner plan path.",
+      "Use $thread-goal-worker for the single scoped module dispatched by the coordinator.",
       "Use $git-commit to analyze current changes and commit them."
     ]
   }
