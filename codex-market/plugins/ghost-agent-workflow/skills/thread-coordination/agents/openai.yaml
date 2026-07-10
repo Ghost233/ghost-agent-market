@@ -1,4 +1,4 @@
 interface:
-  display_name: "Thread 协调"
-  short_description: "按 ownership 协调 Codex worker 并验收并发计划"
-  default_prompt: "使用 $thread-coordination 按 owner domain 协调 Codex worker thread；收到安全并发计划时按 batch 分派、汇总并最多补修一次。"
+  display_name: "版本化计划协调"
+  short_description: "仅执行版本化 Codex 并发计划并校验 profile"
+  default_prompt: "使用 $thread-coordination 校验绝对 plan_path、平台与运行时 profile 后，按 batch 协调 Codex worker thread。"

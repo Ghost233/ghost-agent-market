@@ -1,194 +1,198 @@
 ---
 name: thread-coordination
 description: |
-  协调 Claude Code agent team 完成 `/goal` 驱动的多模块任务：按 ownership 拆分、以稳定队员 name
-  分派、轮询、自验证并总验收。用户要求主会话只协调不实现、复用队员，或传入 `parallel_safe`
-  计划并要求按 batch 自动执行、最多补修一次和判断父目标是否完成时使用。
+  当用户提供由 `parallel-task-planner` 生成、面向 Claude Code 且标记为 `parallel_safe` 的绝对
+  `plan_path`，并要求按 batch 协调 agent team、最多补修一次和只读总验收时使用。用户只给自然语言、
+  owner-domain 任务、手工 worker 包或不完整计划并要求协调执行时也使用，但此类入口只能被阻塞。
 ---
 
 # Thread Coordination
 
 ## 概述
 
-把当前 Claude Code 会话作为 coordinator：以用户提供或当前激活的 `/goal` 为唯一目标来源，先识别目标域 ownership，再为每个 owner domain 建立或复用一个稳定 team member。Claude Code agent team 启用时，每个会话有隐式 team；通过 Agent 工具的 `name` 参数直接派生或复用队员。
+把当前 Claude Code 会话作为只读 coordinator，只消费 `$parallel-task-planner` 写出的版本化并发计划。唯一执行入口是一个绝对 `plan_path`；计划通过全部门禁后，按 `dispatch.batches` 把完整 module 原样分派给 agent team teammate，汇总 `WORKER_RESULT`，最多向原 teammate 补修一次，并对 `parent_goal` 做只读总验收。
 
-coordinator 职责是只读规划、队伍分派、状态轮询、总体验收、冲突判断和结果汇总。队员职责是实现、调查、验证、自审查和结构化回报。
+不要从自然语言建立 `/goal`、拆 owner domain、生成 module、补全计划或手工组织 worker 包。不要把 `sequential_only` 或 `needs_user_review` 改成串行执行。入口不合法时只返回 `blocked`，引导用户先使用 `$parallel-task-planner`。
 
-## 协调契约
+## 只读边界
 
-- 主会话职责边界：只读规划、分派、轮询和验收；写入动作只在用户明确解除协调模式后发生。
-- `/goal` 是驱动源：先读取、确认或建立本轮目标；所有拆分、分派、验收和最终汇总都回扣这个目标。
-- Claude Code 执行面是 agent team teammate。队员通过稳定 `name` 承担 owner domain。
-- 队员按 owner domain 复用：同一职责域优先使用同一个稳定 `name`，例如 `owner-ui-state`、`owner-network-contract`、`owner-skill-docs`。
-- 同一文件、同一 API 契约或同一状态迁移由一个队员负责；存在依赖时使用串行顺序。
-- 队员使用 `thread-goal-worker` 执行分派任务，保持 scope，并把协调职责留给 coordinator。
-- 队员提交给 coordinator 前完成授权验证、自审查、审查后修复和自验收。
-- 验收发现问题时，把问题发回对应队员。
-- 区分已验证事实和假设。证据不足时标记未验证。
+- coordinator 只读取计划、运行时 profile、agent 状态、worker 结果和验收证据。
+- coordinator 不修改实现文件，不调用 `apply_patch`，不通过 shell 写文件，不 stage、commit、push，也不替 worker 运行修改型命令。
+- 在验收范围内可以运行 `git status`、`git diff`、`git diff --check` 等只读检查；构建、生成和测试由对应 worker 执行并回报。
+- 计划是唯一 scope 与依赖事实源。不得重新按 ownership 拆分，也不得维护长期 owner registry。
+- Claude Code 的执行面是 agent team teammate；临时 subagent 不能替代实现 worker。
 
-## Team Roster
+## 计划入口门禁
 
-主会话在内存中维护一张轻量队员表：
+分派任何 teammate 前，按顺序验证全部条件：
 
-| 字段 | 含义 |
-| --- | --- |
-| parent_goal | 本轮 `/goal` 的目标和完成定义。 |
-| boundaries | 允许范围、保护范围、验证要求和用户偏好。 |
-| owner_domain | 稳定职责域，例如 UI、Network、Build、某个 skill 目录或业务模块。 |
-| teammate_name | 传给 Agent 工具的稳定队员名。 |
-| scope | 队员允许读取、修改、验证的文件、模块或职责范围。 |
-| recent_goal | 该队员最近一次承担的 goal 或职责。 |
-| status | `pending`、`assigned`、`working`、`needs_fix`、`verified`、`blocked`。 |
-| evidence | 队员返回的 `TEAMMATE_RESULT`、验证输出、diff 摘要或阻塞证据。 |
+1. 输入包含一个绝对、可读的 `plan_path`。相对路径、自然语言任务、active `/goal`、owner-domain 摘要或手工 module 包都不是执行入口。
+2. 顶层 `planner` 必须严格等于 `parallel-task-planner`，`plan_format_version` 必须严格等于整数 `1`，`execution_platform` 必须严格等于 `claude_code`。
+3. `parent_goal` 必须非空；`safety.status` 必须严格等于 `parallel_safe`，并保留 planner 写出的判定理由。`sequential_only` 和 `needs_user_review` 一律不分派。
+4. `modules` 至少包含两个可执行 module。每个 module 必须有唯一非空 `id`，以及完整的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile` 和 `reviewer_subagent_profile`。
+5. 每个 `worker_profile` 和 `reviewer_subagent_profile` 都必须显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承默认值、不猜测、不补字段。
+6. `depends_on` 只能引用计划内 module，依赖图无环。`dispatch.batches` 必须存在，每个 module id 恰好出现一次，且依赖 module 位于更早 batch。
+7. 用当前工作区重新检查安全证据：同一 batch 的可写路径没有精确、父子或 glob 相交；没有共享 API、迁移、生成输出、全局配置或验证环境冲突；现有用户改动没有落入将被写入的范围。无关 dirty 文件不单独构成冲突。
+8. 计划内容与调用摘要一致，计划未过期，全部 module 合起来仍覆盖 `parent_goal`。证据不足按冲突处理，不允许凭感觉继续。
 
-所有非阻塞 owner domain 达到 `verified`，且剩余阻塞项已经标明处理边界后，coordinator 才可以把父级 `/goal` 视为满足。
-
-## Goal 启动门禁
-
-- 进入协调前先读取当前 `/goal`。若缺少 active goal，根据用户输入建立或请求确认目标；目标不清晰时先补齐。
-- 目标正文包含完成定义、允许范围、保护范围和验收要求。
-- 每个子目标都能追溯到父级 `/goal` 的某一项完成定义。
-- 每个子目标都有明确 `owner_domain`。只有 finding 没有 ownership 时，先做只读归类；归类不出来就问用户。
-
-## Ownership 拆分门禁
-
-- 拆分单位是目标域 ownership。finding 作为说明某个 owner domain 需要工作的证据。
-- 同一 owner domain 下的多个 finding、review comment、报错或相邻文件改动合并给同一个队员。
-- 一个 finding 横跨多个 owner domain 时，先识别主责域；确实需要多域协作时，按 owner domain 拆分并显式写出依赖或串行顺序。
-- 以业务流、接口契约、状态机、skill 目录和验证入口的完整性作为拆分边界。
-- 子目标命名体现 ownership，例如 `G1-ui-state`、`G2-network-contract`、`G3-skill-docs`。
-
-## 主流程
-
-1. 读取并确认主会话 `/goal`：目标、范围、保护边界、验收标准和完成定义。
-2. 从 `/goal` 识别 owner domains，并为每个 owner domain 派生子目标、scope、boundaries、verification 和冲突风险。
-3. 合并同 owner domain 或冲突子目标。
-4. 建立或更新 team roster：优先复用当前会话中已有的 `teammate_name`；缺少合适队员时，用稳定 name 派生新队员。
-5. 通过 Agent 工具按 `name` 分派任务；同一 owner domain 后续修复继续发给同名队员。
-6. 轮询队员状态，只读取必要结果，等待 `TEAMMATE_RESULT`。
-7. 主会话只读总验收：检查 owner-domain 覆盖、跨队员一致性、队员自审查证据和父级 `/goal` 满足度。
-8. 验收问题发回对应队员继续修改。
-9. 汇总队员完成情况、目标满足度、修改范围、验证结果、风险和等待审计。
-
-## 分派提示词契约
-
-每个分派给队员的任务都应包含：
-
-- `parent_goal`：父级 `/goal` 摘要，只用于对齐。
-- `owner_domain`：本队员负责的稳定职责域。
-- `goal_id` 和 `child_goal`：本队员唯一派生目标。
-- `scope`：允许读取、修改、验证的文件、模块或职责区域。
-- `boundaries`：保护范围、用户改动保护、命令边界。
-- `verification`：期望执行的验证，或可接受的替代证据。
-- `worker_done_when`：scope 内任务完成、验证通过或有替代证据、自审查闭环完成。
-- `result_contract`：队员必须返回的结果格式。
-- `worker_skill`：使用 `thread-goal-worker`。
-
-推荐分派消息骨架：
+任一条件失败时，不创建或复用 teammate，不设置 `/goal`，不把输入送给 worker，也不尝试修复计划。只返回：
 
 ```text
-请使用 $thread-goal-worker 作为当前 Claude Code agent team 队员执行。
-
-parent_goal: <主会话目标摘要>
-owner_domain: <目标域 ownership>
-goal_id: <Gx-...>
-child_goal: <本队员唯一子目标>
-scope: <允许读取、修改、验证的文件/模块/职责面>
-boundaries: <保护文件、用户改动保护、职责边界、命令边界>
-verification: <需要运行的检查或替代证据>
-worker_done_when: <工作完成 + 验证通过 + 自审查完成 + 审查问题已修复或已标明边界>
-result_contract: 返回 TEAMMATE_RESULT，包含 changed_files、verification、self_review、goal_alignment、risks。
-边界超出或目标不清时，返回 blocked，并说明需要 coordinator 裁决的事项。
+PARALLEL_PLAN_RESULT:
+- status: blocked
+- plan_path: "<absolute path | missing>"
+- blocking_code: plan_required | invalid_plan | platform_mismatch | unsafe_plan | workspace_conflict | profile_unverified
+- reasons:
+  - "<失败的具体门禁和证据>"
+- modules: []
 ```
 
+直接自然语言场景必须命中 `plan_required`。不要同时输出 owner-domain 拆分、候选 teammate 或可执行子任务；用户需要先运行 `$parallel-task-planner` 生成新计划。
+
+## Profile 预检
+
+### 主协调会话
+
+分派前先验证当前会话自身 profile，不能由 skill 在运行中静默切换：
+
+```yaml
+main_thread_profile:
+  requested:
+    model: opus
+    reasoning_effort: max
+  effective:
+    model: <运行时实际值>
+    reasoning_effort: <运行时实际值>
+  status: applied | unavailable | mismatch
+  evidence: <运行时或会话接口返回的可复核证据>
+```
+
+默认只有 `effective` 与 `opus/max` 完全一致且 `status: applied` 才能继续。无法读取任一字段、运行时不支持该值或实际值不匹配时，返回 `profile_unverified`；说明用户需要以 `opus/max` 创建或重启协调 task。若用户在提供有效 `plan_path` 的同时明确覆盖主协调 profile，则把明确覆盖值记为 `requested`，仍要求 `effective` 完全匹配并记录 evidence，且不得声称平台默认值已生效；单独的自然语言覆盖不能绕过计划入口门禁。提示词里的模型声明、skill 默认值和自述都不是运行时 evidence。
+
+### Module profile
+
+Claude Code 计划的默认 worker 与 reviewer profile 是 `sonnet/max`。module 可以在 planner 阶段显式覆盖 worker profile；coordinator 只执行计划中已经解析完成的值。`reviewer_subagent_profile` 必须完整且严格等于 `sonnet/max`；其他值说明计划没有满足当前 planner 契约，返回 `invalid_plan`。
+
+对每个 ready module，在创建或复用 teammate 前验证调度接口能应用并读取所请求的 `model` 与 `reasoning_effort`：
+
+- 已有 teammate 只有在实际 profile 两个字段都可读且与请求完全一致时才能复用。
+- profile 不一致时，只能在接口能显式携带两个字段创建匹配 teammate 时创建新的稳定 `name`；不能复用后靠提示词要求 teammate 自行切换。
+- 接口无法设置、读取或证明任一字段，模型或 effort 不可用，或有效值不匹配时，停止该 module 和后续 batch，整体返回 `blocked`。
+- 不得选择近似模型、降低 effort、回退平台默认值或把 requested 值伪装成 effective 值。
+
+逐 module 保存以下证据：
+
+```yaml
+worker_profile:
+  requested:
+    model: <plan.modules[].worker_profile.model>
+    reasoning_effort: <plan.modules[].worker_profile.reasoning_effort>
+  effective:
+    model: <调度接口实际值>
+    reasoning_effort: <调度接口实际值>
+  status: applied | unavailable | mismatch
+  evidence: <Agent 创建或复用接口的实际返回>
+```
+
+`status: applied` 是分派和完成的必要条件。`reviewer_subagent_profile` 使用同样的 `requested`、`effective`、`status`、`evidence` 四字段证据；若 `parallel-plan` worker 按契约只做 `diff_self_check` 而不创建 reviewer subagent，则结果必须写 `status: not_required` 并说明例外证据，不能伪造 `applied`。
+
+## 分派包
+
+只对当前 batch 中依赖已满足且 profile 为 `applied` 的 module 分派。使用稳定 teammate `name` 方便一次补修，但稳定名只服务当前计划。每个分派包必须原样包含：
+
+- `planner: parallel-task-planner`
+- `plan_format_version: 1`
+- `execution_platform: claude_code`
+- 绝对 `plan_path`、`parent_goal` 和单个 `module_id`
+- `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`
+- 完整 `worker_profile`、`reviewer_subagent_profile` 与 coordinator 获得的 profile evidence
+- `repair_round: 0 | 1`、保护边界、结果契约和使用 `$thread-goal-worker` 的要求
+
+worker 必须先按 `$thread-goal-worker` 校验来源链和 profile，再设置单 module `/goal`。不得把计划全文、其他 module 的写权限或完整聊天记录交给 worker。
+
+要求 worker 返回：
+
 ```text
-TEAMMATE_RESULT:
+WORKER_RESULT:
 - status: completed | blocked | failed | needs_main_review
-- goal_id: "<Gx-...>"
-- owner_domain: "<domain>"
+- module_id: "<Mx>"
+- goal_set_evidence: "<单 module goal 的运行时证据>"
 - changed_files:
-  - "<path/to/file>"
+  - "<path>"
 - verification:
-  - "<已执行检查、结果，或替代证据>"
-- self_review:
-  - status: passed | findings_fixed | unresolved | not_required
-  - findings:
-    - "<发现或 none>"
-  - fixes_after_review:
-    - "<根据审查做了什么修复>"
-  - final_worker_verdict: pass | needs_main_review | blocked
+  - "<定向检查和结果>"
+- diff_self_check:
+  - "<scope、无关改动和完成条件检查>"
+- worker_profile:
+  requested: {model: "<requested>", reasoning_effort: "<requested>"}
+  effective: {model: "<effective>", reasoning_effort: "<effective>"}
+  status: applied | unavailable | mismatch
+  evidence: "<运行时证据>"
+- reviewer_subagent_profile:
+  requested: {model: "sonnet", reasoning_effort: "max"}
+  effective: {model: "<effective | not_required>", reasoning_effort: "<effective | not_required>"}
+  status: applied | unavailable | mismatch | not_required
+  evidence: "<运行时证据或 parallel-plan diff_self_check 例外>"
 - goal_alignment:
-  - "<本结果如何满足 child_goal 和父级 /goal>"
+  - "<如何满足 module done_when 和 parent_goal>"
 - risks:
-  - "<剩余风险或开放问题>"
-- needs_main_review: true | false
+  - "<剩余风险或 none>"
 ```
 
-## 复用规则
+普通完成叙述、module id 不匹配、越界文件、缺少验证或 `diff_self_check`、worker profile 不是 `applied`、profile evidence 不匹配，都视为 `needs_fix`，不能记为完成。
 
-- 先看 team roster，再派生新队员。已有队员职责、scope 或最近目标匹配时，复用其 `teammate_name`。
-- 多个队员都可能匹配时，选择最近承担该职责且上下文最完整的队员。
-- 缺少合适队员、旧职责明显不匹配或用户要求隔离时，使用新 `name`。
-- 同一 owner domain 归属一个队员；修复也发回原队员。
-- 最终回复记录 `teammate_name -> owner_domain -> status`，方便本会话后续复用。
+## Batch 与一次补修
 
-## 只读验收
+1. 严格按 `dispatch.batches` 顺序执行；同一 batch 只并发分派门禁通过的 ready modules。
+2. 等待当前 batch 全部 `WORKER_RESULT` 后再进入下一 batch。依赖未完成时不得提前分派。
+3. 每个 module 记录 `repair_round: 0 | 1`。结果不完整或定向验收失败时，只向原 teammate 发送一次聚焦补修，保持相同 module scope 和 profile。
+4. profile 不可用或不匹配不是可补修的实现问题，立即阻塞；不得通过第二个 teammate 规避 profile 门禁。
+5. 一次补修后仍不满足时，将 module 标为 `blocked` 或 `needs_main_review`。coordinator 不亲自修改、不重新拆 module、不增加补修次数。
 
-- 对照 `/goal` 检查返回文件、范围和目标满足度。
-- 检查所有 owner domains 是否覆盖父级 `/goal` 的完成定义。
-- 检查跨队员是否有文件、API 契约、状态迁移、验证入口或用户改动冲突。
-- 检查队员是否提供 `TEAMMATE_RESULT`、验证证据、自审查结果和 `goal_alignment`。
-- 适合时运行只读检查，例如 `git status`、`git diff`、`git diff --check`。
-- 用户要求编译/测试/构建时，确认负责队员已运行并报告最终结果；主会话执行命令需要用户明确授权。
-- 证据不足时，要求队员补充证明，或把该项标为未验证。
+## 只读总验收
 
-## Parallel-plan 模式
+所有 batch 结束后，只读检查：
 
-当 `$parallel-task-planner` 提供一个 `safety.status: parallel_safe` 的计划路径时，进入此轻量模式。计划是唯一的模块交接契约；不要重新按 ownership 拆解，也不要维护永久模块或队员 registry。
+- 每个 module 的 `done_when`、定向 verification、`diff_self_check`、goal 对齐和 profile evidence 是否完整。
+- `changed_files` 是否都落在对应 `writable_paths`，跨 module 是否出现未计划的文件、共享契约或用户改动冲突。
+- 全部 module 是否覆盖 `parent_goal`；阻塞项是否影响父目标完成定义。
+- 只有 module 的 worker profile 为 `applied`，reviewer profile 为 `applied` 或合法 `not_required`，且实现与验证证据通过时，才能记为 `completed`。
+- 证据不足时标记未验证或阻塞，不替 worker 补做局部实现审查，不把文件数量当作完成证据。
 
-1. 要求绝对 `plan_path`，读取对应文件，并确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。路径缺失、不可读、内容与分派摘要不一致或状态不是 `parallel_safe` 时，返回 `blocked`，不分派队员。
-2. 分派前用当前工作区重新检查路径和验证冲突；计划已过期或安全证据失效时停止并返回 `blocked`。
-3. 仅对当前 batch 中依赖已满足的 module 分派队员；把 `id` 映射为 `module_id`，并传入 `parent_goal`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
-4. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
-5. 等待每个队员返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
-6. 为每个 module 记录 `repair_round: 0 | 1`。失败或不完整时仅向原队员补修一次；不得由 coordinator 修改实现文件或重新拆分逃避上限。
-7. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
-
-此模式使用 agent team 的稳定队员 name，但稳定 name 只服务本会话的模块执行，不构成长期 ownership。最终返回：
+最终返回：
 
 ```text
 PARALLEL_PLAN_RESULT:
 - status: completed | partial | blocked
 - plan_path: "<absolute path>"
+- plan_format_version: 1
+- execution_platform: claude_code
+- main_thread_profile:
+  requested: {model: "<opus 或用户明确覆盖值>", reasoning_effort: "<max 或用户明确覆盖值>"}
+  effective: {model: "<effective>", reasoning_effort: "<effective>"}
+  status: applied | unavailable | mismatch
+  evidence: "<运行时证据>"
 - modules:
   - id: M1
-    teammate: "<stable agent name>"
-    status: completed | needs_fix | blocked
+    teammate: "<stable name>"
+    repair_round: 0 | 1
+    status: completed | needs_fix | blocked | needs_main_review
+    worker_profile:
+      requested: {model: "<requested>", reasoning_effort: "<requested>"}
+      effective: {model: "<effective>", reasoning_effort: "<effective>"}
+      status: applied | unavailable | mismatch
+      evidence: "<运行时证据>"
+    reviewer_subagent_profile:
+      requested: {model: sonnet, reasoning_effort: max}
+      effective: {model: "<effective | not_required>", reasoning_effort: "<effective | not_required>"}
+      status: applied | unavailable | mismatch | not_required
+      evidence: "<运行时证据或例外>"
     verification: "<摘要>"
 - completion_check:
-  - parent_goal_coverage: pass | partial | blocked
-  - writable_path_conflicts: none | found
-  - unresolved_items: "<none 或摘要>"
+  parent_goal_coverage: pass | partial | blocked
+  writable_path_conflicts: none | found
+  unresolved_items:
+    - "<none 或摘要>"
 ```
 
-`sequential_only` 与 `needs_user_review` 计划不得自动分派；说明计划路径和未自动执行原因。
-
-## 最终回复
-
-默认用简洁中文。包含：
-
-- team roster：队员名、职责和最终状态。
-- `/goal` 状态：目标是否已满足、哪些子目标仍未验证。
-- 主会话总审查：owner-domain 覆盖、跨域冲突、队员自审查证据、父级 `/goal` 满足度。
-- 修改范围；如果 coordinator 只做协调，也要明确说明。
-- 已执行验证，或未验证项的原因。
-- 风险、阻塞项或假设。
-
-## 正向检查清单
-
-- 先确认 `/goal`，再拆分、分派和验收。
-- 先建立 team roster，再按稳定队员名分派。
-- owner domain 作为拆分单位。
-- 单一文件、接口契约或状态迁移保持单队员 ownership。
-- 队员回报使用 `TEAMMATE_RESULT`。
-- 完成判断基于自审查、验证证据和目标对齐。
+只有全部必要证据通过且父目标覆盖为 `pass` 时返回 `completed`。任何非法入口只能返回前述空 modules 的 `blocked` 结果。
