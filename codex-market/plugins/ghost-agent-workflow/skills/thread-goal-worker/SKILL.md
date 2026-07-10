@@ -37,7 +37,7 @@ description: |
 - 分派包的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context` 和 plan-authored `worker_profile` 与该 module 原文逐字段一致。
 - 计划不包含 runtime `worker_profile_evidence`；分派包不包含其他 module 或超出计划的写权限。
 
-`worker_profile_evidence` 是 coordinator 创建当前 implementation subagent 后追加的 runtime evidence，不与计划原文比较，也不能覆盖 plan-authored `worker_profile`。任一 binding 失败时在 goal 和文件操作前返回 blocked。
+`worker_profile_evidence` 由 coordinator 在调用前构造，并与完整 module 包、`model`、`thinking` 一起通过原子 implementation-subagent 调用传入；调用返回的 subagent id 由 coordinator 事后单独记录。该 evidence 不与计划原文比较，也不能覆盖 plan-authored `worker_profile`。任一 binding 失败时在 goal 和文件操作前返回 blocked。
 
 ## Profile Dispatch Evidence
 
@@ -56,10 +56,10 @@ worker_profile_evidence:
     model: gpt-5.6-terra
     thinking: xhigh
   status: applied
-  evidence: <implementation subagent 创建接口返回的 subagent id 与已接受参数>
+  evidence: <coordinator dispatch request id 与同一次原子调用中的已接受参数>
 ```
 
-4. 只有创建接口实际接受 `model` 与 `thinking`、返回当前 implementation subagent id，且 `status: applied` 时才继续。`unavailable`、`rejected`、证据缺失或映射不一致都在设置 goal 和文件操作前 blocked。
+4. 只有当前 subagent 通过同一次原子调用收到完整分派包、`model` 与 `thinking`，且 `status: applied` 时才继续。subagent id 由 coordinator 在调用完成后单独记录，不是本首包的必需字段。`unavailable`、`rejected`、dispatch request evidence 缺失或映射不一致都在设置 goal 和文件操作前 blocked。
 
 提示词、自述、skill 默认值、计划文本和推荐 profile 都不能替代 dispatch evidence。worker 不自行切换 profile、不猜 alias、不选择近似模型，也不降低 reasoning effort。
 

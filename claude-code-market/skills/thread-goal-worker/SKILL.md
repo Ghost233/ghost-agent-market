@@ -22,7 +22,7 @@ description: |
 2. 包含绝对、可读的 `plan_path`，非空 `parent_goal` 和唯一 `module_id`；只包含该 module 的权限，不携带其他 module 的写入范围。
 3. module 包含非空 `task`、`writable_paths`、`done_when`、`verification` 和 `worker_context`；`depends_on` 必须存在且为合法列表，允许 `[]`。`writable_paths` 是唯一可写 scope。
 4. 包含 plan-authored 完整 `worker_profile: {model, reasoning_effort}`，以及独立 `worker_profile_evidence`。后者必须且只能用 `requested`、`dispatch_arguments`、`status` 和 `evidence` 表达调度证据。
-5. 包含 coordinator 生成的非空 `coordinator_assignment_id`，以及 Agent/team 调度返回的 `agent_task_id` 或 `team_task_id`；至少一个 task id 必须非空且可复核。worker 输出时不得自行生成或替换这些 id。
+5. 包含 coordinator 在调用前生成的非空 `coordinator_assignment_id`。`agent_task_id` 或 `team_task_id` 是调用完成后的可选回显，不是首包前置字段；worker 不得自行生成或替换任何 id。
 6. 包含 `repair_round: 0 | 1`、保护边界和 `result_contract: WORKER_RESULT`。`repair_round: 1` 只授权处理 coordinator 指出的原 finding，不开启新的补修轮次。
 7. 分派包不得包含旧 `reviewer_subagent_profile`、`reviewer_profile_preflight`、reviewer runtime evidence、Codex `goal_set_evidence`、active goal 指令或其他未列入当前 assignment schema 的兼容字段；发现任一字段时必须在实现前阻塞，不能忽略后继续。
 
@@ -49,7 +49,7 @@ assignment_evidence:
   evidence: <Agent/team assignment 的可复核证据>
 ```
 
-只有 `coordinator_assignment_id` 非空、至少一个 task id 非空、输入 id 与 coordinator 分派记录一致，且当前 Agent/team assignment 可确认时，才写 `confirmed`。证据不可得写 `unavailable`，值不一致写 `mismatch`；两者都必须在实现前 `blocked`。提示词自述、module id 或 worker 自建 id 不算 assignment evidence。
+只有 `coordinator_assignment_id` 非空、输入 id 与 coordinator 的原子分派记录一致，且当前 worker 确实由携带该 id 的 Agent/team 调用启动时，才写 `confirmed`。调用完成后若平台返回 task id，coordinator 可在汇总中补充；首包中没有 task id 不构成失败。assignment 证据不可得写 `unavailable`，值不一致写 `mismatch`；两者都必须在实现前 `blocked`。提示词自述、module id 或 worker 自建 id 不算 assignment evidence。
 
 ### Worker Profile Evidence
 
@@ -165,7 +165,7 @@ WORKER_RESULT:
 ## 反模式
 
 - 依赖 Codex 专属目标状态，或返回额外的目标设置证据字段。
-- 接受没有 planner 来源链、assignment id 或 Agent/team task id 的包。
+- 接受没有 planner 来源链或 `coordinator_assignment_id` 的包。
 - 忽略旧 reviewer/profile-preflight、`goal_set_evidence` 或其他额外兼容字段后继续执行。
 - 用旧 `effective` profile shape、非 mapping 的 `diff_self_check` 或提示词自述代替 runtime evidence。
 - 自行生成 assignment id、改写 plan-authored profile 或创建额外审查 Agent。

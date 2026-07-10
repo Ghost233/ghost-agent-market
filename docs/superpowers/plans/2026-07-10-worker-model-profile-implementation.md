@@ -16,6 +16,7 @@
 - Claude Code coordinator 默认 `opus/max`，实现 worker 使用 `sonnet/max` Agent/team teammate；Claude worker 不依赖 `/goal`。
 - 计划中只保留 `worker_profile`；runtime 使用独立 `worker_profile_evidence`，不再包含 reviewer profile/preflight。
 - `diff_self_check` 在所有输入输出中统一为 `{status, evidence}` mapping。
+- coordinator 在调用前生成 dispatch/assignment id，并用一次原子调用同时传入完整 module 包与 profile 参数；调用后返回的 subagent/task id 不得成为首包前置字段。
 - 有依赖的 DAG 只要至少一个 batch 可并发就允许 `parallel_safe`；只有完全串行的 DAG 才是 `sequential_only`。
 - 不允许静默模型或 effort 降级。
 - Claude Code 与 Codex 同步通用 schema，只保留 goal/assignment、调度工具和平台 profile 差异。
@@ -129,6 +130,6 @@ Expected: 六次 `Skill is valid!`，plugin validation passed。
 
 覆盖 Codex alias 映射、禁止 thread worker、Claude assignment happy path、统一 diff shape、无 reviewer 残留、并发 DAG、纯串行 DAG、非法入口阻塞。
 
-- [ ] **Step 4: 最终只读审查和工作树检查**
+- [x] **Step 4: 最终只读审查和工作树检查**
 
 修复全部 Critical/Important findings，运行 `git diff --check`，确认工作树只包含本计划变更后提交。

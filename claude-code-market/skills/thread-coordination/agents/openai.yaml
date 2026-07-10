@@ -1,4 +1,4 @@
 interface:
   display_name: "版本化计划协调"
   short_description: "按版本化计划用 Claude Agent/team 分派并验收 worker"
-  default_prompt: "使用 $thread-coordination 校验绝对 plan_path 和拓扑 batch，以 Agent 或 agent team teammate 按 module 分派 sonnet/max worker，记录 assignment 与 dispatch evidence，并汇总统一 WORKER_RESULT。"
+  default_prompt: "使用 $thread-coordination 校验绝对 plan_path 和拓扑 batch，按 plan-authored worker_profile（默认 sonnet/max）分派 Agent 或 agent team teammate，记录 assignment 与 dispatch evidence，并汇总统一 WORKER_RESULT。"

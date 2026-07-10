@@ -86,8 +86,10 @@ worker_profile_evidence:
     model: gpt-5.6-terra
     thinking: xhigh
   status: applied | unavailable | rejected
-  evidence: <子代理或 Agent 调度接口的实际结果>
+  evidence: <coordinator 生成的 dispatch request id 与原子调度结果>
 ```
+
+coordinator 在调用前生成唯一 dispatch/assignment id，并在同一次原子调用中同时传入完整 module 包、model 和 effort 参数。只有调用接受参数时 worker 才会收到包；返回的 subagent/task id 由 coordinator 在调用完成后单独记录，不是首次分派包或 `worker_profile_evidence` 的前置字段，因此不存在“先取得 id 才能构造首包”的循环依赖。
 
 Claude Code 的 `dispatch_arguments` 保留平台字段名称；例如 Agent `model: sonnet`，effort 使用平台支持的显式参数或继承的 session `max`。只有调度接口接受所请求参数，且 worker 能确认必要 effort 时才写 `applied`。不要求不存在的“读取历史 thread profile”或“读取当前主 task model”接口。
 
@@ -96,6 +98,8 @@ Claude Code 的 `dispatch_arguments` 保留平台字段名称；例如 Agent `mo
 ### Codex
 
 coordinator 使用当前平台的 subagent/agent-team 工具为每个 ready module 创建一个实现子代理。禁止用 `create_thread`、`fork_thread`、`send_message_to_thread` 或用户可见 task 代替实现子代理。补修通过同一子代理的 follow-up 机制进行，最多一次。
+
+本 skill 面向能够在一次 implementation-subagent 调用中同时接收 `model`、`thinking` 和初始 prompt 的新版 Codex 子代理接口。接口 schema 缺少任一参数时返回 `dispatch_unavailable` 并提示升级客户端；禁止回退到 thread/task。
 
 Codex worker 子代理在任何文件修改前验证计划绑定和 profile dispatch evidence，然后为自己的单 module 设置并二次确认 active `/goal`。该 goal 只属于当前子代理，不承担跨 thread 所有权管理。
 
