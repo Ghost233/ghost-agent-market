@@ -62,9 +62,12 @@ dispatch:
 
 1. 默认使用 `gpt-5.6-terra/xhigh`。顶层 `worker_defaults` 和 module `worker_profile` 可以分别覆盖 model 或 effort。
 2. 为每个 module 写出解析后的完整 `worker_profile`；不保留继承缺口。
-3. model 必须是 Codex thread 创建接口可识别的完整 id。默认值始终为 `gpt-5.6-terra`，不得写 `terra` 等 alias。
-4. `model` 和 `reasoning_effort` 非空且可映射到子线程创建参数时，profile 才可用；未知、缺失或平台不匹配时写 `needs_user_review`。
-5. 不把计划中的请求值、提示词或默认值写成已应用的 runtime evidence；不选择近似模型或降低 reasoning effort。
+3. 默认 `gpt-5.6-terra/xhigh` 始终是有效的 plan-authored profile。自定义 profile 也只要求 `model` 和 `reasoning_effort` 非空、完整且不使用猜测 alias；字段不完整时才写 `needs_user_review`。
+4. 不得检查 `spawn_agent`、`fork_thread` 或其他普通子代理接口。这些接口不创建 `codex_child_thread`，其参数缺失不能作为 profile、安全或并发门禁证据。
+5. profile 的实际应用只由 `$thread-coordination` 通过 `create_thread` 负责。规划阶段不得因为运行时 thread 创建能力不可读、普通子代理参数不足或 profile evidence 尚不存在而写 `needs_user_review`。
+6. 不把计划中的请求值、提示词或默认值写成已应用的 runtime evidence；不选择近似模型或降低 reasoning effort。
+
+上述接口分离只适用于 Codex module：普通子代理接口不参与子线程计划判定。
 
 ## 依赖与安全门禁
 
@@ -72,7 +75,7 @@ dispatch:
 - 按拓扑层生成 `dispatch.batches`，每个 id 恰好出现一次，依赖必须位于更早 batch。
 - 同 batch 的 `writable_paths`、共享契约、验证产物、迁移、生成输出和环境不得冲突。精确路径、父子路径和相交 glob 都视为冲突。
 - 至少一个 batch 宽度大于一，且每个 module 都有 `done_when`、`verification`、`worker_context`、完整 profile，并共同覆盖 `parent_goal` 时，才写 `parallel_safe`。
-- 所有 batch 宽度都是一时写 `sequential_only`。范围、依赖、profile、共享契约或验证安全性不足时写 `needs_user_review`。
+- 所有 batch 宽度都是一时写 `sequential_only`。范围、依赖、profile 字段完整性、共享契约或验证安全性不足时写 `needs_user_review`；普通子代理接口的能力不属于这些门禁。
 
 ## 交接
 

@@ -7,13 +7,13 @@ description: Use when a user explicitly authorizes Codex to execute a `parallel_
 
 ## 目标
 
-把当前 task 作为只读 coordinator，只消费 `$parallel-task-planner` 生成的 Codex v2 计划。coordinator 按拓扑 batch 创建用户可见模块子线程，保存 `module_id -> thread_id` 映射，回收 `WORKER_RESULT`，最多向原线程补修一次，并做只读完成度汇总。
+把当前 task 作为只读 coordinator，只消费 `$parallel-task-planner` 生成的 Codex v2 计划。按拓扑 batch 创建模块子线程，保存 `module_id -> thread_id`，回收 `WORKER_RESULT`，最多向原线程补修一次，再汇总完成度。
 
-模块子线程与当前项目共享 `local` 工作区，因此计划的写路径和依赖是唯一 ownership 来源。coordinator 不修改实现文件、不 stage、commit 或 push，也不替失败 module 接管实现。
+模块与当前项目共享 `local` 工作区。计划中的写路径和依赖是唯一 ownership 边界；coordinator 不修改实现文件、不 stage、commit 或 push，也不接管失败 module。
 
 ## 入口门禁
 
-创建任何子线程前按顺序验证：
+创建前依次验证：
 
 1. 当前用户明确要求使用子线程执行该计划，或明确调用 `$thread-coordination` 执行该 v2 plan。否则返回 `thread_authorization_required`。
 2. 输入是绝对、可读的 `plan_path`；自然语言、相对路径、active goal 或手工 module 不能执行。
@@ -37,11 +37,11 @@ PARALLEL_PLAN_RESULT:
 - modules: []
 ```
 
-v1 计划的执行身份和证据语义不同，必须重新运行 planner 生成 v2；不要手改旧计划。
+v1 计划必须重新由 planner 生成 v2，不要手改。
 
 ## 创建与绑定
 
-每个 ready module 先创建一个用户可见的预备子线程。预备 prompt 只包含唯一 `dispatch_request_id`、`module_id`、禁止修改的边界，以及“等待绑定包前不得设置 goal、读取实现文件或修改文件”的指令。
+每个 ready module 先创建一个预备子线程。预备 prompt 只含唯一 `dispatch_request_id`、`module_id`、禁止修改的边界，以及等待绑定包前不得设置 goal、读取或修改文件的指令。
 
 ```text
 create_thread(
@@ -56,7 +56,7 @@ create_thread(
 )
 ```
 
-同 batch 的 ready module 可以并发创建。只有接口接受 model、thinking 和预备 prompt 并返回 thread id，profile 才是 `applied`。创建拒绝或不可用时记录对应 module 为 blocked，不创建替代线程，也不降低 profile。
+同 batch 的 ready module 可以并发创建。接口接受 model、thinking 和预备 prompt 并返回 thread id 后，profile 才是 `applied`。创建拒绝或不可用时记录为 blocked，不创建替代线程，也不降低 profile。
 
 创建返回后，立即用同一 id 发送唯一可执行的初始绑定包：
 
@@ -67,7 +67,7 @@ send_message_to_thread(
 )
 ```
 
-绑定发送失败时，该已创建线程保留但 module 为 blocked；不要新建替代线程。coordinator 保存以下真实记录：
+绑定发送失败时保留该线程并将 module 标为 blocked；不要新建替代线程。coordinator 保存：
 
 ```yaml
 child_thread:
@@ -84,11 +84,11 @@ worker_profile_evidence:
   evidence: <create_thread request id, arguments, and returned thread id>
 ```
 
-`requested` 必须逐字段等于 plan-authored profile，`dispatch_arguments` 必须逐字段等于确定性映射。主线程推荐 `gpt-5.6-sol/xhigh`，但不可读主线程 profile 本身不是永久阻塞条件。
+`requested` 必须逐字段等于 plan-authored profile，`dispatch_arguments` 必须逐字段等于确定性映射。主线程推荐 `gpt-5.6-sol/xhigh`；主线程 profile 不可读不构成永久阻塞。
 
 ## 分派包
 
-绑定包只能包含一个 module，并携带：
+绑定包只含一个 module，并携带：
 
 - `dispatch_request_id`、v2 marker、绝对 `plan_path`、`parent_goal`、`module_id`。
 - 该 module 的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile`。
@@ -96,11 +96,11 @@ worker_profile_evidence:
 - `result_contract: WORKER_RESULT`、保护边界、使用 `$thread-goal-worker` 的要求。
 - 内部普通子代理可以辅助当前 module，但不得创建用户可见 thread 或扩大 scope 的要求。
 
-不得发送其他 module 的写权限、完整计划或完整聊天记录。worker 在绑定包到达前不得执行；binding 后必须先验证计划和 scope。
+不得发送其他 module 的写权限、完整计划或完整聊天记录。worker 收到绑定包前不得执行，收到后先验证计划和 scope。
 
 ## 回收、补修与用户干预
 
-按 batch 顺序运行。每个 batch 的所有已创建子线程都进入稳定状态并返回结果后，才处理下一 batch。使用 `read_thread(includeOutputs: true)` 低频、退避式读取状态和最后一个 plan-bound `WORKER_RESULT`；运行状态本身不算失败。
+按 batch 顺序运行；当前 batch 的全部子线程进入稳定状态并返回结果后才处理下一 batch。低频、退避式使用 `read_thread(includeOutputs: true)` 读取状态和最后一个 plan-bound `WORKER_RESULT`；运行中不算失败。
 
 只接受 `module_id -> thread_id` 映射一致、marker 和 profile evidence 可核对的结果。合法 blocked 结果直接汇总；缺字段、验证不足、goal evidence 不完整或 `diff_self_check.status` 非 `pass` 时，仅向原 thread id 发送一次聚焦补修：
 
@@ -111,9 +111,9 @@ send_message_to_thread(
 )
 ```
 
-补修不得传入或改变 model、thinking，不得新建第二个 thread。一次补修仍失败时停止该 module。
+补修不得传入或改变 model、thinking，也不得新建第二个 thread；一次仍失败即停止该 module。
 
-coordinator 记录自己发送的预备、初始绑定和补修消息。绑定后出现不属于这些记录的用户新指令时，module 标记 `needs_main_review`，其 dependents 不再自动放行。仅查看子线程不影响执行。
+coordinator 记录预备、初始绑定和补修消息。绑定后出现其他用户新指令时，module 标为 `needs_main_review`，其 dependents 不再自动放行。仅查看子线程不影响执行。
 
 越界文件、未计划共享产物、范围扩大或用户已有改动冲突同样为 `needs_main_review`；不要自动回滚共享工作区内容。所有创建过的子线程都保留。
 

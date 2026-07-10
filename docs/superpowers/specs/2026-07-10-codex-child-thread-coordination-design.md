@@ -90,6 +90,8 @@ dispatch:
 
 v1 计划与 v2 的 worker 身份和 profile evidence 语义不同。coordinator 不兼容执行 v1，也不原地升级旧计划；用户必须重新运行 planner 生成 v2 计划。
 
+planner 只校验 profile 字段完整性，不检查 `spawn_agent`、`fork_thread` 或其他普通子代理接口。它们不是 `codex_child_thread` 的运行时；默认 `gpt-5.6-terra/xhigh` 的实际创建验收只由 coordinator 的 `create_thread` 负责，不能因此把并发安全计划降级为 `needs_user_review`。
+
 ## 入口门禁
 
 创建任何子线程前按顺序验证：

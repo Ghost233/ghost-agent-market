@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
+AGENTS = ROOT / "AGENTS.md"
 
 
 def read(path: str) -> str:
@@ -31,6 +32,20 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("worker_runtime: codex_child_thread", self.planner)
         self.assertIn("gpt-5.6-terra", self.planner)
         self.assertIn("reasoning_effort: xhigh", self.planner)
+
+    def test_planner_does_not_gate_child_threads_on_subagent_schema(self) -> None:
+        self.assertIn(
+            "不得检查 `spawn_agent`、`fork_thread` 或其他普通子代理接口",
+            self.planner,
+        )
+        self.assertIn(
+            "默认 `gpt-5.6-terra/xhigh` 始终是有效的 plan-authored profile",
+            self.planner,
+        )
+        self.assertIn(
+            "profile 的实际应用只由 `$thread-coordination` 通过 `create_thread` 负责",
+            self.planner,
+        )
 
     def test_coordinator_uses_thread_tools(self) -> None:
         for tool in (
@@ -63,9 +78,18 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("子线程", self.metadata)
         self.assertIn("gpt-5.6-terra/xhigh", self.metadata)
 
+    def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
+        for skill in (PLUGIN / "skills").rglob("SKILL.md"):
+            self.assertNotIn("claude", skill.read_text(encoding="utf-8").lower(), skill)
+
+    def test_agents_requires_decimal_plugin_version_increment(self) -> None:
+        instructions = AGENTS.read_text(encoding="utf-8")
+        self.assertIn("基础版本每次增加 `0.0.1`", instructions)
+        self.assertIn("任一段达到 `10` 时向左进位", instructions)
+
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.4.0+codex."))
+        self.assertTrue(manifest["version"].startswith("0.4.2+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn(
             "implementation subagent",

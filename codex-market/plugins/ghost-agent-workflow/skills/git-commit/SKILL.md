@@ -27,7 +27,7 @@ description: |
 ## 预检
 
 1. 运行 `git rev-parse --show-toplevel`，确认仓库根目录和当前 checkout。
-2. 读取适用于根仓库及目标 submodule 的 `AGENTS.md`、`CLAUDE.md` 或其他仓库指令。
+2. 读取适用于根仓库及目标 submodule 的仓库指令文件，例如 `AGENTS.md`。
 3. 运行 `git status --short`、`git diff --stat`、`git diff`、`git diff --cached --stat`、`git diff --cached` 和 `git submodule status`。
 4. 区分调用前已暂存内容、未暂存内容、未跟踪文件、submodule 指针和 submodule 内部改动；不要把调用前已暂存内容误归到新批次。
 5. 在每个将提交的仓库中读取 `git config user.name` 和 `git config user.email`。身份不符合仓库指令时停止，不创建提交。
