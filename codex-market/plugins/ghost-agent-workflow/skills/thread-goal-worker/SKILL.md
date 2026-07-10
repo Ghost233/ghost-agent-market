@@ -1,143 +1,109 @@
 ---
 name: thread-goal-worker
-description: |
-  当 Codex implementation subagent 收到 coordinator 从 `parallel-task-planner` 版本化计划分派的单一
-  module 包，需要在修改前校验计划绑定、profile dispatch evidence 和 active `/goal`，并在限定 scope
-  内实现、验证和返回 `WORKER_RESULT` 时使用。自然语言、用户可见 thread/task 或缺字段分派只能阻塞。
+description: Use when a user-visible Codex module thread receives a bound v2 `parallel-task-planner` dispatch package and must implement one scoped module, manage its own goal, and return a verified result.
 ---
 
 # Thread Goal Worker
 
-## 概述
+## 目标
 
-把当前 Codex implementation subagent 作为一个 plan module 的执行者。唯一入口是 `$thread-coordination` 从 `$parallel-task-planner` 计划转发的单 module 分派包；首次分派使用新的 implementation subagent，唯一一次补修使用同一 subagent 的 follow-up。
+把当前用户可见 Codex 模块子线程作为单个 plan module 的 owner。coordinator 先创建预备线程，随后把带真实 thread id 的绑定包发送到同一线程；只有绑定包可以启动实现。
 
-先完成输入、Plan Binding 和 profile dispatch evidence 门禁，再为当前 module 设置并二次确认 active `/goal`。之后只在授权 scope 内实现、验证并完成 mapping-shaped `diff_self_check`。不要接受自然语言、计划全文、多个 module、用户可见 thread/task、nested Codex CLI 或其他 agent 的转派；不要创建或协调任何实现 agent。
+模块子线程负责 goal、scope、实现、验证、diff 自检和 `WORKER_RESULT`。它可以自行使用普通子代理协助，但这些内部子代理不属于主线程的调度、模型配置或身份映射。
 
-## 输入门禁
+## 预备与绑定
 
-在设置 goal、读取实现文件或执行写入型操作前，逐项验证：
+收到预备包时，只确认其中的 `dispatch_request_id` 和 `module_id`，然后等待绑定包。预备阶段不得设置 goal、读取实现文件、修改文件、运行命令或创建内部子代理。
 
-1. 分派来源是 `$thread-coordination`，且当前执行者是 Codex implementation subagent，不是 `create_thread`、`fork_thread`、`send_message_to_thread`、`create_task`、`fork_task`、`send_message_to_task` 或等价用户可见 thread/task 创建的执行者。
-2. `planner` 严格等于 `parallel-task-planner`，`plan_format_version` 严格等于整数 `1`，`execution_platform` 严格等于 `codex`，`dispatch_mode` 严格等于 `parallel-plan`，`review_mode` 严格等于 `diff_self_check`。
-3. 包含绝对、可读的 `plan_path`、非空 `parent_goal` 和唯一 `module_id`。包只携带该 module，不包含其他 module 的任务、上下文或写权限。
-4. module 具有非空 `task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和完整 `worker_profile`；`depends_on` 存在且为合法列表。`worker_profile` 显式包含非空 `model` 与 `reasoning_effort`。
-5. 包含 coordinator 追加的独立 `worker_profile_evidence`，其 shape 严格为 `requested`、`dispatch_arguments`、`status`、`evidence`；`requested` 是 `{model, reasoning_effort}`，`dispatch_arguments` 是 `{model, thinking}`，`status` 只能是 `applied | unavailable | rejected`。
-6. 包含 `repair_round: 0 | 1`、保护边界、`result_contract: WORKER_RESULT`。`repair_round: 1` 必须来自同一 coordinator 对同一 subagent 的聚焦 follow-up，只授权处理原 finding，不开启第二次补修。
-7. 分派包不得包含旧 `reviewer_subagent_profile`、`reviewer_profile_preflight`、reviewer runtime evidence、Claude `assignment_evidence` 或其他未列入当前 Codex subagent schema 的兼容字段；发现任一字段时必须在设置 goal 或读取实现前阻塞，不能忽略后继续。
+收到绑定包后，在任何实现动作前验证：
 
-任一项缺失、为空、无法解析、来源不符或值不匹配时，立即返回完整的 blocked `WORKER_RESULT`。不要设置或更新 goal，不要读取实现文件、修改文件、运行写入型命令、stage、commit 或 push，也不要从聊天上下文、平台默认值或计划其他位置补字段。
+1. 包含与预备包相同的 `dispatch_request_id`、唯一 `module_id`、绝对 `plan_path` 和非空 `parent_goal`。
+2. marker 严格为 `planner: parallel-task-planner`、`plan_format_version: 2`、`execution_platform: codex`、`worker_runtime: codex_child_thread`、`dispatch_mode: parallel-plan`、`review_mode: diff_self_check`。
+3. 包只携带一个 module，并包含 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、完整 `worker_profile`、`child_thread`、`worker_profile_evidence`、`repair_round: 0 | 1` 和 `result_contract: WORKER_RESULT`。
+4. `child_thread.id` 非空且 `environment: local`。当前线程把这个绑定 id 原样用于结果；coordinator 负责将它与创建记录核对，worker 不伪造或替换该值。
+5. `worker_profile_evidence.requested` 与 module `worker_profile` 逐字段相等；`dispatch_arguments.model` 等于 requested model；`dispatch_arguments.thinking` 等于 requested reasoning effort；`status: applied`，并有创建请求和 thread id evidence。
+6. `repair_round: 1` 必须来自当前 module 的同一绑定线程，且只处理 coordinator 指出的 finding；不启动第二次补修。
+
+任何字段缺失、预备与绑定 request id 不一致、Plan Binding 失败、profile evidence 非 `applied` 或 scope 不可核对时，返回完整 blocked `WORKER_RESULT`。不要设置 goal、读取实现文件、修改文件、stage、commit 或 push。
 
 ## Plan Binding
 
-输入门禁通过后、设置 goal 前读取 `plan_path`，并验证：
+输入门禁通过后、设置 goal 前读取 `plan_path` 并验证：
 
-- 顶层 marker、`parent_goal` 和计划来源与分派包一致。
+- 顶层 marker、`parent_goal` 和计划来源与绑定包一致。
 - `module_id` 在计划中唯一存在。
-- 分派包的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context` 和 plan-authored `worker_profile` 与该 module 原文逐字段一致。
-- 计划不包含 runtime `worker_profile_evidence`；分派包不包含其他 module 或超出计划的写权限。
+- `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context` 和 plan-authored `worker_profile` 与该 module 原文逐字段一致。
+- 计划不包含 runtime `child_thread` 或 `worker_profile_evidence`；绑定包不包含其他 module 的任务、上下文或写权限。
 
-`worker_profile_evidence` 由 coordinator 在调用前构造，并与完整 module 包、`model`、`thinking` 一起通过原子 implementation-subagent 调用传入；调用返回的 subagent id 由 coordinator 事后单独记录。该 evidence 不与计划原文比较，也不能覆盖 plan-authored `worker_profile`。任一 binding 失败时在 goal 和文件操作前返回 blocked。
+绑定包中的 profile evidence 是 coordinator 的创建记录，不能覆盖计划 profile。提示词、默认值或自述不能替代该 evidence；不要猜 model alias 或降低 reasoning effort。
 
-## Profile Dispatch Evidence
+## Goal 与 Scope
 
-worker 不读取历史 thread profile，也不要求不存在的当前模型 readback。只校验 coordinator 的实际子代理创建结果：
+Plan Binding 通过后，读取当前 goal。若当前 active goal 已绑定相同 `module_id`、scope 和 repair round，则恢复它；否则为当前 module 创建 goal 并二次确认。首次执行完成后更新 goal。补修时无法恢复原 goal 才在同一子线程创建绑定相同 module 的 repair goal。
 
-1. `worker_profile_evidence.requested` 与 plan-authored `worker_profile` 逐字段相等。
-2. requested model 必须是调度接口可识别的完整 model id，且 `dispatch_arguments.model` 与其完全相等。默认值为 `gpt-5.6-terra`；`terra` 等缩写 alias 不可接受。
-3. `dispatch_arguments.thinking` 必须与 `requested.reasoning_effort` 完全相等。默认 `gpt-5.6-terra/xhigh` 的完整映射必须是：
+返回结构化 evidence：
 
 ```yaml
-worker_profile_evidence:
-  requested:
-    model: gpt-5.6-terra
-    reasoning_effort: xhigh
-  dispatch_arguments:
-    model: gpt-5.6-terra
-    thinking: xhigh
-  status: applied
-  evidence: <coordinator dispatch request id 与同一次原子调用中的已接受参数>
+goal_set_evidence:
+  child_thread_id: <bound thread id>
+  module_id: M1
+  repair_round: 0
+  action: created | resumed | repair_created
+  goal_id: <goal id>
+  status: active | complete | blocked
 ```
 
-4. 只有当前 subagent 通过同一次原子调用收到完整分派包、`model` 与 `thinking`，且 `status: applied` 时才继续。subagent id 由 coordinator 在调用完成后单独记录，不是本首包的必需字段。`unavailable`、`rejected`、dispatch request evidence 缺失或映射不一致都在设置 goal 和文件操作前 blocked。
+每次编辑前确认文件属于 `writable_paths`，不在保护边界内，并直接服务于 `task` 和 `done_when`。先只读检查候选文件和已有用户改动；遇到依赖未完成、共享冲突、需要扩大 scope 或未授权命令时停止并返回对应状态。
 
-提示词、自述、skill 默认值、计划文本和推荐 profile 都不能替代 dispatch evidence。worker 不自行切换 profile、不猜 alias、不选择近似模型，也不降低 reasoning effort。
+## 内部子代理
 
-## Active Goal 与 Scope
+模块子线程可以自行调用普通子代理进行读取、实现建议或受限辅助。所有内部子代理必须服从当前 module 的 goal、`writable_paths`、保护边界、verification 和 done_when，不得创建用户可见 thread，不得扩大 scope。
 
-所有前置门禁通过后，先读取当前 goal 状态，再用平台的 `/goal` 机制设置或复用只对应该 module 的 active goal。goal 至少包含 `module_id`、`parent_goal`、`task`、`writable_paths`、保护边界、`verification` 和 `done_when`。二次读取必须确认 goal 为 active 且内容与分派一致；无法读取、设置或确认时返回 blocked，不修改文件。
+不要在结果中配置、枚举或伪造内部子代理的 model、thinking、thread id 或 profile evidence。无论内部代理数量如何，模块子线程自己对实际修改、验证、diff 自检和最终结果负责。
 
-`goal_set_evidence` 必须记录首次 goal 状态、实际 goal 操作，以及二次读取确认到的 active 状态和 module id。提示词中的目标声明不是 evidence。
-
-- 每次编辑前确认文件属于 `writable_paths`、不在保护边界内，且改动直接满足 `task` 与 `done_when`。
-- 先只读检查候选文件和已有用户改动；最小合并，不覆盖或重排无关内容。
-- 共享契约冲突、未满足依赖、并行写冲突、需要扩大 scope 或需要未授权命令时停止。
-- 构建、测试、生成和格式化只执行 `verification` 或保护边界明确授权的命令；不得安装依赖。
-
-## 有上限的执行循环
+## 执行与自检
 
 执行循环固定为：
 
 ```text
-确认 active goal -> 检查 scope -> 实现 -> 验证 -> diff 自检 -> 最多补修一次 -> WORKER_RESULT
+确认 goal -> 检查 scope -> 实现 -> 验证 -> diff 自检 -> WORKER_RESULT
 ```
 
 1. 在 `writable_paths` 内完成当前 module，保护已有改动。
-2. 执行全部授权 `verification`；不能执行时记录原因和明确替代证据。
-3. 检查 changed files、scope、用户改动、`done_when`、验证证据、diff 聚焦度和共享文件冲突。
-4. 把自检写成 `diff_self_check: {status: pass | failed | not_run, evidence: []}`。禁止使用字符串、字符串列表或其他 shape。
-5. 验证或自检发现 scope 内问题时，只允许修复并复验一次。`repair_round: 1` 或第二次失败时停止；超 scope finding 不自行修复。
-
-当前 worker 自己完成 diff 自检，不创建额外审查子代理。
+2. 执行授权 `verification`；不能执行时记录原因和明确替代证据。
+3. 检查 changed files、scope、用户改动、done_when、验证证据、diff 聚焦度和共享文件冲突。
+4. 使用 `diff_self_check: {status: pass | failed | not_run, evidence: []}`，不得改为字符串或列表。
+5. scope 内问题在本轮修复并复验；`repair_round: 1` 仍失败或出现超 scope finding 时停止。
 
 ## 结果契约
 
-所有状态都返回与 coordinator 完全一致的 `WORKER_RESULT` shape：
+所有状态返回：
 
 ```text
 WORKER_RESULT:
 - status: completed | blocked | failed | needs_main_review
-- module_id: "<Mx>"
+- module_id: "<module id>"
 - dispatch_mode: parallel-plan
 - review_mode: diff_self_check
-- goal_set_evidence: "<Codex active goal evidence>"
-- changed_files:
-  - "<path>"
-- verification:
-  - "<定向检查、结果或替代证据>"
-- diff_self_check:
-  status: pass | failed | not_run
-  evidence:
-    - "<scope、done_when、验证和 diff 证据>"
-- worker_profile:
-  model: "<plan value>"
-  reasoning_effort: "<plan value>"
+- child_thread: {id: "<bound thread id>", environment: local}
+- goal_set_evidence:
+    child_thread_id: "<bound thread id>"
+    module_id: "<module id>"
+    repair_round: 0 | 1
+    action: created | resumed | repair_created
+    goal_id: "<goal id | unavailable>"
+    status: active | complete | blocked
+- changed_files: ["<path>"]
+- verification: ["<result or alternative evidence>"]
+- diff_self_check: {status: pass | failed | not_run, evidence: ["<summary>"]}
+- worker_profile: {model: "<plan value>", reasoning_effort: "<plan value>"}
 - worker_profile_evidence:
-  requested: {model: "<plan value>", reasoning_effort: "<plan value>"}
-  dispatch_arguments: {model: "<canonical model>", thinking: "<effort>"}
-  status: applied | unavailable | rejected
-  evidence: "<dispatch evidence>"
-- goal_alignment:
-  - "<done_when 与 parent_goal 对齐证据>"
-- risks:
-  - "<none 或剩余风险>"
+    requested: {model: "<plan value>", reasoning_effort: "<plan value>"}
+    dispatch_arguments: {model: "<canonical model>", thinking: "<effort>"}
+    status: applied | rejected | unavailable
+    evidence: "<create_thread evidence>"
+- goal_alignment: ["<done_when to parent_goal evidence>"]
+- risks: ["<none or remaining risk>"]
 ```
 
-状态规则：
-
-- `completed`：Plan Binding 和 active goal 证据可复核；全部 changed files 在 scope 内；`done_when` 满足；verification 通过或有明确替代证据；`diff_self_check.status: pass`；`worker_profile_evidence.status: applied`；无未解决 scope、依赖或共享文件冲突。
-- `blocked`：输入、来源、binding、dispatch evidence、goal、依赖或外部条件在实现前阻止执行。仍返回完整 shape；不可获得的标量写 `unavailable`，列表写可获得证据或 `[]`，`diff_self_check` 写 `{status: not_run, evidence: []}`，`goal_set_evidence` 说明 `not_set` 或失败点。
-- `failed`：已进入实现，但授权验证或 diff 自检在唯一补修后仍失败。保留实际 changed files、verification 和失败 evidence。
-- `needs_main_review`：已进入实现后发现需要 coordinator 或用户决策的 scope、契约或冲突问题，且不能在授权范围内解决。该状态不授权扩大 scope。
-
-worker 不因结果为 blocked 而省略字段，也不把未执行的 verification 或 diff 自检伪装为通过。
-
-## 反模式
-
-- 接受自然语言、用户可见 thread/task、手工 module、计划全文或多 module 包。
-- 忽略旧 reviewer/profile-preflight、Claude assignment 或其他额外兼容字段后继续执行。
-- 缺字段后先设置 goal、读取实现或修改文件，再补 blocked 结果。
-- 用提示词、计划值或自述替代 implementation subagent dispatch evidence。
-- 把 runtime `worker_profile_evidence` 混入 plan-authored `worker_profile`，或恢复旧 profile evidence shape。
-- 把 `gpt-5.6-terra` 缩写成 `terra`，或把 `reasoning_effort` 错当成 `thinking` 之外的字段。
-- 使用字符串形态的 `diff_self_check`，越过 scope，跳过验证，或开启第二轮补修后仍写 `completed`。
+`completed` 要求 goal、scope、verification、`done_when`、diff self-check 和 applied profile evidence 全部通过。`blocked` 表示实现前的输入、binding、goal、依赖或外部阻塞；不可获得字段写 `unavailable`。`failed` 表示进入实现后验证或自检失败。`needs_main_review` 表示用户干预、共享冲突、越界修改或需要主线程决策；不得自行扩大 scope。
