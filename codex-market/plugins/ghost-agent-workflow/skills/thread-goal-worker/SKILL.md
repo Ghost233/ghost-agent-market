@@ -20,12 +20,19 @@ description: |
 
 1. `planner` 严格等于 `parallel-task-planner`，`plan_format_version` 严格等于整数 `1`，`execution_platform` 严格等于 `codex`。
 2. 包含绝对、可读的 `plan_path`，以及非空 `parent_goal` 和唯一 `module_id`；只包含该 `module_id` 的权限，不携带其他 module 的写入范围。
-3. module 包含非空 `task`、`writable_paths`、`depends_on`、`done_when`、`verification` 和 `worker_context`。`writable_paths` 是唯一可写 scope；`done_when` 和 `verification` 都必须可执行或可观察。
+3. module 包含非空 `task`、`writable_paths`、`done_when`、`verification` 和 `worker_context`；`depends_on` 字段必须存在且为合法列表（允许 `[]`）。`writable_paths` 是唯一可写 scope；`done_when` 和 `verification` 都必须可执行或可观察。
 4. 包含完整 `worker_profile` 和 `reviewer_subagent_profile`；两者都显式给出非空 `model` 与 `reasoning_effort`。同时包含 coordinator/thread 运行时提供的 worker profile evidence。
+4a. 包含 `reviewer_profile_preflight`（requested/effective/status/evidence）；普通 module 在设置 goal 前必须为 ready/applied 且 effective 为 terra/xhigh，parallel-plan diff_self_check 例外为 not_required 并有证据。
 5. `reviewer_subagent_profile` 必须严格等于 Codex 平台固定默认值 `terra/xhigh`。planner 可以为 module 完整覆盖 `worker_profile`，worker 不把 `terra/xhigh` 强加给 worker 覆盖。
 6. 包含 `repair_round: 0 | 1`、保护边界和 `result_contract: WORKER_RESULT`。`repair_round: 1` 只授权处理 coordinator 指出的原 finding，不开启新的补修轮次。
 
 任一必需字段缺失、为空、无法解析、值不匹配或来源不是 coordinator 分派时，立即返回 blocked 结果。此时不要读取、设置或更新 `/goal`，不要修改文件、运行写入型命令、stage、commit 或 push。不要从聊天上下文、平台默认值或计划其他位置补齐缺失字段。
+
+## Plan Binding
+
+在设置 goal 或任何文件操作前，读取绝对 `plan_path`。验证顶层 `planner`、`plan_format_version`、`execution_platform`、`parent_goal`，并逐字段比较 `module_id` 对应原文的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile`、`reviewer_subagent_profile`。手工包或任一字段与计划原文不一致时返回 blocked。
+
+真实回归场景：缺少 planner 来源链、profile 和计划字段的包必须返回 `WORKER_RESULT` blocked、`goal_set_evidence: not_set`、`changed_files: []`。
 
 ## Profile 门禁
 
@@ -113,6 +120,7 @@ WORKER_RESULT:
   effective: {model: "<runtime value | not_required>", reasoning_effort: "<runtime value | not_required>"}
   status: applied | unavailable | mismatch | not_required
   evidence: "<runtime evidence or parallel-plan diff_self_check exception>"
+- reviewer_profile_preflight: {requested: "<requested>", effective: "<effective>", status: ready | applied | not_required, evidence: "<preflight evidence>"}
 - goal_alignment:
   - "<how done_when and parent_goal are satisfied>"
 - risks:

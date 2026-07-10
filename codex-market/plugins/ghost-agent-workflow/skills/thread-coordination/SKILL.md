@@ -31,6 +31,7 @@ description: |
 3. `parent_goal` 必须非空；`safety.status` 必须严格等于 `parallel_safe`，并保留 planner 写出的判定理由。`sequential_only` 和 `needs_user_review` 一律不分派。
 4. `modules` 至少包含两个可执行 module。每个 module 必须有唯一非空 `id`，以及完整的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile` 和 `reviewer_subagent_profile`。
 5. 每个 `worker_profile` 和 `reviewer_subagent_profile` 都必须显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承默认值、不猜测、不补字段。
+6. 每个 module 必须包含 `reviewer_profile_preflight`（requested/effective/status/evidence）；普通 module 在 worker 设置 goal 前 status 必须为 `ready`/`applied` 且 effective 为固定平台默认，parallel-plan diff_self_check 例外为 `not_required` 并有证据，否则 blocked。
 6. `depends_on` 只能引用计划内 module，依赖图无环。`dispatch.batches` 必须存在，每个 module id 恰好出现一次，且依赖 module 位于更早 batch。
 7. 用当前工作区重新检查安全证据：同一 batch 的可写路径没有精确、父子或 glob 相交；没有共享 API、迁移、生成输出、全局配置或验证环境冲突；现有用户改动没有落入将被写入的范围。无关 dirty 文件不单独构成冲突。
 8. 计划内容与调用摘要一致，计划未过期，全部 module 合起来仍覆盖 `parent_goal`。证据不足按冲突处理，不允许凭感觉继续。
@@ -114,6 +115,7 @@ worker_profile:
 - 绝对 `plan_path`、`parent_goal` 和单个 `module_id`
 - `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`
 - 完整 `worker_profile`、`reviewer_subagent_profile` 与 coordinator 获得的 profile evidence
+- `reviewer_profile_preflight`（requested/effective/status/evidence）
 - `repair_round: 0 | 1`、保护边界、结果契约和使用 `$thread-goal-worker` 的要求
 
 worker 必须先按 `$thread-goal-worker` 校验来源链和 profile，再设置单 module `/goal`。不得把计划全文、其他 module 的写权限或完整聊天记录交给 worker。

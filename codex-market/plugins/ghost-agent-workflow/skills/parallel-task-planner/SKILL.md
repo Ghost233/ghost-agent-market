@@ -59,6 +59,7 @@ modules:
     reviewer_subagent_profile:
       model: terra
       reasoning_effort: xhigh
+    reviewer_profile_preflight: {requested: terra/xhigh, effective: terra/xhigh, status: ready, evidence: <preflight>}
 safety:
   status: parallel_safe | sequential_only | needs_user_review
   reasons:
@@ -110,6 +111,7 @@ dispatch:
 最终回复必须说明：计划路径、格式版本、执行平台、`safety.status`、模块及其完整 profiles、batch、自动分派是否发生、未分派原因和仍需用户确认的事项。自动分派后以 coordinator 返回的 `PARALLEL_PLAN_RESULT` 判断父目标状态；不得把“计划已生成”表述为父目标已经完成。
 
 ## 非目标
+每个 module 必须具备 reviewer_profile_preflight；普通 module 为 ready/applied，parallel-plan diff_self_check 例外为 not_required 并说明证据。
 
 - 不维护长期 ownership registry 或 thread 亲和性。
 - 不通过猜测把串行工作拆成并发工作。
