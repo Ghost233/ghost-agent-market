@@ -67,7 +67,7 @@ main_thread_profile:
   evidence: <运行时或 task 接口返回的可复核证据>
 ```
 
-默认只有 `effective` 与 `sol/xhigh` 完全一致且 `status: applied` 才能继续。无法读取任一字段、运行时不支持该值或实际值不匹配时，返回 `profile_unverified`；说明用户需要以 `sol/xhigh` 创建或重启协调 task。若用户在提供有效 `plan_path` 的同时明确覆盖主协调 profile，则把明确覆盖值记为 `requested`，仍要求 `effective` 完全匹配并记录 evidence，且不得声称平台默认值已生效；单独的自然语言覆盖不能绕过计划入口门禁。提示词里的模型声明、skill 默认值和自述都不是运行时 evidence。
+只有 `effective` 与 `sol/xhigh` 完全一致且 `status: applied` 才能继续。主协调 profile 不接受用户覆盖；无法读取任一字段、运行时不支持 `sol/xhigh` 或任一实际值不匹配时，返回 `profile_unverified`，并说明用户需要以 `sol/xhigh` 创建或重启协调 task。提示词里的模型声明、skill 默认值和自述都不是运行时 evidence。
 
 ### Module profile
 
@@ -183,7 +183,7 @@ PARALLEL_PLAN_RESULT:
 - plan_format_version: 1
 - execution_platform: codex
 - main_thread_profile:
-  requested: {model: "<sol 或用户明确覆盖值>", reasoning_effort: "<xhigh 或用户明确覆盖值>"}
+  requested: {model: sol, reasoning_effort: xhigh}
   effective: {model: "<effective>", reasoning_effort: "<effective>"}
   status: applied | unavailable | mismatch
   evidence: "<运行时证据>"
