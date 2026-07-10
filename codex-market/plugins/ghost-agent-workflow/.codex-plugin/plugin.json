@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.3.2+codex.20260710091017",
+  "version": "0.3.3+codex.20260710091700",
   "description": "Codex skills for versioned parallel planning, profile-bound subagent coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
