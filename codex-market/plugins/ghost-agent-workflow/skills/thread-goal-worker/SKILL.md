@@ -22,7 +22,7 @@ description: |
 2. 包含绝对、可读的 `plan_path`，以及非空 `parent_goal` 和唯一 `module_id`；只包含该 `module_id` 的权限，不携带其他 module 的写入范围。
 3. module 包含非空 `task`、`writable_paths`、`done_when`、`verification` 和 `worker_context`；`depends_on` 字段必须存在且为合法列表（允许 `[]`）。`writable_paths` 是唯一可写 scope；`done_when` 和 `verification` 都必须可执行或可观察。
 4. 包含完整 `worker_profile` 和 `reviewer_subagent_profile`；两者都显式给出非空 `model` 与 `reasoning_effort`。同时包含 coordinator/thread 运行时提供的 worker profile evidence。
-4a. 包含 `reviewer_profile_preflight`（requested/effective/status/evidence）；普通 module 在设置 goal 前必须为 ready/applied 且 effective 为 terra/xhigh，parallel-plan diff_self_check 例外为 not_required 并有证据。
+4a. 包含 `reviewer_profile_preflight`（requested/effective/status/evidence）；`requested` 必须严格等于 `reviewer_subagent_profile` 和 `terra/xhigh`。普通 module 在设置 goal 前必须为 ready/applied 且 `effective == requested`；parallel-plan diff_self_check 例外为 not_required 并有证据。
 5. `reviewer_subagent_profile` 必须严格等于 Codex 平台固定默认值 `terra/xhigh`。planner 可以为 module 完整覆盖 `worker_profile`，worker 不把 `terra/xhigh` 强加给 worker 覆盖。
 6. 包含 `repair_round: 0 | 1`、保护边界和 `result_contract: WORKER_RESULT`。`repair_round: 1` 只授权处理 coordinator 指出的原 finding，不开启新的补修轮次。
 

@@ -151,7 +151,7 @@ WORKER_RESULT:
   - "<剩余风险或 none>"
 ```
 
-普通完成叙述、module id 不匹配、越界文件、缺少验证或 `diff_self_check`、worker profile 不是 `applied`、profile evidence 不匹配、reviewer_profile_preflight 缺失或与计划不一致，都视为 `needs_fix`，不能记为完成。
+普通完成叙述、module id 不匹配、越界文件、缺少验证或 `diff_self_check`、worker profile 不是 `applied`、profile evidence 不匹配、`reviewer_profile_preflight` 缺失或与 coordinator 分派时记录的 preflight evidence 不一致，都视为 `needs_fix`，不能记为完成。
 
 ## Batch 与一次补修
 
