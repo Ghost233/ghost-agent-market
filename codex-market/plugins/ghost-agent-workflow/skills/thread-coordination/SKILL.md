@@ -27,7 +27,7 @@ description: |
 分派任何 worker 前，按顺序验证全部条件：
 
 1. 输入包含一个绝对、可读的 `plan_path`。相对路径、自然语言任务、active `/goal`、owner-domain 摘要或手工 module 包都不是执行入口。
-2. 顶层 `planner` 必须严格等于 `parallel-task-planner`，`plan_format_version` 必须严格等于整数 `1`，`execution_platform` 必须严格等于 `codex`。
+2. 顶层 `planner` 必须严格等于 `parallel-task-planner`，`plan_format_version` 必须严格等于整数 `1`，`execution_platform` 必须严格等于 `codex`，`dispatch_mode` 必须严格等于 `parallel-plan`，`review_mode` 必须严格等于 `diff_self_check`。
 3. `parent_goal` 必须非空；`safety.status` 必须严格等于 `parallel_safe`，并保留 planner 写出的判定理由。`sequential_only` 和 `needs_user_review` 一律不分派。
 4. `modules` 至少包含两个可执行 module。每个 module 必须有唯一非空 `id`，以及完整的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile` 和 `reviewer_subagent_profile`。
 5. 每个 `worker_profile` 和 `reviewer_subagent_profile` 都必须显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承默认值、不猜测、不补字段。
@@ -73,7 +73,17 @@ main_thread_profile:
 
 Codex 计划的默认 worker 与 reviewer profile 是 `terra/xhigh`。module 可以在 planner 阶段显式覆盖 worker profile；coordinator 只执行计划中已经解析完成的值。`reviewer_subagent_profile` 必须完整且严格等于 `terra/xhigh`；其他值说明计划没有满足当前 planner 契约，返回 `invalid_plan`。
 
-`reviewer_profile_preflight` 是 coordinator 在分派前生成的运行时证据，不属于 planner 计划。普通 module 只有在 reviewer 执行面确认能应用并读取 `terra/xhigh` 时才写 `status: ready`；已预建并确认实际 profile 时可写 `applied`。只有 `parallel-plan` 的 `diff_self_check` 例外可写 `not_required`，并必须记录例外证据。无法生成可信 preflight 时不分派。
+`reviewer_profile_preflight` 是 coordinator 在分派前生成的运行时证据，不属于 planner 计划，必须使用以下 mapping shape：
+
+```yaml
+reviewer_profile_preflight:
+  requested: {model: terra, reasoning_effort: xhigh}
+  effective: {model: "<terra | not_required>", reasoning_effort: "<xhigh | not_required>"}
+  status: ready | applied | not_required
+  evidence: "<运行时 preflight 或 diff_self_check 例外证据>"
+```
+
+`ready` 或 `applied` 时，`requested` 必须严格等于 plan-authored `reviewer_subagent_profile` 和固定 `terra/xhigh`，且 `effective == requested`。只有计划同时满足 `dispatch_mode: parallel-plan` 与 `review_mode: diff_self_check` 时，reviewer profile 和 preflight 才可写 `not_required`；此时 `requested` 仍为固定 `terra/xhigh`，`effective` 必须严格等于 `{model: not_required, reasoning_effort: not_required}`，`evidence` 必须说明 `parallel-plan diff_self_check exception`。任一 marker 不匹配或无法生成可信 preflight 时不分派。`unavailable` 只允许 worker 在 blocked 结果中表达无法读取或回显 preflight，不是可分派的 preflight 状态。
 
 对每个 ready module，在创建或复用 thread 前验证 thread 接口能应用并读取所请求的 `model` 与 `reasoning_effort`：
 
@@ -85,7 +95,7 @@ Codex 计划的默认 worker 与 reviewer profile 是 `terra/xhigh`。module 可
 逐 module 保存以下证据：
 
 ```yaml
-worker_profile:
+worker_profile_evidence:
   requested:
     model: <plan.modules[].worker_profile.model>
     reasoning_effort: <plan.modules[].worker_profile.reasoning_effort>
@@ -96,7 +106,7 @@ worker_profile:
   evidence: <thread 创建或复用接口的实际返回>
 ```
 
-`status: applied` 是分派和完成的必要条件。`reviewer_subagent_profile` 使用同样的 `requested`、`effective`、`status`、`evidence` 四字段证据；若 `parallel-plan` worker 按契约只做 `diff_self_check` 而不创建 reviewer subagent，则结果必须写 `status: not_required` 并说明例外证据，不能伪造 `applied`。
+plan-authored `worker_profile` 始终只保留 `{model, reasoning_effort}`；上述运行时块必须独立命名为 `worker_profile_evidence`，不得把 evidence shape 写回 `worker_profile`。`worker_profile_evidence.status: applied` 是分派和完成的必要条件。结果中的 `reviewer_subagent_profile` 使用 `requested`、`effective`、`status`、`evidence` 四字段运行时证据；只有两个结构化 marker 均匹配时才允许合法 `not_required`，不能伪造 `applied`。
 
 ## Thread 选择
 
@@ -113,9 +123,10 @@ worker_profile:
 - `planner: parallel-task-planner`
 - `plan_format_version: 1`
 - `execution_platform: codex`
+- `dispatch_mode: parallel-plan` 与 `review_mode: diff_self_check`，必须从计划原样传递
 - 绝对 `plan_path`、`parent_goal` 和单个 `module_id`
 - `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`
-- 完整 `worker_profile`、`reviewer_subagent_profile` 与 coordinator 获得的 profile evidence
+- plan-authored 完整 `worker_profile`、`reviewer_subagent_profile`，以及独立的 coordinator `worker_profile_evidence`
 - `reviewer_profile_preflight`（requested/effective/status/evidence）
 - `repair_round: 0 | 1`、保护边界、结果契约和使用 `$thread-goal-worker` 的要求
 
@@ -127,6 +138,8 @@ worker 必须先按 `$thread-goal-worker` 校验来源链和 profile，再设置
 WORKER_RESULT:
 - status: completed | blocked | failed | needs_main_review
 - module_id: "<Mx>"
+- dispatch_mode: parallel-plan
+- review_mode: diff_self_check
 - goal_set_evidence: "<单 module goal 的运行时证据>"
 - changed_files:
   - "<path>"
@@ -134,7 +147,8 @@ WORKER_RESULT:
   - "<定向检查和结果>"
 - diff_self_check:
   - "<scope、无关改动和完成条件检查>"
-- worker_profile:
+- worker_profile: {model: "<plan value>", reasoning_effort: "<plan value>"}
+- worker_profile_evidence:
   requested: {model: "<requested>", reasoning_effort: "<requested>"}
   effective: {model: "<effective>", reasoning_effort: "<effective>"}
   status: applied | unavailable | mismatch
@@ -144,20 +158,24 @@ WORKER_RESULT:
   effective: {model: "<effective | not_required>", reasoning_effort: "<effective | not_required>"}
   status: applied | unavailable | mismatch | not_required
   evidence: "<运行时证据或 parallel-plan diff_self_check 例外>"
-- reviewer_profile_preflight: {requested: "<requested>", effective: "<effective>", status: ready | applied | not_required, evidence: "<preflight evidence>"}
+- reviewer_profile_preflight:
+  requested: {model: "terra", reasoning_effort: "xhigh"}
+  effective: {model: "<terra | unavailable | not_required>", reasoning_effort: "<xhigh | unavailable | not_required>"}
+  status: ready | applied | unavailable | not_required
+  evidence: "<preflight evidence or parallel-plan diff_self_check exception>"
 - goal_alignment:
   - "<如何满足 module done_when 和 parent_goal>"
 - risks:
   - "<剩余风险或 none>"
 ```
 
-普通完成叙述、module id 不匹配、越界文件、缺少验证或 `diff_self_check`、worker profile 不是 `applied`、profile evidence 不匹配、`reviewer_profile_preflight` 缺失或与 coordinator 分派时记录的 preflight evidence 不一致，都视为 `needs_fix`，不能记为完成。
+对任何 `WORKER_RESULT.status`，先校验上述完整字段 shape、`dispatch_mode`、`review_mode`、plan-authored `worker_profile`，以及 `worker_profile_evidence` 和 `reviewer_profile_preflight` 是否与分派时记录的 runtime evidence 逐字段一致。`status: blocked` 不要求 worker/reviewer profile 通过完成门禁：shape 与 evidence 一致时直接汇总 worker 的阻塞原因；不一致时把具体 schema/evidence mismatch 直接汇总为 coordinator 阻塞原因。两种 blocked 情况都不进入补修，也不消耗一次补修机会。其他状态若是普通完成叙述、module id 不匹配、越界文件、缺少验证或 `diff_self_check`、worker profile evidence 不是 `applied`、profile evidence 不匹配或 preflight 缺失，则视为 `needs_fix`，不能记为完成。
 
 ## Batch 与一次补修
 
 1. 严格按 `dispatch.batches` 顺序执行；同一 batch 只并发分派门禁通过的 ready modules。
 2. 等待当前 batch 全部 `WORKER_RESULT` 后再进入下一 batch。依赖未完成时不得提前分派。
-3. 每个 module 记录 `repair_round: 0 | 1`。结果不完整或定向验收失败时，只向原 worker thread 发送一次聚焦补修，保持相同 module scope 和 profile。
+3. 先处理 `status: blocked`：校验其 shape 和分派 evidence 后直接汇总 worker 原因或 schema/evidence mismatch；不要让任何 blocked 结果进入实现补修或 profile 完成门禁。其他结果不完整或定向验收失败时，只向原 worker thread 发送一次聚焦补修，保持相同 module scope 和 profile，并记录 `repair_round: 0 | 1`。
 4. profile 不可用或不匹配不是可补修的实现问题，立即阻塞；不得通过第二个 thread 规避 profile 门禁。
 5. 一次补修后仍不满足时，将 module 标为 `blocked` 或 `needs_main_review`。coordinator 不亲自修改、不重新拆 module、不增加补修次数。
 
@@ -186,6 +204,8 @@ PARALLEL_PLAN_RESULT:
 - plan_path: "<absolute path>"
 - plan_format_version: 1
 - execution_platform: codex
+- dispatch_mode: parallel-plan
+- review_mode: diff_self_check
 - main_thread_profile:
   requested: {model: sol, reasoning_effort: xhigh}
   effective: {model: "<effective>", reasoning_effort: "<effective>"}
@@ -196,7 +216,8 @@ PARALLEL_PLAN_RESULT:
     thread: "<thread id>"
     repair_round: 0 | 1
     status: completed | needs_fix | blocked | needs_main_review
-    worker_profile:
+    worker_profile: {model: "<plan value>", reasoning_effort: "<plan value>"}
+    worker_profile_evidence:
       requested: {model: "<requested>", reasoning_effort: "<requested>"}
       effective: {model: "<effective>", reasoning_effort: "<effective>"}
       status: applied | unavailable | mismatch
@@ -206,6 +227,11 @@ PARALLEL_PLAN_RESULT:
       effective: {model: "<effective | not_required>", reasoning_effort: "<effective | not_required>"}
       status: applied | unavailable | mismatch | not_required
       evidence: "<运行时证据或例外>"
+    reviewer_profile_preflight:
+      requested: {model: terra, reasoning_effort: xhigh}
+      effective: {model: "<terra | unavailable | not_required>", reasoning_effort: "<xhigh | unavailable | not_required>"}
+      status: ready | applied | unavailable | not_required
+      evidence: "<preflight 证据或 parallel-plan diff_self_check exception>"
     verification: "<摘要>"
 - completion_check:
   parent_goal_coverage: pass | partial | blocked

@@ -37,6 +37,8 @@ docs/parallel-task-plans/YYYY-MM-DD-<goal-slug>.md
 planner: parallel-task-planner
 plan_format_version: 1
 execution_platform: claude_code
+dispatch_mode: parallel-plan
+review_mode: diff_self_check
 parent_goal: <一句话结果>
 source: natural_language | <计划文档路径>
 worker_defaults:
@@ -93,13 +95,13 @@ dispatch:
 4. 每个模块都有明确 `done_when` 和定向 `verification`。
 5. 并行验证不会竞争同一可写产物或共享环境；会竞争的验证必须串行。
 6. 全部模块合起来覆盖父目标的完成条件。
-7. 来源、格式版本、执行平台以及每个 module 的两个 profile 均完整且可解析。
+7. 来源、格式版本、执行平台、`dispatch_mode: parallel-plan`、`review_mode: diff_self_check` 以及每个 module 的两个 profile 均完整且可解析。
 
 存在明确依赖但没有不确定性时，写 `sequential_only` 并保存计划，不自动并发。范围、依赖或共享契约有证据不足时，写 `needs_user_review`，说明缺少何种确认；绝不自动降级为“看起来能并发”。
 
 ## 自动交接
 
-只有 `safety.status: parallel_safe` 的版本化计划在写入并复查后才立即调用 `$thread-coordination`，传入计划绝对路径、`parallel-plan` 模式和 `parent_goal`。不要重复拆解模块，也不要转发完整聊天记录。
+只有 `safety.status: parallel_safe` 的版本化计划在写入并复查后才立即调用 `$thread-coordination`，传入计划绝对路径、`parent_goal`，并把计划中的 `dispatch_mode: parallel-plan` 与 `review_mode: diff_self_check` 作为结构化字段原样交接。不要重复拆解模块，也不要转发完整聊天记录。
 
 在 Claude Code 中，coordinator 使用 agent team 的稳定队员 name 执行每个 ready module；规划器只提供 module 契约和 batch 顺序。它不直接创建 worker、修改实现文件、验证业务结果或替 coordinator 决定补修。
 
@@ -107,7 +109,7 @@ dispatch:
 
 ## 输出
 
-最终回复必须说明：计划路径、格式版本、执行平台、`safety.status`、模块及其完整 profiles、batch、自动分派是否发生、未分派原因和仍需用户确认的事项。自动分派后以 coordinator 返回的 `PARALLEL_PLAN_RESULT` 判断父目标状态；不得把“计划已生成”表述为父目标已经完成。
+最终回复必须说明：计划路径、格式版本、执行平台、`dispatch_mode`、`review_mode`、`safety.status`、模块及其完整 profiles、batch、自动分派是否发生、未分派原因和仍需用户确认的事项。自动分派后以 coordinator 返回的 `PARALLEL_PLAN_RESULT` 判断父目标状态；不得把“计划已生成”表述为父目标已经完成。
 
 ## 非目标
 
