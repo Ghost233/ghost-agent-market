@@ -1,4 +1,4 @@
 interface:
   display_name: "子代理计划协调"
   short_description: "按版本化并发计划分派和验收 Codex 实现子代理任务"
-  default_prompt: "使用 $thread-coordination 校验绝对 plan_path 和拓扑 batch，把 worker_profile 映射为 Codex 子代理的 model 与 thinking 参数，按 module 分派实现子代理并汇总统一 WORKER_RESULT；禁止创建用户可见 thread/task。"
+  default_prompt: "使用 $thread-coordination 校验绝对 plan_path 和拓扑 batch，把 plan-authored worker_profile（默认 gpt-5.6-terra/xhigh）映射为 Codex 子代理的 model 与 thinking 参数，按 module 分派实现子代理并汇总统一 WORKER_RESULT；禁止创建用户可见 thread/task。"

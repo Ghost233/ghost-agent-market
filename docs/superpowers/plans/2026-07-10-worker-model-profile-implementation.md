@@ -11,8 +11,8 @@
 ## Global Constraints
 
 - `$thread-coordination` 只能消费 `$parallel-task-planner` 生成的 `plan_format_version: 1`、`safety.status: parallel_safe` 计划。
-- Codex coordinator 默认 `sol/xhigh`，实现 worker 必须是 `terra/xhigh` 子代理；不得使用用户可见 thread/task 作为 worker。
-- Codex alias `terra` 分派时映射为 `gpt-5.6-terra`，`reasoning_effort` 映射为 `thinking`。
+- Codex coordinator 默认 `sol/xhigh`，实现 worker 默认必须是 `gpt-5.6-terra/xhigh` 子代理；不得使用用户可见 thread/task 作为 worker。
+- Codex plan-authored model 使用 canonical id `gpt-5.6-terra` 并原样传给子代理接口，`reasoning_effort` 映射为 `thinking`。
 - Claude Code coordinator 默认 `opus/max`，实现 worker 使用 `sonnet/max` Agent/team teammate；Claude worker 不依赖 `/goal`。
 - 计划中只保留 `worker_profile`；runtime 使用独立 `worker_profile_evidence`，不再包含 reviewer profile/preflight。
 - `diff_self_check` 在所有输入输出中统一为 `{status, evidence}` mapping。
@@ -64,7 +64,7 @@
 
 - [x] **Step 2: 更新 coordinator**
 
-只使用实现子代理；禁止 thread/task 工具；把 `terra/xhigh` 映射为 `gpt-5.6-terra` + `thinking: xhigh`；以成功调度结果形成 `worker_profile_evidence`。
+只使用实现子代理；禁止 thread/task 工具；把 `gpt-5.6-terra/xhigh` 映射为 `model: gpt-5.6-terra` + `thinking: xhigh`；以成功调度结果形成 `worker_profile_evidence`。
 
 - [x] **Step 3: 更新 worker**
 
@@ -128,7 +128,7 @@ Expected: 六次 `Skill is valid!`，plugin validation passed。
 
 - [x] **Step 3: 运行关键压力场景**
 
-覆盖 Codex alias 映射、禁止 thread worker、Claude assignment happy path、统一 diff shape、无 reviewer 残留、并发 DAG、纯串行 DAG、非法入口阻塞。
+覆盖 Codex canonical model 映射、禁止 thread worker、Claude assignment happy path、统一 diff shape、无 reviewer 残留、并发 DAG、纯串行 DAG、非法入口阻塞。
 
 - [x] **Step 4: 最终只读审查和工作树检查**
 

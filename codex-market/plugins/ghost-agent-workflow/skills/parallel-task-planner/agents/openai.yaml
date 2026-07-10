@@ -1,4 +1,4 @@
 interface:
   display_name: "并发任务规划"
   short_description: "为 Codex 子代理生成带完整 worker 配置的版本化并发计划"
-  default_prompt: "使用 $parallel-task-planner 为 Codex 生成带版本、结构化 marker、完整 worker_profile 和拓扑 batch 的计划；仅在至少一个 batch 可并发且状态为 parallel_safe 时交给 $thread-coordination。"
+  default_prompt: "使用 $parallel-task-planner 为 Codex 生成带版本、结构化 marker、默认 gpt-5.6-terra/xhigh worker_profile 和拓扑 batch 的计划；仅在至少一个 batch 可并发且状态为 parallel_safe 时交给 $thread-coordination。"

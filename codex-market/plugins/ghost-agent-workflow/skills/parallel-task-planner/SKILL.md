@@ -18,7 +18,7 @@ description: |
 - 自然语言：目标、已知范围、完成条件、依赖、约束和验证偏好。
 - 计划文档绝对路径：保留已经确定的决策，只提取可执行 module。
 
-`execution_platform` 固定为 `codex`。读取可选顶层 `worker_defaults` 与 module 级 `worker_profile` 覆盖；未显式覆盖时使用 `terra/xhigh`。只读取确认目标文件、依赖、可写范围、profile 和验证冲突所需的最少仓库内容。不要为制造并发而扩张需求、猜测隐式接口或猜测模型标识。
+`execution_platform` 固定为 `codex`。读取可选顶层 `worker_defaults` 与 module 级 `worker_profile` 覆盖；未显式覆盖时使用 `gpt-5.6-terra/xhigh`。只读取确认目标文件、依赖、可写范围、profile 和验证冲突所需的最少仓库内容。不要为制造并发而扩张需求、猜测隐式接口或猜测模型标识。
 
 ## 计划契约
 
@@ -39,7 +39,7 @@ review_mode: diff_self_check
 parent_goal: <一句话结果>
 source: natural_language | <计划文档路径>
 worker_defaults:
-  model: terra
+  model: gpt-5.6-terra
   reasoning_effort: xhigh
 modules:
   - id: M1
@@ -53,7 +53,7 @@ modules:
       - <定向命令或替代证据>
     worker_context: <实现所需的最少上下文>
     worker_profile:
-      model: terra
+      model: gpt-5.6-terra
       reasoning_effort: xhigh
 safety:
   status: parallel_safe | sequential_only | needs_user_review
@@ -70,9 +70,9 @@ dispatch:
 
 写入计划前按顺序解析：
 
-1. 从 Codex 默认 `worker_defaults: terra/xhigh` 开始。顶层覆盖和 module 覆盖都可单独覆盖 `model` 或 `reasoning_effort`，计划顶层始终写出完整默认值。
+1. 从 Codex 默认 `worker_defaults: gpt-5.6-terra/xhigh` 开始。顶层覆盖和 module 覆盖都可单独覆盖 `model` 或 `reasoning_effort`，计划顶层始终写出完整默认值。
 2. 每个 module 将覆盖合并到已解析的 `worker_defaults`，再写出完整、不可继承的 `worker_profile`。
-3. `terra` 是允许的友好 alias；coordinator 分派时负责映射到 `gpt-5.6-terra`。其他模型必须是当前 Codex 实现子代理接口可识别的完整 model id。
+3. `model` 必须使用当前 Codex 实现子代理接口可识别的完整 model id。默认值是 `gpt-5.6-terra`；不要在计划中缩写为 `terra` 或猜测其他 alias。
 4. `model` 与 `reasoning_effort` 必须非空且可由当前子代理调度接口支持。空值、未知值、平台不匹配或字段不完整时写 `needs_user_review`，并说明具体字段。
 
 计划中的 profile 是请求约束，不是运行时 evidence。不要把 alias 展开结果、推荐值、提示词声明或假定的 effective profile 写成已经应用；不允许选择近似模型或降低 reasoning effort。

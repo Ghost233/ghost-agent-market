@@ -18,8 +18,7 @@ execution_defaults:
       runtime_model: gpt-5.6-sol
       reasoning_effort: xhigh
     worker_subagent:
-      model: terra
-      runtime_model: gpt-5.6-terra
+      model: gpt-5.6-terra
       reasoning_effort: xhigh
   claude_code:
     coordinator:
@@ -34,7 +33,7 @@ coordinator profile 是平台默认运行建议，不是无法读取就永久阻
 
 worker profile 是实际调度参数。planner 接受可选顶层 `worker_defaults` 和 module 级 `worker_profile` 覆盖，module 可以覆盖任一字段；计划必须写出每个 module 解析后的完整值。
 
-Codex 计划允许友好 alias `terra`，coordinator 在分派时把它映射为当前 Codex 工具接受的 canonical model id `gpt-5.6-terra`，并把 `reasoning_effort` 映射为调度参数 `thinking`。其他用户指定模型必须是当前子代理接口可识别的完整 model id，不猜测近似模型。
+Codex worker 默认直接使用 canonical model id `gpt-5.6-terra`，不在计划层使用 `terra` alias。coordinator 将该 model id 原样传给子代理接口，并把 `reasoning_effort` 映射为调度参数 `thinking`。其他用户指定模型同样必须是当前子代理接口可识别的完整 model id，不猜测近似模型。
 
 Claude Code 使用 Agent 工具支持的 `sonnet`/`opus` alias。worker effort 继承或显式设置为 `max`；若平台提供 `CLAUDE_EFFORT` 或等价运行时证据，worker 必须确认它是 `max`。
 
@@ -48,7 +47,7 @@ dispatch_mode: parallel-plan
 review_mode: diff_self_check
 parent_goal: <一句话结果>
 worker_defaults:
-  model: terra | sonnet | <runtime model id>
+  model: gpt-5.6-terra | sonnet | <runtime model id>
   reasoning_effort: xhigh | max | <supported effort>
 modules:
   - id: M1
@@ -59,7 +58,7 @@ modules:
     verification: [<定向检查>]
     worker_context: <最少上下文>
     worker_profile:
-      model: terra | sonnet | <runtime model id>
+      model: gpt-5.6-terra | sonnet | <runtime model id>
       reasoning_effort: xhigh | max | <supported effort>
 safety:
   status: parallel_safe | sequential_only | needs_user_review
@@ -80,7 +79,7 @@ coordinator 在成功创建实现 worker 后追加独立证据：
 ```yaml
 worker_profile_evidence:
   requested:
-    model: terra
+    model: gpt-5.6-terra
     reasoning_effort: xhigh
   dispatch_arguments:
     model: gpt-5.6-terra
@@ -125,10 +124,10 @@ WORKER_RESULT:
     status: pass | failed | not_run
     evidence: []
   worker_profile:
-    model: terra
+    model: gpt-5.6-terra
     reasoning_effort: xhigh
   worker_profile_evidence:
-    requested: {model: terra, reasoning_effort: xhigh}
+    requested: {model: gpt-5.6-terra, reasoning_effort: xhigh}
     dispatch_arguments: {model: gpt-5.6-terra, thinking: xhigh}
     status: applied | unavailable | rejected
     evidence: <dispatch evidence>
@@ -166,11 +165,11 @@ module 只有同时满足以下条件才能完成：
 实施后必须验证：
 
 1. 六份 `SKILL.md` 和 metadata 均通过 Skill Creator validator。
-2. Codex 默认 `terra/xhigh` 能映射到 `gpt-5.6-terra` + `thinking: xhigh` 的子代理分派参数。
+2. Codex 默认 `gpt-5.6-terra/xhigh` 能原样映射到 `model: gpt-5.6-terra` + `thinking: xhigh` 的子代理分派参数。
 3. Codex coordinator 明确拒绝 thread/task 工具作为实现 worker。
 4. Claude worker 不再要求 `/goal`，并能用 assignment evidence 通过输入门禁。
 5. worker 与 coordinator 的 `diff_self_check` shape 完全一致。
 6. 不存在 reviewer dead branch 或 reviewer profile/preflight 残留。
 7. 含依赖且至少一个 batch 可并发的 DAG 为 `parallel_safe`；纯串行 DAG 为 `sequential_only`。
 8. 缺少 planner 来源、profile 不受支持和调度拒绝时都在实现前阻塞。
-9. plugin version 为 `0.3.1+codex.<UTC 时间戳>`，manifest 合法。
+9. plugin version 为 `0.3.2+codex.<UTC 时间戳>`，manifest 合法。

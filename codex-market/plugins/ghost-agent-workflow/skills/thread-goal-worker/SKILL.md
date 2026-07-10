@@ -44,13 +44,13 @@ description: |
 worker 不读取历史 thread profile，也不要求不存在的当前模型 readback。只校验 coordinator 的实际子代理创建结果：
 
 1. `worker_profile_evidence.requested` 与 plan-authored `worker_profile` 逐字段相等。
-2. 当 requested model 为友好 alias `terra` 时，`dispatch_arguments.model` 必须是 `gpt-5.6-terra`；其他 requested model 必须是调度接口可识别的完整 model id，且 `dispatch_arguments.model` 与其完全相等。
-3. `dispatch_arguments.thinking` 必须与 `requested.reasoning_effort` 完全相等。默认 `terra/xhigh` 的完整映射必须是：
+2. requested model 必须是调度接口可识别的完整 model id，且 `dispatch_arguments.model` 与其完全相等。默认值为 `gpt-5.6-terra`；`terra` 等缩写 alias 不可接受。
+3. `dispatch_arguments.thinking` 必须与 `requested.reasoning_effort` 完全相等。默认 `gpt-5.6-terra/xhigh` 的完整映射必须是：
 
 ```yaml
 worker_profile_evidence:
   requested:
-    model: terra
+    model: gpt-5.6-terra
     reasoning_effort: xhigh
   dispatch_arguments:
     model: gpt-5.6-terra
@@ -139,5 +139,5 @@ worker 不因结果为 blocked 而省略字段，也不把未执行的 verificat
 - 缺字段后先设置 goal、读取实现或修改文件，再补 blocked 结果。
 - 用提示词、计划值或自述替代 implementation subagent dispatch evidence。
 - 把 runtime `worker_profile_evidence` 混入 plan-authored `worker_profile`，或恢复旧 profile evidence shape。
-- 把 `terra` 原样发送给调度接口，或把 `reasoning_effort` 错当成 `thinking` 之外的字段。
+- 把 `gpt-5.6-terra` 缩写成 `terra`，或把 `reasoning_effort` 错当成 `thinking` 之外的字段。
 - 使用字符串形态的 `diff_self_check`，越过 scope，跳过验证，或开启第二轮补修后仍写 `completed`。
