@@ -1,121 +1,84 @@
 ---
 name: git-commit
-description: 自动分析当前仓库未提交代码并直接提交。触发词：/git-commit、"提交代码"、"commit"。Codex 环境下主线程先启动普通 worker 子代理做只读 diff 分析，model 优先使用 gpt-5.3-codex-spark，如果该模型不可用则回退到 gpt-5.4-mini，reasoning_effort=xhigh、fork_context=false；Claude Code 环境不要求使用子代理。主线程负责最终校验、stage 和 commit，并严格按 submodule 到主工程顺序提交（无需确认）。
+description: |
+  分析当前仓库的已暂存、未暂存和 submodule 变更，按职责拆分批次并直接创建中文 Git 提交。
+  用户明确输入 `/git-commit`、要求“提交代码”“提交当前改动”或“commit these changes”时使用；
+  不用于只讨论 commit、解释 Git 或请求 push。Codex 主线程保留全部 Git 写操作，并用只读 worker 辅助分析。
 ---
 
 # Git 智能提交
 
-自动分析未提交代码变更，生成提交信息并**直接提交**。
+在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
-本 skill 在 Codex 环境可使用子代理做只读分析；Claude Code 环境不要求使用子代理。主线程保留所有 git 写操作。
+提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
-提交顺序是硬约束：
+## Codex 只读分析 Worker
 
-1. 先提交 `git submodule`
-2. 再提交主工程
+主线程先启动一个普通 worker 分析 dirty tree；文件很多或存在多个独立 submodule 时，可按目录或 submodule 增加只读 worker。
 
-不要反过来提交。
+- 使用当前 checkout / same-directory，设置 `fork_turns: "none"`，只传仓库根目录、只读范围和结果契约。
+- 若调度接口支持显式 model 和 reasoning effort，优先 `gpt-5.3-codex-spark` + `xhigh`，不可用时使用 `gpt-5.4-mini` + `xhigh`；接口不暴露这些参数时使用当前默认值，不伪造参数。
+- 只允许 `git status`、`git diff`、`git diff --cached`、`git submodule status`、`rg`、`sed`、`pwd` 等只读命令。
+- 禁止 worker 修改文件、stage、commit、push、pull、merge、rebase、reset、checkout、switch、stash 或创建 worktree。
+- 要求 worker 返回：分析范围、changed files、风险、submodule 状态、敏感文件、建议批次和中文提交信息。
 
-## 主线程与子代理
+主线程必须重新读取实际 Git 状态并复核结果；不得仅凭 worker 声明提交。所有 Git 写操作保持串行并由主线程执行。
 
-- **最高优先级：本 skill 在任何环境下都禁止创建 git worktree。**
-- **不得调用任何带 `isolation: "worktree"` / `--worktree` / `git worktree` / `EnterWorktree` 的执行方式。**
-- 本 skill 必须在当前 checkout / same-directory 中执行；不得复制仓库、不得创建临时 worktree、不得切换到隔离目录。
+## 预检
 
-### Codex 分支
+1. 运行 `git rev-parse --show-toplevel`，确认仓库根目录和当前 checkout。
+2. 读取适用于根仓库及目标 submodule 的 `AGENTS.md`、`CLAUDE.md` 或其他仓库指令。
+3. 运行 `git status --short`、`git diff --stat`、`git diff`、`git diff --cached --stat`、`git diff --cached` 和 `git submodule status`。
+4. 区分调用前已暂存内容、未暂存内容、未跟踪文件、submodule 指针和 submodule 内部改动；不要把调用前已暂存内容误归到新批次。
+5. 在每个将提交的仓库中读取 `git config user.name` 和 `git config user.email`。身份不符合仓库指令时停止，不创建提交。
+6. 检查 `.env*`、credentials、私钥、token、证书、生产配置和疑似生成的大文件。存在敏感或归属不明内容时保持未暂存并报告。
 
-Codex 环境下，主线程必须先启动普通 `worker` 子代理做只读分析，参数必须是：
+没有可提交改动时停止，返回当前状态；不要创建空提交。
 
-- `agent_type`: `worker`
-- `model`: 优先使用 `gpt-5.3-codex-spark`；如果该模型不可用，回退到 `gpt-5.4-mini`
-- `reasoning_effort`: `xhigh`
-- `fork_context`: `false`
-- 不允许创建 worktree；子代理必须使用当前 checkout / same-directory，不得使用 worktree 隔离
+## 规划提交批次
 
-子代理只允许执行只读命令，例如 `git status`、`git diff`、`git diff --stat`、`git submodule status`、`rg`、`sed`、`pwd`。子代理不得执行 `git add`、`git commit`、`git push`、`git pull`、`git merge`、`git rebase`、`git reset`、`git checkout`、`git switch`、`git stash`，不得修改文件。
+- 以职责、风险和可独立回滚性分组；文档、测试、配置和实现只有在服务同一变更时才放入一笔提交。
+- 保留用户已有的合理 staged batch。若 staged 内容混合无关职责，先报告冲突；不要静默取消暂存或重排用户 staging。
+- 为每个批次列出显式路径，使用 `git add -- <paths>`。不要使用 `git add -A`、`git add .` 或其他会吸收无关文件的宽泛命令。
+- 使用中文 Conventional Commit：`<type>(<scope>): <描述>`。从实际 diff 判断 scope，不套用固定目录名。
 
-子代理输出必须聚焦：
+常用类型：`feat`、`fix`、`refactor`、`docs`、`test`、`style`、`chore`。
 
-- 当前分析范围
-- 变更文件列表和风险点
-- 是否涉及 submodule / 敏感文件
-- 建议提交批次
-- 建议中文提交信息
+每笔提交保留以下 trailer：
 
-主线程必须复核当前 `git status` / `git diff`，不得只凭子代理结论提交。
-
-### Claude Code 分支
-
-Claude Code 环境下不要求使用子代理。当前主线程直接执行只读 diff / submodule 分析，并保留所有 stage / commit 写操作。
-
-执行前用 `pwd` 确认在仓库根目录，且当前路径不能是 `.claude/worktrees` 或任何 git worktree。不得创建 worktree，不得调用 `git worktree`，不得使用 `EnterWorktree`，不得复制仓库。
-
-## Codex 沙盒权限
-
-主线程最终执行 `git add` / `git commit`（包括 submodule 内提交和主工程提交）时，Codex 环境默认使用 exec `sandbox_permissions: "require_escalated"`，justification: “需要写入 Git index/refs 完成用户要求的提交”。
-
-只读命令如 `git status` / `git diff` / `git submodule status` 不默认提权。
-
-## 并行分析策略
-
-- 普通小改动：Codex 环境启动 1 个 worker 分析整个 dirty tree；Claude Code 环境由主线程直接分析整个 dirty tree。
-- 文件很多、目录跨度大、或同时存在多个 submodule：Codex 环境可以启动多个 worker 并行分析不同目录、不同 submodule 或不同提交批次；Claude Code 环境不要求使用子代理，优先由主线程分批处理。
-- 多 worker 只能并行做只读分析；最终 staging 和 commit 必须由主线程串行完成。
-- 如果子代理结论互相冲突，以主线程重新检查的实际 git 状态为准。
-
-## 工作流程
-
-1. `git status` - 查看主工程未提交文件
-2. Codex 环境启动指定模型 worker 子代理做只读 diff / submodule 分析；Claude Code 环境由主线程直接分析
-3. 文件过多时，Codex 环境按目录、submodule 或提交批次拆分多个只读 worker 并行分析；Claude Code 环境由主线程分批处理
-4. 主线程汇总并复核子代理结论，识别是否存在 submodule 指针变更或脏 submodule
-5. 若存在脏 submodule：
-   - 进入每个 submodule 查看 `git status` / `git diff`
-   - 先在 submodule 内完成提交
-   - 如果有嵌套 submodule，按最深层开始逐层向外提交
-6. 回到主工程重新检查 `git status`
-7. `git diff` - 分析主工程剩余变更（包括新的 submodule 指针）
-8. 生成提交信息：`<type>(<scope>): <描述>`
-9. **主线程直接执行**主工程提交
-10. 显示提交结果
-
-## Submodule 规则
-
-- 只要 submodule 内有未提交改动，必须先提交 submodule，再提交主工程的 submodule 指针
-- submodule 提交和主工程提交要拆成两笔，不能混成一笔
-- 如果用户要求“按顺序提交”，默认顺序就是：`submodule -> 主工程`
-- 如果 submodule 已提交、主工程只剩指针变更，主工程再单独提交一笔
-- 如果没有 submodule 改动，按普通单仓库提交流程执行
-
-## 提交类型
-
-| 类型 | 触发词 |
-|------|--------|
-| feat | 新增、添加、创建、实现 |
-| fix | 修复、解决、处理 |
-| refactor | 重构、优化、改进 |
-| docs | 文档、注释 |
-| style | 格式 |
-| test | 测试 |
-| chore | 配置、依赖 |
-
-## Scope 判断
-
-- **ui**: 界面、视图、组件
-- **api**: 接口、网络
-- **data**: 数据、存储
-- **util**: 工具
-- **config**: 配置
-
-## 合作者
-
-每次提交末尾添加：
-```
+```text
 Co-Authored-By: Nexus <nexus@xfinite.global>
 ```
 
-## 注意
+## Submodule 顺序
 
-- 中文提交信息
-- 不提交 .env、credentials 等敏感文件
-- 改动过大建议提醒用户拆分
+1. 对每个脏 submodule 重复预检、身份检查、显式 staging、cached diff 复核和提交。
+2. 存在嵌套 submodule 时从最深层开始，逐层提交父级指针。
+3. submodule 提交失败或仍有未解释改动时停止；不要继续提交主工程指针。
+4. 回到主工程重新读取状态，把已完成的 submodule 指针纳入对应主工程批次。
+
+submodule 提交与主工程提交必须是不同提交。
+
+## 执行提交
+
+Codex 沙盒阻止写入 Git index/refs 时，主线程使用 `sandbox_permissions: "require_escalated"`，并用最小、具体的 justification 请求授权；只读检查不提权。
+
+对每个批次依次执行：
+
+1. 使用显式路径 stage。
+2. 运行 `git diff --cached --stat` 和 `git diff --cached`，确认只包含该批次、没有敏感文件、没有遗漏或意外删除。
+3. 执行 `git diff --cached --check`。
+4. 创建提交。不得使用 `--no-verify` 绕过 hooks。
+5. hook 或 commit 失败时保留现场并报告。只在当前授权范围内修复；需要扩大修改范围时停止。
+6. 提交后读取新 hash，并重新运行 `git status --short`；再决定是否继续下一批次。
+
+## 最终回报
+
+报告：
+
+- 每个仓库和批次的 commit hash、提交信息和文件范围。
+- submodule 到主工程的实际提交顺序。
+- worker 分析范围、hooks 和 `git diff --cached --check` 结果。
+- 剩余 staged、unstaged、untracked 和被排除的敏感或无关文件。
+
+不要把“部分批次已提交”描述为整个工作区已提交完成。

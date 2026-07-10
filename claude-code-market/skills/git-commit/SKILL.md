@@ -1,80 +1,70 @@
 ---
 name: git-commit
-description: 自动分析当前仓库未提交代码并直接提交。触发词：/git-commit、"提交代码"、"commit"。Claude Code 环境下由当前主会话直接执行只读 diff / submodule 分析、stage 和 commit；执行面固定为当前 checkout / same-directory，并严格按 submodule 到主工程顺序提交（无需确认）。
+description: |
+  分析当前仓库的已暂存、未暂存和 submodule 变更，按职责拆分批次并直接创建中文 Git 提交。
+  用户明确输入 `/git-commit`、要求“提交代码”“提交当前改动”或“commit these changes”时使用；
+  不用于只讨论 commit、解释 Git 或请求 push。Claude Code 当前主会话负责全部分析、stage 和 commit。
 ---
 
 # Git 智能提交
 
-自动分析未提交代码变更，生成提交信息并**直接提交**。当前 Claude Code 会话保留所有 git 读写操作，执行面固定为当前 checkout / same-directory。
+在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
-提交顺序是硬约束：
+提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
-1. 先提交 `git submodule`
-2. 再提交主工程
+## 预检
 
-主工程提交只在相关 submodule 提交完成后进行。
+1. 运行 `git rev-parse --show-toplevel`，确认仓库根目录和当前 checkout。
+2. 读取适用于根仓库及目标 submodule 的 `AGENTS.md`、`CLAUDE.md` 或其他仓库指令。
+3. 运行 `git status --short`、`git diff --stat`、`git diff`、`git diff --cached --stat`、`git diff --cached` 和 `git submodule status`。
+4. 区分调用前已暂存内容、未暂存内容、未跟踪文件、submodule 指针和 submodule 内部改动；不要把调用前已暂存内容误归到新批次。
+5. 在每个将提交的仓库中读取 `git config user.name` 和 `git config user.email`。身份不符合仓库指令时停止，不创建提交。
+6. 检查 `.env*`、credentials、私钥、token、证书、生产配置和疑似生成的大文件。存在敏感或归属不明内容时保持未暂存并报告。
 
-## 执行约束
+没有可提交改动时停止，返回当前状态；不要创建空提交。
 
-- 执行面固定为当前 checkout / same-directory。
-- 执行前用 `pwd` 确认在仓库根目录。
-- 敏感文件保持未暂存：`.env`、credentials、密钥、token、证书。
-- 提交前确认 Git identity 符合仓库要求。
+## 规划提交批次
 
-## 工作流程
+- 以职责、风险和可独立回滚性分组；文档、测试、配置和实现只有在服务同一变更时才放入一笔提交。
+- 保留用户已有的合理 staged batch。若 staged 内容混合无关职责，先报告冲突；不要静默取消暂存或重排用户 staging。
+- 为每个批次列出显式路径，使用 `git add -- <paths>`。不要使用 `git add -A`、`git add .` 或其他会吸收无关文件的宽泛命令。
+- 使用中文 Conventional Commit：`<type>(<scope>): <描述>`。从实际 diff 判断 scope，不套用固定目录名。
 
-1. `pwd` - 确认当前目录。
-2. `git status` - 查看主工程未提交文件。
-3. `git diff --stat` 和 `git diff` - 分析主工程变更范围、风险和提交类型。
-4. `git submodule status` - 判断是否存在 submodule 指针变更或脏 submodule。
-5. 若存在脏 submodule：
-   - 进入每个 submodule 查看 `git status` / `git diff`
-   - 先在 submodule 内完成提交
-   - 如果有嵌套 submodule，按最深层开始逐层向外提交
-6. 回到主工程重新检查 `git status`。
-7. 分析主工程剩余变更，包括新的 submodule 指针。
-8. 生成中文提交信息：`<type>(<scope>): <描述>`。
-9. stage 本批次文件并提交。
-10. 显示提交结果和剩余工作区状态。
+常用类型：`feat`、`fix`、`refactor`、`docs`、`test`、`style`、`chore`。
 
-## Submodule 规则
-
-- 只要 submodule 内有未提交改动，必须先提交 submodule，再提交主工程的 submodule 指针。
-- submodule 提交和主工程提交拆成两笔独立提交。
-- 如果用户要求“按顺序提交”，默认顺序就是：`submodule -> 主工程`。
-- 如果 submodule 已提交、主工程只剩指针变更，主工程再单独提交一笔。
-- 如果没有 submodule 改动，按普通单仓库提交流程执行。
-
-## 提交类型
-
-| 类型 | 触发词 |
-|------|--------|
-| feat | 新增、添加、创建、实现 |
-| fix | 修复、解决、处理 |
-| refactor | 重构、优化、改进 |
-| docs | 文档、注释 |
-| style | 格式 |
-| test | 测试 |
-| chore | 配置、依赖 |
-
-## Scope 判断
-
-- **ui**: 界面、视图、组件
-- **api**: 接口、网络
-- **data**: 数据、存储
-- **util**: 工具
-- **config**: 配置
-
-## 合作者
-
-每次提交末尾添加：
+每笔提交保留以下 trailer：
 
 ```text
 Co-Authored-By: Nexus <nexus@xfinite.global>
 ```
 
-## 注意
+## Submodule 顺序
 
-- 使用中文提交信息。
-- 改动过大时按风险和职责拆分提交。
-- 提交后显示 `git status` 和新提交 hash。
+1. 对每个脏 submodule 重复预检、身份检查、显式 staging、cached diff 复核和提交。
+2. 存在嵌套 submodule 时从最深层开始，逐层提交父级指针。
+3. submodule 提交失败或仍有未解释改动时停止；不要继续提交主工程指针。
+4. 回到主工程重新读取状态，把已完成的 submodule 指针纳入对应主工程批次。
+
+submodule 提交与主工程提交必须是不同提交。
+
+## 执行提交
+
+对每个批次依次执行：
+
+1. 使用显式路径 stage。
+2. 运行 `git diff --cached --stat` 和 `git diff --cached`，确认只包含该批次、没有敏感文件、没有遗漏或意外删除。
+3. 执行 `git diff --cached --check`。
+4. 创建提交。不得使用 `--no-verify` 绕过 hooks。
+5. hook 或 commit 失败时保留现场并报告。只在当前授权范围内修复；需要扩大修改范围时停止。
+6. 提交后读取新 hash，并重新运行 `git status --short`；再决定是否继续下一批次。
+
+## 最终回报
+
+报告：
+
+- 每个仓库和批次的 commit hash、提交信息和文件范围。
+- submodule 到主工程的实际提交顺序。
+- hooks 和 `git diff --cached --check` 结果。
+- 剩余 staged、unstaged、untracked 和被排除的敏感或无关文件。
+
+不要把“部分批次已提交”描述为整个工作区已提交完成。
