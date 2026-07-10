@@ -1,9 +1,9 @@
 ---
 name: thread-coordination
 description: |
-  当用户希望 Codex 以 `/goal` 驱动主协调线程时使用：主线程只分派、轮询和只读验收，不直接实现；
-  需要按目标域 ownership 拆分任务、复用已有 Codex 子线程/会话、强制子线程先设置 active `/goal`、
-  要求 worker 自审查自验收、汇总执行结果或防止越权。
+  协调 Codex worker thread 完成 `/goal` 驱动的多模块任务：按 ownership 拆分、复用可访问 thread、
+  强制 worker 设置 active `/goal` 并汇总验收。用户要求主线程只协调不实现，或传入 `parallel_safe`
+  计划并要求按 batch 自动执行、最多补修一次和判断父目标是否完成时使用。
 ---
 
 # Thread Coordination
@@ -255,12 +255,13 @@ main_total_review:
 
 当 `$parallel-task-planner` 提供一个 `safety.status: parallel_safe` 的计划路径时，进入此轻量模式。计划是唯一的模块交接契约；不要重新按 ownership 拆解，也不要维护永久模块或 thread registry。
 
-1. 读取计划，确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。
-2. 仅对当前 batch 中依赖已满足的 module 分派 worker thread；每个 worker 只收到 `id`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
-3. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
-4. 等待每个 worker 返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
-5. 对每个失败或不完整模块最多向原 worker 发起一次定向补修；不得由协调线程自行修改实现文件，也不得无限重试。
-6. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
+1. 要求绝对 `plan_path`，读取对应文件，并确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。路径缺失、不可读、内容与分派摘要不一致或状态不是 `parallel_safe` 时，返回 `blocked`，不分派 worker。
+2. 分派前用当前工作区重新检查路径和验证冲突；计划已过期或安全证据失效时停止并返回 `blocked`。
+3. 仅对当前 batch 中依赖已满足的 module 分派 worker thread；把 `id` 映射为 `module_id`，并传入 `parent_goal`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
+4. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
+5. 等待每个 worker 返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
+6. 为每个 module 记录 `repair_round: 0 | 1`。失败或不完整时仅向原 worker 补修一次；不得由协调线程修改实现文件或重新拆分逃避上限。
+7. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
 
 此模式使用可访问的 Codex worker thread，但 thread 复用只取决于本轮可见的近期上下文，不构成长期 ownership。最终返回：
 

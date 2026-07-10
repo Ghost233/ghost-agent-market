@@ -1,9 +1,9 @@
 ---
 name: thread-coordination
 description: |
-  当用户希望 Claude Code 以 `/goal` 驱动主协调会话时使用：主会话负责拆分、分派、轮询和验收；
-  实现由 Claude Code agent team 队员承担。需要按目标域 ownership 构建 team roster，通过稳定队员 name
-  复用 teammate，并要求队员使用 `thread-goal-worker` 执行限定目标、自验证、自审查和结构化回报。
+  协调 Claude Code agent team 完成 `/goal` 驱动的多模块任务：按 ownership 拆分、以稳定队员 name
+  分派、轮询、自验证并总验收。用户要求主会话只协调不实现、复用队员，或传入 `parallel_safe`
+  计划并要求按 batch 自动执行、最多补修一次和判断父目标是否完成时使用。
 ---
 
 # Thread Coordination
@@ -146,12 +146,13 @@ TEAMMATE_RESULT:
 
 当 `$parallel-task-planner` 提供一个 `safety.status: parallel_safe` 的计划路径时，进入此轻量模式。计划是唯一的模块交接契约；不要重新按 ownership 拆解，也不要维护永久模块或队员 registry。
 
-1. 读取计划，确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。
-2. 仅对当前 batch 中依赖已满足的 module 分派队员；每个队员只收到 `id`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
-3. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
-4. 等待每个队员返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
-5. 对每个失败或不完整模块最多向原队员发起一次定向补修；不得由 coordinator 自行修改实现文件，也不得无限重试。
-6. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
+1. 要求绝对 `plan_path`，读取对应文件，并确认 `parent_goal`、所有 modules、`dispatch.batches` 和安全状态完整。路径缺失、不可读、内容与分派摘要不一致或状态不是 `parallel_safe` 时，返回 `blocked`，不分派队员。
+2. 分派前用当前工作区重新检查路径和验证冲突；计划已过期或安全证据失效时停止并返回 `blocked`。
+3. 仅对当前 batch 中依赖已满足的 module 分派队员；把 `id` 映射为 `module_id`，并传入 `parent_goal`、`task`、`writable_paths`、`done_when`、`verification` 和必要 `worker_context`。
+4. 同一 batch 的可写范围不得重叠。任何共享文件、API 契约、迁移、生成输出或验证冲突都停止并发，返回 `blocked` 或交给后续串行 batch。
+5. 等待每个队员返回 `WORKER_RESULT`；普通完成叙述、缺少验证或缺少 `diff_self_check` 的结果均为 `needs_fix`。
+6. 为每个 module 记录 `repair_round: 0 | 1`。失败或不完整时仅向原队员补修一次；不得由 coordinator 修改实现文件或重新拆分逃避上限。
+7. 所有 batch 完成后，检查父目标覆盖、每个 module 的 `done_when`、验证证据、跨模块文件冲突、风险和未解决项；在授权的只读范围内可运行 `git diff --check`。
 
 此模式使用 agent team 的稳定队员 name，但稳定 name 只服务本会话的模块执行，不构成长期 ownership。最终返回：
 

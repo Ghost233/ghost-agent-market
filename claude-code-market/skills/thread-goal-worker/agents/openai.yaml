@@ -1,4 +1,4 @@
 interface:
   display_name: "Thread Goal Worker"
-  short_description: "队员执行单一 scope，支持轻量并发模块模式"
-  default_prompt: "使用 $thread-goal-worker 执行一个 Claude Code 队员任务；收到 parallel-plan module 时按 scope 实现、验证、diff 自检并最多修复一次，最后返回 WORKER_RESULT。"
+  short_description: "在授权 scope 内执行 Claude Code 模块、验证并自检"
+  default_prompt: "使用 $thread-goal-worker 执行一个 Claude Code 队员任务；parallel-plan 模式只处理单一模块、验证、diff 自检并最多修复一次。"

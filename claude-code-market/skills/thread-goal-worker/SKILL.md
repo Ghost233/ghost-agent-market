@@ -1,9 +1,9 @@
 ---
 name: thread-goal-worker
 description: |
-  当 Claude Code agent team 队员收到 coordinator 分派的限定任务时使用：先确认 parent_goal、owner_domain、goal_id、scope、
-  boundaries 和 verification，再在授权范围内实现、调查或验证；完成后自验证、自审查、自验收并返回 TEAMMATE_RESULT。
-  适用于强化队员 scope、验证、自审查、目标对齐证据和结构化回报。
+  让 Claude Code agent team 队员在限定 scope 内执行 coordinator 分派的实现、调查或验证任务，
+  自验证、自审查并返回结构化结果。队员收到普通 owner-domain 任务，或收到 `parallel-plan` 单模块并需
+  按 `writable_paths` 执行、diff 自检、最多修复一次并返回 `WORKER_RESULT` 时使用。
 ---
 
 # Thread Goal Worker
@@ -108,7 +108,7 @@ TEAMMATE_RESULT:
 
 ## Parallel-plan Worker 模式
 
-收到 coordinator 基于 `parallel-plan` 分派的单个 module 时，使用这个轻量模式。输入必须包含 `module_id`、`task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和 `parent_goal`；缺少任一字段时返回 `blocked`，不要推断。
+收到 coordinator 基于 `parallel-plan` 分派的单个 module 时，使用这个轻量模式。coordinator 必须把 plan 中的 `id` 映射为 `module_id`。输入必须包含 `module_id`、`task`、`writable_paths`、`done_when`、`verification`、`worker_context` 和 `parent_goal`；缺少任一字段时返回 `blocked`，不要推断。
 
 执行循环严格限定为：
 
@@ -117,7 +117,8 @@ TEAMMATE_RESULT:
 ```
 
 - `writable_paths` 是本模式唯一可写范围；跨 scope、共享契约冲突、未完成依赖和未经授权的命令必须返回 `needs_fix` 或 `blocked`。
-- 本模式以自检替代额外 reviewer-subagent：检查 changed files 是否都在 scope 内、`done_when` 是否满足、验证是否通过或有明确替代证据、diff 是否聚焦且不覆盖用户改动。
+- 把 `worker_context` 中的约束、保护范围和来源证据视为执行边界，不得把它当作扩张 scope 的授权。
+- 本模式以自检替代额外 reviewer-subagent：检查 changed files 是否都在 `writable_paths` 内、没有覆盖既有用户改动、`done_when` 已满足、验证通过或有明确替代证据、diff 聚焦且没有共享文件冲突。
 - 验证或 `diff_self_check` 失败时最多修复一次。第二次失败、范围不清或依赖缺失时停止并返回非完成状态。
 - 该例外只适用于带 `parallel-plan` 标记的模块，不改变普通分派任务的既有自审查门禁。
 
@@ -135,7 +136,7 @@ WORKER_RESULT:
   - "<none 或剩余风险>"
 ```
 
-只有验证已通过或有明确替代证据，并且 `diff_self_check: pass` 时才可返回 `completed`。不要以 `TEAMMATE_RESULT` 替代该结果；coordinator 仍可在普通模式消费 `TEAMMATE_RESULT`。
+只有验证已通过或有明确替代证据，并且 `diff_self_check: pass` 时才可返回 `completed`。若本轮是 coordinator 发回的唯一补修，先读取现有改动并只处理原 finding；不得开启第二轮自修。不要以 `TEAMMATE_RESULT` 替代该结果；coordinator 仍可在普通模式消费 `TEAMMATE_RESULT`。
 
 ## 正向检查清单
 

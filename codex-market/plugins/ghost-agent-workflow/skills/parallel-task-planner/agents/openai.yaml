@@ -1,4 +1,4 @@
 interface:
   display_name: "并发任务规划"
-  short_description: "生成安全并发模块计划并自动协调执行"
-  default_prompt: "使用 $parallel-task-planner 将需求或已有计划转为并发模块计划；仅在安全门禁通过时，自动调用 $thread-coordination 的 parallel-plan 模式分派 Codex worker thread。"
+  short_description: "把自然语言或计划文档整理为安全、可执行的并发模块计划"
+  default_prompt: "使用 $parallel-task-planner 将自然语言需求或计划文档整理为并发模块计划；安全门禁通过后，自动用 $thread-coordination 分派 Codex worker thread。"

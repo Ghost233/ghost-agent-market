@@ -1,9 +1,9 @@
 ---
 name: parallel-task-planner
 description: |
-  当用户提供自然语言需求或已有计划文档，并希望在确认安全时自动并发推进时使用。
-  将输入转换为可执行的并发模块计划；仅在可写范围、依赖和验证均通过安全门禁时，调用
-  `thread-coordination` 的 `parallel-plan` 模式。无法证明安全时只交付计划，不自动分派。
+  将自然语言需求或已有计划文档转换为可执行的并发模块计划，并在安全门禁通过后自动调用
+  `thread-coordination` 的 `parallel-plan` 模式。用户要求拆分已知可并发任务、从 plan 提取执行模块、
+  判断并发安全性或生成并立即执行并发计划时使用；无法证明安全时只交付计划。
 ---
 
 # Parallel Task Planner
@@ -54,14 +54,16 @@ dispatch:
     - [M1, M2]
 ```
 
-所有 module 必须可追溯到 `parent_goal` 的完成条件。`writable_paths` 不得使用无法判断冲突的宽泛范围；共享 API、迁移、生成输出、全局配置和同一文件必须归属一个模块，或被放入后续串行 batch。
+为每个 module 分配唯一 `id`；`depends_on` 只能引用同一计划中已存在的 id。分派时将 `id` 映射为 worker 输入的 `module_id`。所有 module 必须可追溯到 `parent_goal` 的完成条件；`worker_context` 只携带实现所需的约束、保护范围和来源证据。
+
+`writable_paths` 不得使用无法判断冲突的宽泛范围。把相同路径、父子路径、相交 glob、共享 API、迁移、生成输出和全局配置视为冲突；将冲突写入同一模块，或标记为不可自动并发。
 
 ## 安全门禁
 
 只有以下条件全部成立时，`safety.status` 才可写为 `parallel_safe`：
 
 1. 至少存在两个可执行模块。
-2. 同一 batch 中的 `writable_paths` 不重叠，且不存在未归属的共享契约。
+2. 同一 batch 中的 `writable_paths` 不存在精确、父子或 glob 相交，且不存在未归属的共享契约。
 3. 依赖图无环，batch 中每个模块的依赖均已完成。
 4. 每个模块都有明确 `done_when` 和定向 `verification`。
 5. 并行验证不会竞争同一可写产物或共享环境；会竞争的验证必须串行。
@@ -71,7 +73,7 @@ dispatch:
 
 ## 自动交接
 
-`parallel_safe` 计划写入并复查后，立即调用 `$thread-coordination`，传入计划绝对路径和 `parallel-plan` 模式。不要重复拆解模块，也不要转发完整聊天记录。
+`parallel_safe` 计划写入并复查后，立即调用 `$thread-coordination`，传入计划绝对路径、`parallel-plan` 模式和 `parent_goal`。不要重复拆解模块，也不要转发完整聊天记录。
 
 在 Claude Code 中，coordinator 使用 agent team 的稳定队员 name 执行每个 ready module；规划器只提供 module 契约和 batch 顺序。它不直接创建 worker、修改实现文件、验证业务结果或替 coordinator 决定补修。
 
@@ -79,7 +81,7 @@ dispatch:
 
 ## 输出
 
-最终回复必须说明：计划路径、`safety.status`、模块及 batch、自动分派是否发生、未分派原因和仍需用户确认的事项。不得把“计划已生成”表述为父目标已经完成。
+最终回复必须说明：计划路径、`safety.status`、模块及 batch、自动分派是否发生、未分派原因和仍需用户确认的事项。自动分派后以 coordinator 返回的 `PARALLEL_PLAN_RESULT` 判断父目标状态；不得把“计划已生成”表述为父目标已经完成。
 
 ## 非目标
 
