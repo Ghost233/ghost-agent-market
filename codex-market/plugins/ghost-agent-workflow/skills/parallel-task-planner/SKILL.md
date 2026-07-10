@@ -1,37 +1,34 @@
 ---
 name: parallel-task-planner
 description: |
-  将自然语言需求或已有计划文档转换为带来源版本和完整 worker/reviewer profiles 的可执行并发模块计划，
-  并在安全门禁通过后自动调用 `thread-coordination` 的 `parallel-plan` 模式。用户要求拆分已知可并发任务、
-  从 plan 提取执行模块、判断并发安全性或生成并立即执行并发计划时使用；无法证明安全时只交付计划。
+  当用户要求把自然语言需求或已有计划文档拆成 Codex 并发模块、整理依赖 DAG、判断并发安全性，
+  或生成并立即执行版本化并发计划时使用。范围、依赖或 profile 无法确认，以及任务只能串行时也使用。
 ---
 
 # Parallel Task Planner
 
 ## 目标
 
-把一个已经具备可执行信息的需求或计划文档，整理为短小、可审计的并发模块计划。规划器只负责输入归一化、最少量的冲突检查、计划写入和安全分派；不维护长期模块归属，也不替 coordinator 或 worker 实现业务改动。
+把具备可执行信息的需求或计划文档整理为短小、可审计的并发 module 计划。planner 只负责输入归一化、最少冲突检查、profile 解析、拓扑 batch、计划写入和安全交接；不创建实现子代理、不追加 runtime evidence，也不替 coordinator 或 worker 修改业务代码。
 
 ## 输入与最少检查
 
-接受以下任一种输入：
+接受以下任一输入：
 
-- 自然语言：目标、已知范围、完成条件、约束或验证偏好。
-- 计划文档路径：保留其中已经确定的决策，只将可执行工作提取为模块。
+- 自然语言：目标、已知范围、完成条件、依赖、约束和验证偏好。
+- 计划文档绝对路径：保留已经确定的决策，只提取可执行 module。
 
-同时确认 `execution_platform`，并读取可选的顶层 `worker_defaults` 与 module 级 `worker_profile` 覆盖。Codex 计划的 `execution_platform` 必须是 `codex`；未显式覆盖时，worker 默认使用 `terra/xhigh`，reviewer subagent 固定使用 `terra/xhigh`。
+`execution_platform` 固定为 `codex`。读取可选顶层 `worker_defaults` 与 module 级 `worker_profile` 覆盖；未显式覆盖时使用 `terra/xhigh`。只读取确认目标文件、依赖、可写范围、profile 和验证冲突所需的最少仓库内容。不要为制造并发而扩张需求、猜测隐式接口或猜测模型标识。
 
-只读取确认目标文件、可写范围、依赖、profile 和验证冲突所需的最少仓库内容。不要为了制造并发而扩张需求、猜测隐式接口或猜测模型标识；无法确认时保留证据并输出 `needs_user_review`。
+## 计划契约
 
-## 并发计划契约
-
-每次规划都写入：
+每次规划写入：
 
 ```text
 docs/parallel-task-plans/YYYY-MM-DD-<goal-slug>.md
 ```
 
-计划必须使用以下字段：
+计划使用以下 schema：
 
 ```yaml
 planner: parallel-task-planner
@@ -54,11 +51,8 @@ modules:
       - <可观察完成条件>
     verification:
       - <定向命令或替代证据>
-    worker_context: <执行所需的最少上下文>
+    worker_context: <实现所需的最少上下文>
     worker_profile:
-      model: terra
-      reasoning_effort: xhigh
-    reviewer_subagent_profile:
       model: terra
       reasoning_effort: xhigh
 safety:
@@ -70,50 +64,46 @@ dispatch:
     - [M1, M2]
 ```
 
-为每个 module 分配唯一 `id`；`depends_on` 只能引用同一计划中已存在的 id。分派时将 `id` 映射为 worker 输入的 `module_id`。所有 module 必须可追溯到 `parent_goal` 的完成条件；`worker_context` 只携带实现所需的约束、保护范围和来源证据。
-
-`writable_paths` 不得使用无法判断冲突的宽泛范围。把相同路径、父子路径、相交 glob、共享 API、迁移、生成输出和全局配置视为冲突；将冲突写入同一模块，或标记为不可自动并发。
+计划只包含 plan-authored `worker_profile`。不要写 `worker_profile_evidence` 或任何 reviewer profile、reviewer preflight、reviewer 分支；实现 worker 自己执行 `diff_self_check`。
 
 ## Profile 解析
 
-写入计划前按以下顺序解析 profile：
+写入计划前按顺序解析：
 
-1. 从平台默认 `worker_defaults: terra/xhigh` 开始；顶层覆盖和 module 覆盖均可单独覆盖 `model` 或 `reasoning_effort`，计划顶层始终写出解析后的完整 `worker_defaults`。
-2. 对每个 module，将其 `worker_profile` 覆盖合并到解析后的 `worker_defaults`，再写出包含两个字段的完整值；module 不得依赖 coordinator 继续继承默认值。
-3. 为每个 module 写出完整的 `reviewer_subagent_profile: terra/xhigh`；它不跟随 worker 覆盖，显式替换或不完整 reviewer profile 同样需要 `needs_user_review`。
-4. `model` 与 `reasoning_effort` 都必须是非空、当前运行时可识别的值。显式空值、无法解析的值、平台不匹配或解析后缺少任一字段时，将 `safety.status` 写为 `needs_user_review` 并说明具体字段。
+1. 从 Codex 默认 `worker_defaults: terra/xhigh` 开始。顶层覆盖和 module 覆盖都可单独覆盖 `model` 或 `reasoning_effort`，计划顶层始终写出完整默认值。
+2. 每个 module 将覆盖合并到已解析的 `worker_defaults`，再写出完整、不可继承的 `worker_profile`。
+3. `terra` 是允许的友好 alias；coordinator 分派时负责映射到 `gpt-5.6-terra`。其他模型必须是当前 Codex 实现子代理接口可识别的完整 model id。
+4. `model` 与 `reasoning_effort` 必须非空且可由当前子代理调度接口支持。空值、未知值、平台不匹配或字段不完整时写 `needs_user_review`，并说明具体字段。
 
-用户显式给出的不可用 profile 是约束错误，不能用平台默认值、近似模型或较低 reasoning effort 静默替换。计划中的 profile 只是请求约束，不是运行时已经应用的证据；不要把推荐值或提示词中的声明写成已生效配置。
+计划中的 profile 是请求约束，不是运行时 evidence。不要把 alias 展开结果、推荐值、提示词声明或假定的 effective profile 写成已经应用；不允许选择近似模型或降低 reasoning effort。
+
+## 依赖与 Batch
+
+- 每个 module 使用唯一非空 `id`；`depends_on` 只能引用同一计划中的 id，依赖图必须无环。
+- 按拓扑层生成 `dispatch.batches`。每个 module id 恰好出现一次，所有依赖 module 必须位于更早 batch。
+- 同一 batch 内的 `writable_paths`、验证产物和共享环境不得冲突。精确路径、父子路径、相交 glob、共享 API、迁移、生成输出和全局配置均按潜在冲突处理。
+- 非空 `depends_on` 本身不表示只能串行。有拓扑依赖但至少一个 batch 含两个以上可安全同时执行的 module 时，仍可为 `parallel_safe`。
+- 只有每个 batch 宽度都为 `1`、不存在任何安全并发层时，才写 `sequential_only`。
 
 ## 安全门禁
 
-只有以下条件全部成立时，`safety.status` 才可写为 `parallel_safe`：
+只有以下条件全部成立，`safety.status` 才能写 `parallel_safe`：
 
-1. 至少存在两个可执行模块。
-2. 同一 batch 中的 `writable_paths` 不存在精确、父子或 glob 相交，且不存在未归属的共享契约。
-3. 依赖图无环，batch 中每个模块的依赖均已完成。
-4. 每个模块都有明确 `done_when` 和定向 `verification`。
-5. 并行验证不会竞争同一可写产物或共享环境；会竞争的验证必须串行。
-6. 全部模块合起来覆盖父目标的完成条件。
-7. 来源、格式版本、执行平台、`dispatch_mode: parallel-plan`、`review_mode: diff_self_check` 以及每个 module 的两个 profile 均完整且可解析。
+1. 至少两个可执行 module，且至少一个 batch 宽度大于 `1`。
+2. 依赖图无环，batch 是合法拓扑顺序，每个依赖位于更早 batch。
+3. 同一 batch 的可写路径、共享契约、验证产物和环境互不冲突。
+4. 每个 module 都有明确 `done_when`、定向 `verification`、最小 `worker_context` 和完整 `worker_profile`。
+5. 全部 module 合起来覆盖 `parent_goal`。
+6. 来源、格式版本、平台、`dispatch_mode: parallel-plan` 与 `review_mode: diff_self_check` 完整可解析。
 
-存在明确依赖但没有不确定性时，写 `sequential_only` 并保存计划，不自动并发。范围、依赖或共享契约有证据不足时，写 `needs_user_review`，说明缺少何种确认；绝不自动降级为“看起来能并发”。
+所有 batch 宽度为 `1` 时写 `sequential_only` 并保留拓扑证据。范围、依赖、profile、共享契约或验证安全性无法确认时写 `needs_user_review`。两种状态都不得自动交给 coordinator。
 
 ## 自动交接
 
-只有 `safety.status: parallel_safe` 的版本化计划在写入并复查后才立即调用 `$thread-coordination`，传入计划绝对路径、`parent_goal`，并把计划中的 `dispatch_mode: parallel-plan` 与 `review_mode: diff_self_check` 作为结构化字段原样交接。不要重复拆解模块，也不要转发完整聊天记录。
+计划写入并复查后，只有 `safety.status: parallel_safe` 才调用 `$thread-coordination`，传入绝对 `plan_path`。不要重复拆 module、创建实现子代理、追加 profile evidence 或转发完整聊天记录。
 
-在 Codex 中，coordinator 使用可访问的 Codex worker thread 执行每个 ready module；规划器只提供 module 契约和 batch 顺序。它不直接创建 worker、修改实现文件、验证业务结果或替 coordinator 决定补修。
-
-`sequential_only` 与 `needs_user_review` 只返回计划和判定证据，不调用 coordinator。用户修改计划后可重新运行本 skill。
+Codex coordinator 使用实现子代理按 batch 执行；planner 不使用 `create_thread`、`fork_thread`、`send_message_to_thread` 或其他用户可见 task/thread 工具，也不决定补修。
 
 ## 输出
 
-最终回复必须说明：计划路径、格式版本、执行平台、`dispatch_mode`、`review_mode`、`safety.status`、模块及其完整 profiles、batch、自动分派是否发生、未分派原因和仍需用户确认的事项。自动分派后以 coordinator 返回的 `PARALLEL_PLAN_RESULT` 判断父目标状态；不得把“计划已生成”表述为父目标已经完成。
-
-## 非目标
-
-- 不维护长期 ownership registry 或 thread 亲和性。
-- 不通过猜测把串行工作拆成并发工作。
-- 不要求每个模块都运行全项目构建。
-- 不替 worker 修改代码，也不接管 coordinator 的总验收。
+最终说明计划绝对路径、格式版本、平台、marker、safety 状态、完整 module profiles、拓扑 batch、自动交接是否发生及未交接原因。自动执行后只以 coordinator 的 `PARALLEL_PLAN_RESULT` 判断父目标状态，不把“计划已生成”写成目标已完成。

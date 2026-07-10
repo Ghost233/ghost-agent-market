@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.3.0+codex.20260710073611",
-  "description": "Codex skills for versioned parallel planning, profile-bound thread coordination, scoped workers, and safe Git commits.",
+  "version": "0.3.1+codex.20260710083213",
+  "description": "Codex skills for versioned parallel planning, profile-bound subagent coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -15,6 +15,7 @@
     "thread-goal-worker",
     "parallel-task-planner",
     "worker-profile",
+    "subagent",
     "git-commit",
     "goal",
     "git",
@@ -24,8 +25,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "Plan parallel work, enforce worker profiles, and commit safely.",
-    "longDescription": "Packages parallel-task-planner, thread-coordination, thread-goal-worker, and git-commit. Parallel execution flows through versioned plans, model and reasoning profiles are verified before dispatch, workers remain inside scoped goals, and reviewed changes are committed in the required order.",
+    "shortDescription": "Plan parallel work, dispatch scoped subagents, and commit safely.",
+    "longDescription": "Packages parallel-task-planner, thread-coordination, thread-goal-worker, and git-commit. Parallel execution flows through versioned plans, Codex modules run in profile-bound implementation subagents rather than user-visible threads, workers remain inside scoped goals, and reviewed changes are committed in the required order.",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
@@ -33,8 +34,8 @@
     ],
     "defaultPrompt": [
       "Use $parallel-task-planner to generate a versioned parallel plan with complete worker profiles.",
-      "Use $thread-coordination to execute a validated parallel-task-planner plan path.",
-      "Use $thread-goal-worker for the single scoped module dispatched by the coordinator.",
+      "Use $thread-coordination to execute a validated parallel-task-planner plan path with Codex implementation subagents.",
+      "Use $thread-goal-worker for the single scoped module dispatched to a subagent by the coordinator.",
       "Use $git-commit to analyze current changes and commit them."
     ]
   }

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Thread Goal Worker"
-  short_description: "校验 Codex 计划来源与 profile 后执行单模块"
-  default_prompt: "使用 $thread-goal-worker 校验 Codex 单 module 的计划来源和运行时 profile，设置 active goal 后执行、验证并返回 WORKER_RESULT。"
+  display_name: "单模块执行子代理"
+  short_description: "校验 Codex 实现子代理分派并在限定范围内执行单模块任务"
+  default_prompt: "使用 $thread-goal-worker 校验 coordinator 的单 module implementation subagent 分派，确认 profile dispatch evidence 与 active goal 后实现、验证并返回 WORKER_RESULT。"

@@ -1,4 +1,4 @@
 interface:
   display_name: "并发任务规划"
-  short_description: "将自然语言或文档转为包含完整模型配置的版本化安全并发任务计划"
-  default_prompt: "使用 $parallel-task-planner 为 Claude Code 生成带 planner、plan_format_version 和 execution_platform 的并发计划，写出每个 module 的完整 worker_profile 和 reviewer_subagent_profile，并仅在 parallel_safe 时交给 $thread-coordination。"
+  short_description: "为 Claude Code 生成带完整 worker 配置的版本化并发计划"
+  default_prompt: "使用 $parallel-task-planner 为 Claude Code 生成带版本、结构化 marker、完整 worker_profile 和拓扑 batch 的计划；仅在至少一个 batch 可并发且状态为 parallel_safe 时交给 $thread-coordination。"
