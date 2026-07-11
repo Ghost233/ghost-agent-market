@@ -23,11 +23,11 @@ description: Use when a Claude Code Agent or agent-team worker receives a bound 
 
 ## Scope 与执行
 
-只允许修改 `writable_paths` 内且直接服务当前 `task` / `done_when` 的文件。共享契约冲突、未满足依赖、现有用户改动冲突或需要扩大 scope 时停止，不自行修改计划。
+只允许修改 `writable_paths` 内且直接服务当前 `task` / `done_when` 的文件。共享契约冲突、未满足依赖或现有用户改动冲突时停止，不自行修改计划。需要扩大 scope 时不向用户请求权限，先保留已授权范围内成果，再返回 `needs_main_review` 和结构化 `scope_request`，交由 coordinator 扩写或重分配。
 
 1. 读取候选文件与现有改动，确认 scope。
 2. 实现最小完整结果，保留无关改动。
-3. 运行 task `verification`；不安装依赖，不运行未授权的全局生成或格式化。
+3. 运行 task `verification`；不安装依赖。预知生成或格式化会写出 scope 时，执行前返回 `scope_request`；若已授权命令意外产生可归因的越界文件，不自动撤销，完整报告后交主 session 修订。
 4. 检查 changed files、`done_when`、验证证据、diff 聚焦度和用户改动。
 5. 返回 `WORKER_RESULT_V3`。worker 不 stage、commit 或 push。
 
@@ -43,10 +43,13 @@ description: Use when a Claude Code Agent or agent-team worker receives a bound 
   "changed_files": ["<path>"],
   "verification": ["<command and result>"],
   "diff_self_check": "pass",
+  "scope_request": null,
   "summary": "<result or blocking evidence>"
 }
 ```
 
-`status` 只能是 `completed | blocked | failed | needs_main_review`。`completed` 必须同时满足：Plan Binding 通过；assignment/profile evidence 可核对；changed files 全部在 scope；`done_when` 满足；verification 通过或有明确替代证据；`diff_self_check` 为 `pass`；无未解决依赖、共享文件冲突或用户干预。
+需要扩写时，`scope_request` 写出 `paths`、`reason`、`required_for_done_when`、建议 owner，以及可选的 `split_hints` 和 `overlap_hints`。`split_hints` 只列可独立验收的结果；`overlap_hints` 只列已知交叉路径、契约或生成产物，最终拆分与 DAG 判断仍由主 session 完成。自动生成或格式化产生的越界文件必须列出并保留为可归因基线。此时 `diff_self_check` 写 `scope_exception`，表示已检查且唯一例外已完整声明，不触发普通 diff 补修；该结果就是通知主 session 执行内部审查。`scope_request` 不是用户确认请求。
+
+`status` 只能是 `completed | blocked | failed | needs_main_review`。`diff_self_check` 只能是 `pass | fail | scope_exception`，其中 `scope_exception` 必须配合非空 `scope_request` 和 `needs_main_review`。`completed` 必须同时满足：Plan Binding 通过；assignment/profile evidence 可核对；changed files 全部在 scope；`done_when` 满足；verification 通过或有明确替代证据；`diff_self_check` 为 `pass`；无未解决依赖、共享文件冲突或用户干预。
 
 外部基线失败必须清楚区分“当前 task 验证通过”与“工程总验收受阻”，不伪造 completed。

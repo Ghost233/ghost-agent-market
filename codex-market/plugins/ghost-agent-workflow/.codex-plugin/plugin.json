@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.6.0+codex.20260711151121",
+  "version": "0.6.2+codex.20260711161253",
   "description": "Codex skills for v3 task DAG planning, reusable child thread coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",

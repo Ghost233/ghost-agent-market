@@ -11,6 +11,8 @@ description: Use when Codex must convert a natural-language goal or an existing 
 
 planner 不创建子线程、不写 runtime evidence、不修改业务文件。
 
+用户授权以 `parent_goal` 为单位。coordinator 为完成同一父目标发起修正版规划时，继承原执行授权，不要求用户再次确认。
+
 ## 产物
 
 每次生成唯一 plan id，并写入当前项目：
@@ -76,8 +78,20 @@ node <plugin-root>/scripts/thread-plan.mjs validate <absolute-plan.json>
 
 脚本生成 `dispatch.routes` 和同目录 `state.json`。校验失败时保留原错误，不手改 route 或 safety。
 
+## 继续规划
+
+coordinator 可携带旧 plan、state、子线程结果和当前 diff 请求修正版计划。能够由 thread id、task id、changed files 与执行记录归因的本轮 worker 改动是受控基线，不算未知用户改动；新计划必须为它们分配明确 owner、写域、依赖和复查条件。
+
+scope 扩展与任务重分配由 coordinator 在原 `parent_goal` 内决定。已完成 task 不在修正版中重跑，其产物作为受控基线；未完成 task 重新接线，原依赖已由基线满足时移除对应边。
+
+- 一个扩展包含至少两个 scope、完成条件和验证都能分离且互不依赖的结果时，拆成多个不可比 task；不得让单一 task 串行包办。
+- 扩展与其他 task 的路径、共享契约或生成产物交叉时，把交叉职责抽成新的共享前置 task，指定唯一 `module_id` 和写域，从消费者移除该职责，并让所有消费者依赖新节点。已有唯一 owner 时直接转交并重接依赖。
+- 不以文件数判断规模，不为追求并行拆开真实依赖；修正版只剩串行尾部时允许 `sequential_only` 并继续执行。
+
+不要把内部编排选择升级为用户确认。只有父目标变化、无法归因的用户改动、敏感/破坏性操作、外部副作用或无法安全消歧时写 `needs_user_review`。
+
 ## 交接
 
-只在用户当前请求明确要求执行子线程、脚本校验成功且 `safety.status` 为 `parallel_safe` 时，调用 `$thread-coordination` 并传入绝对 `plan_path`。否则只返回计划路径和安全结论。
+首次规划只在用户当前请求明确要求执行子线程、脚本校验成功且 `safety.status` 为 `parallel_safe` 时，调用 `$thread-coordination`。由 coordinator 发起的同父目标继续规划在校验成功后直接恢复执行，不再次询问用户，也不只停在计划路径。
 
 v1/v2 计划不兼容本契约；必须重新生成 v3。“计划已生成”不等于父目标已完成。
