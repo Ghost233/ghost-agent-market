@@ -54,6 +54,10 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("thread-plan.mjs next", coordinator)
             self.assertIn("thread-plan.mjs update", coordinator)
             self.assertIn("WORKER_RESULT_V3", coordinator)
+            self.assertIn("profile_validation: syntax_only", coordinator)
+            self.assertIn("dispatch_failed", coordinator)
+            self.assertIn("task 保持 `pending`", coordinator)
+            self.assertIn("保留 `running/thread_id`", coordinator)
 
     def test_all_thread_skills_remove_batch_and_capacity_terms(self) -> None:
         for legacy in (
@@ -66,10 +70,18 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy, self.all_skills)
 
-    def test_published_driver_is_identical_on_both_platforms(self) -> None:
+    def test_published_driver_differs_only_by_execution_platform(self) -> None:
         codex_script = CODEX / "scripts/thread-plan.mjs"
         claude_script = CLAUDE / "scripts/thread-plan.mjs"
-        self.assertEqual(codex_script.read_bytes(), claude_script.read_bytes())
+        codex_source = codex_script.read_text(encoding="utf-8").replace(
+            'const expectedExecutionPlatform = "codex";',
+            'const expectedExecutionPlatform = "<platform>";',
+        )
+        claude_source = claude_script.read_text(encoding="utf-8").replace(
+            'const expectedExecutionPlatform = "claude_code";',
+            'const expectedExecutionPlatform = "<platform>";',
+        )
+        self.assertEqual(codex_source, claude_source)
 
     def test_platform_default_profiles_remain_distinct(self) -> None:
         self.assertIn(

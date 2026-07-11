@@ -55,10 +55,11 @@ class ThreadPlanCliTests(unittest.TestCase):
 
     def test_validate_builds_routes_and_state(self) -> None:
         with self.workspace() as (plan_path, state_path):
-            self.validate(plan_path)
+            payload = self.run_json("validate", plan_path)
 
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["profile_validation"], "syntax_only")
             self.assertEqual(
                 plan["dispatch"]["routes"]["T2"],
                 {"action": "reuse", "from_task": "T1"},
@@ -102,6 +103,10 @@ class ThreadPlanCliTests(unittest.TestCase):
     def test_failure_blocks_only_descendants(self) -> None:
         with self.workspace() as (plan_path, state_path):
             self.validate(plan_path)
+            running = self.update(
+                plan_path, state_path, "T1", "running", "thread-1"
+            )
+            self.assertEqual(running.returncode, 0, running.stderr)
             result = self.update(plan_path, state_path, "T1", "blocked")
             self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -113,6 +118,29 @@ class ThreadPlanCliTests(unittest.TestCase):
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(state["tasks"]["T2"]["status"], "dependency_blocked")
             self.assertEqual(state["tasks"]["T4"]["status"], "dependency_blocked")
+
+    def test_dispatch_failure_cannot_block_a_pending_task(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+
+            result = self.update(plan_path, state_path, "T1", "blocked")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("illegal status transition", result.stderr)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["tasks"]["T1"]["status"], "pending")
+
+    def test_validate_rejects_unknown_reasoning_effort(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["modules"][0]["worker_profile"]["reasoning_effort"] = "extreme"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("reasoning_effort is invalid", result.stderr)
+            self.assertFalse(state_path.exists())
 
     def test_conflicting_incomparable_tasks_are_rejected(self) -> None:
         with self.workspace("conflict.json") as (plan_path, state_path):

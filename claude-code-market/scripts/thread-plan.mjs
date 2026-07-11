@@ -72,6 +72,17 @@ const FAILURE_STATUSES = new Set            ([
   "dependency_blocked",
 ]);
 
+const REASONING_EFFORTS = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+]);
+
 function fail(message        )        {
   throw new Error(message);
 }
@@ -136,6 +147,15 @@ function parseModule(value         , index        )                   {
     module.worker_profile,
     `modules[${index}].worker_profile`,
   );
+  const reasoningEffort = requireString(
+    profile.reasoning_effort,
+    `modules[${index}].worker_profile.reasoning_effort`,
+  );
+  if (!REASONING_EFFORTS.has(reasoningEffort)) {
+    fail(
+      `modules[${index}].worker_profile.reasoning_effort is invalid: ${reasoningEffort}`,
+    );
+  }
   return {
     id: requireString(module.id, `modules[${index}].id`),
     worker_profile: {
@@ -143,10 +163,7 @@ function parseModule(value         , index        )                   {
         profile.model,
         `modules[${index}].worker_profile.model`,
       ),
-      reasoning_effort: requireString(
-        profile.reasoning_effort,
-        `modules[${index}].worker_profile.reasoning_effort`,
-      ),
+      reasoning_effort: reasoningEffort,
     },
     worker_context: requireString(
       module.worker_context,
@@ -470,6 +487,7 @@ function validateCommand(planArgument        )       {
       plan_path: planPath,
       state_path: statePath,
       safety: plan.safety.status,
+      profile_validation: "syntax_only",
     })}\n`,
   );
 }
@@ -561,7 +579,7 @@ function updateCommand(
   if (task === undefined) fail(`unknown task: ${taskId}`);
   const current = state.tasks[taskId];
   const allowed                                   = {
-    pending: ["running", "blocked"],
+    pending: ["running"],
     running: ["completed", "blocked", "failed", "needs_main_review"],
     completed: [],
     blocked: [],
