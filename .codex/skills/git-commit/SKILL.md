@@ -3,7 +3,7 @@ name: git-commit
 description: |
   分析当前仓库的已暂存、未暂存和 submodule 变更，按职责拆分批次并直接创建中文 Git 提交。
   用户明确输入 `/git-commit`、要求“提交代码”“提交当前改动”或“commit these changes”时使用；
-  不用于只讨论 commit、解释 Git 或请求 push。Codex 主线程保留全部 Git 写操作，并用只读 worker 辅助分析。
+  不用于只讨论 commit、解释 Git 或请求 push。Codex 调度线程创建本地执行线程，进行一次启动健康检查，并仅接收失败通知。
 ---
 
 # Git 智能提交
@@ -12,19 +12,50 @@ description: |
 
 提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
-## Codex 只读分析 Worker
+## 专用执行线程
 
-主线程必须按名称启动项目级 custom agent `git_commit_worker` 分析 dirty tree；文件很多或存在多个独立 submodule 时，可按目录或 submodule 增加同一 agent。定义文件必须位于当前 checkout 的 `.codex/agents/git-commit-worker.toml`。
+本 skill 有两种运行状态。用户正常调用 `$git-commit` 时进入调度状态；任务提示中存在独占标记 `GIT_COMMIT_EXECUTOR=1` 时进入执行状态。
 
-- 启动前读取并验证 agent 定义：`name=git_commit_worker`、`model=gpt-5.3-codex-spark`、`model_reasoning_effort=high`、`sandbox_mode=read-only`。定义缺失、不可发现或字段不匹配时，必须在任何 Git 写操作前停止并报告 `git_commit_worker unavailable`。
-- 使用当前 checkout / same-directory，设置 `fork_turns: "none"`，只传仓库根目录、只读范围和结果契约；不得使用未绑定模型的普通 worker。
-- 模型和思考强度以 agent 定义为运行时来源，不靠提示词覆盖。不得主动传入 `reasoning.summary`、`reasoning.summary_level`、`summary` 或 service tier / priority 参数。
-- 若 custom agent 创建或首次模型请求被参数 schema 拒绝，必须在任何 Git 写操作前停止并原样报告错误；不要回退到其他模型，也不要改由主线程直接提交。
-- 只允许 `git status`、`git diff`、`git diff --cached`、`git submodule status`、`rg`、`sed`、`pwd` 等只读命令。
-- 禁止 worker 修改文件、stage、commit、push、pull、merge、rebase、reset、checkout、switch、stash 或创建 worktree。
-- 要求 worker 返回：`agent_name`、`model`、`model_reasoning_effort`、分析范围、changed files、风险、submodule 状态、敏感文件、建议批次和中文提交信息。返回的 agent/model/effort 任一与定义不一致时，停止并报告，不创建提交。
+### 调度状态
 
-主线程必须重新读取实际 Git 状态并复核结果；不得仅凭 worker 声明提交。所有 Git 写操作保持串行并由主线程执行。
+调度线程只创建并命名执行线程，不得 stage、commit 或进行其他 Git 写操作。
+
+1. 使用 `git rev-parse --show-toplevel` 取得仓库绝对路径，再用 `list_projects` 按该路径唯一解析 project id。解析失败时停止。
+2. 使用 `date '+%H:%M:%S'` 生成标题 `<时:分:秒>-git-commit`。
+3. 使用 `create_thread` 在同一项目的 local 环境创建执行线程，固定传入：
+
+```text
+target: {type: project, projectId: <resolved>, environment: {type: local}}
+model: gpt-5.3-codex-spark
+thinking: high
+prompt: <GIT_COMMIT_EXECUTOR 执行包>
+```
+
+4. `create_thread` 会在新线程的委派元数据中附加当前调度线程的 `source_thread_id`。执行包必须要求执行线程读取该值，并将其保存为非空的 `SOURCE_THREAD_ID`；缺失时不得进行 Git 写操作。
+5. 执行包还必须包含 `GIT_COMMIT_EXECUTOR=1`、仓库绝对路径、用户原始提交范围，并明确要求：使用当前项目本地 `$git-commit`；检测到执行标记后跳过本节，不再创建线程；直接从“预检”开始完成全部提交；不使用 worktree、不切换分支、不 push、不自动归档；成功时静默结束，只有失败或阻塞时才向 `SOURCE_THREAD_ID` 通知一次。
+6. `create_thread` 返回 thread id 后立即使用 `set_thread_title` 设置第 2 步生成的标题。任一接口拒绝指定模型或强度、缺少 thread id、命名失败时停止；不要降低强度、替换模型或回退到其他调度方式。
+7. 命名成功后等待 10 秒，仅调用一次 `read_thread` 进行启动健康检查：
+   - `running`，或已出现模型回复、工具调用、提交结果时，视为正常启动。不得继续读取、等待或干预。
+   - `systemError`，或线程已终止但没有任何模型回复和工具调用时，视为启动失败。只有同时确认没有 Git 写操作时，才允许执行第 8 步。
+   - 状态不明确、读取失败、线程被用户中断，或无法排除已经发生 Git 写操作时，不得 fallback；报告检查结果后停止，避免重复提交。
+8. 启动失败时，仅调用一次 `send_message_to_thread` 在原执行线程重试，固定传入：
+
+```text
+threadId: <create_thread 返回的 thread id>
+model: gpt-5.4-mini
+thinking: high
+prompt: GIT_COMMIT_EXECUTOR=1；启动检查触发一次性 fallback；沿用原执行包、SOURCE_THREAD_ID 和当前 checkout，从预检开始执行；不得再次 fallback 或委派。
+```
+
+9. 向用户报告执行线程的 thread id、标题、启动检查结果，以及实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.4-mini/high fallback` profile evidence 后立即结束当前任务。fallback 请求成功后也不得再次读取、等待、轮询、发送消息、归档执行线程或以其他方式追踪和干预。
+
+模型和思考强度以 `create_thread` 或一次性 fallback 的 `send_message_to_thread` 调用参数为运行时证据。不得传入 `reasoning.summary`、`reasoning.summary_level`、`summary`、`service_tier` 或 `priority`。
+
+### 执行状态
+
+看到 `GIT_COMMIT_EXECUTOR=1` 后，先从委派元数据读取非空的 `source_thread_id` 作为 `SOURCE_THREAD_ID`。fallback 消息必须沿用同一值。不得调用 `create_thread`、`fork_thread`、`spawn_agent` 或再次委派，不得自行 fallback。当前线程就是唯一执行线程，直接按下述流程分析、复核并串行完成全部 Git 写操作。
+
+`SOURCE_THREAD_ID` 缺失时，在任何 Git 写操作前停止并在当前线程报告配置错误。此时没有可靠的回传目标，不得猜测 thread id。
 
 ## 预检
 
@@ -63,7 +94,7 @@ submodule 提交与主工程提交必须是不同提交。
 
 ## 执行提交
 
-Codex 沙盒阻止写入 Git index/refs 时，主线程使用 `sandbox_permissions: "require_escalated"`，并用最小、具体的 justification 请求授权；只读检查不提权。
+Codex 沙盒阻止写入 Git index/refs 时，执行线程使用 `sandbox_permissions: "require_escalated"`，并用最小、具体的 justification 请求授权；只读检查不提权。
 
 对每个批次依次执行：
 
@@ -74,13 +105,24 @@ Codex 沙盒阻止写入 Git index/refs 时，主线程使用 `sandbox_permissio
 5. hook 或 commit 失败时保留现场并报告。只在当前授权范围内修复；需要扩大修改范围时停止。
 6. 提交后读取新 hash，并重新运行 `git status --short`；再决定是否继续下一批次。
 
-## 最终回报
+## 完成与失败通知
+
+以下情况视为正常完成：全部授权批次已提交，或预检确认没有可提交改动。正常完成时只在执行线程内报告结果并自然结束；不得向 `SOURCE_THREAD_ID` 发送消息，不得归档自身。
+
+任何导致授权提交未完整完成的终止状态都视为失败，包括工具或模型拒绝、身份不符、安全检查阻塞、Git 或 hook 失败以及部分提交后无法继续。失败时：
+
+1. 保留现场，不自动回滚已完成提交或 staging。
+2. 仅调用一次 `send_message_to_thread`，目标 `threadId` 为 `SOURCE_THREAD_ID`；省略 `model` 和 `thinking`，保持源线程原有 profile。
+3. 消息必须包含执行线程标题、失败阶段、原始错误、已经创建的 commit，以及最新 staged、unstaged、untracked 状态。开头使用 `[git-commit 执行失败]`。
+4. 无论通知成功或失败，都不得重试、等待源线程响应或继续执行；在当前线程记录通知结果后自然结束。
+
+## 执行线程回报
 
 报告：
 
 - 每个仓库和批次的 commit hash、提交信息和文件范围。
 - submodule 到主工程的实际提交顺序。
-- worker 分析范围、hooks 和 `git diff --cached --check` 结果。
+- 执行线程标题、实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.4-mini/high fallback` profile evidence、hooks 和 `git diff --cached --check` 结果。
 - 剩余 staged、unstaged、untracked 和被排除的敏感或无关文件。
 
 不要把“部分批次已提交”描述为整个工作区已提交完成。
