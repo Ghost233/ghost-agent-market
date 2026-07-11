@@ -6,6 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 AGENTS = ROOT / "AGENTS.md"
+GIT_COMMIT_AGENT = ROOT / ".codex/agents/git-commit-worker.toml"
 
 
 def read(path: str) -> str:
@@ -19,6 +20,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
         cls.coordinator = read("skills/thread-coordination/SKILL.md")
         cls.worker = read("skills/thread-goal-worker/SKILL.md")
         cls.git_commit = read("skills/git-commit/SKILL.md")
+        cls.git_commit_agent = GIT_COMMIT_AGENT.read_text(encoding="utf-8") if GIT_COMMIT_AGENT.exists() else ""
         cls.metadata = "\n".join(
             read(path)
             for path in (
@@ -87,8 +89,14 @@ class CodexChildThreadContractTests(unittest.TestCase):
         combined = "\n".join((self.git_commit, self.metadata))
         self.assertIn("gpt-5.3-codex-spark", combined)
         self.assertIn("reasoning_effort=high", self.git_commit)
-        self.assertIn("不要传 reasoning summary", self.metadata)
+        self.assertIn("不传 reasoning summary", self.metadata)
         self.assertIn("不要回退到其他模型", self.git_commit)
+
+    def test_git_commit_binds_named_custom_agent(self) -> None:
+        self.assertIn("git_commit_worker", self.git_commit)
+        self.assertIn("model = \"gpt-5.3-codex-spark\"", self.git_commit_agent)
+        self.assertIn("model_reasoning_effort = \"high\"", self.git_commit_agent)
+        self.assertIn("sandbox_mode = \"read-only\"", self.git_commit_agent)
 
     def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
         for skill in (PLUGIN / "skills").rglob("SKILL.md"):
@@ -101,7 +109,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.4.4+codex."))
+        self.assertTrue(manifest["version"].startswith("0.4.5+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
