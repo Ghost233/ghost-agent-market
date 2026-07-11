@@ -94,7 +94,6 @@ worker_profile_evidence:
 - 该 module 的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、`worker_profile`。
 - coordinator 保存的 `child_thread`、`worker_profile_evidence` 和 `repair_round: 0`。
 - `result_contract: WORKER_RESULT`、保护边界、使用 `$thread-goal-worker` 的要求。
-- 内部普通子代理可以辅助当前 module，但不得创建用户可见 thread 或扩大 scope 的要求。
 
 不得发送其他 module 的写权限、完整计划或完整聊天记录。worker 收到绑定包前不得执行，收到后先验证计划和 scope。
 

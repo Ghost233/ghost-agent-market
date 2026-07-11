@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "用只读 worker 分析改动并按 submodule 顺序安全创建中文提交"
-  default_prompt: "使用 $git-commit 先让只读 worker 分析当前 checkout，再由主线程复核并按最深 submodule 到主工程的顺序，用显式路径分批创建中文提交。"
+  short_description: "用 gpt-5.3-codex-spark 只读 worker 分析改动并安全创建中文提交"
+  default_prompt: "使用 $git-commit 先以 gpt-5.3-codex-spark/high 启动只读 worker 分析当前 checkout；不要传 reasoning summary 或 service tier 参数。worker 成功后由主线程复核并按最深 submodule 到主工程的顺序，用显式路径分批创建中文提交。"

@@ -66,7 +66,7 @@ dispatch:
     - [M1, M2]
 ```
 
-计划只包含 plan-authored `worker_profile`。不要写 `worker_profile_evidence`、`reviewer_subagent_profile`、`reviewer_profile_preflight` 或其他 reviewer runtime 字段；实现 worker 自己执行 `diff_self_check`。
+计划只包含 plan-authored `worker_profile`。不要写 `worker_profile_evidence`、旧 reviewer profile preflight 或其他 reviewer runtime 字段；实现 worker 自己执行 `diff_self_check`。
 
 为每个 module 分配唯一 `id`；`depends_on` 只能引用同一计划中已存在的 id。分派时将 `id` 映射为 worker 输入的 `module_id`。所有 module 必须可追溯到 `parent_goal` 的完成条件；`worker_context` 只携带实现所需的约束、保护范围和来源证据。
 

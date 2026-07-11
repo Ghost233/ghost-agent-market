@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.4.2+codex.20260710165730",
+  "version": "0.4.4+codex.20260710173200",
   "description": "Codex skills for versioned parallel planning, profile-bound child thread coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
@@ -36,7 +36,7 @@
       "Use $parallel-task-planner to generate a v2 parallel plan with complete child-thread worker profiles.",
       "Use $thread-coordination to execute an explicitly authorized validated v2 plan path with retained Codex child threads.",
       "Use $thread-goal-worker for one scoped module bound to a child thread by the coordinator.",
-      "Use $git-commit to analyze current changes and commit them."
+      "Use $git-commit to analyze current changes with a gpt-5.3-codex-spark/high read-only worker, then commit them from the main thread."
     ]
   }
 }

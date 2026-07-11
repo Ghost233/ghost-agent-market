@@ -9,11 +9,11 @@ description: Use when a user-visible Codex module thread receives a bound v2 `pa
 
 把当前用户可见 Codex 模块子线程作为单个 plan module 的 owner。coordinator 先创建预备线程，再向同一线程发送带真实 thread id 的绑定包；只有绑定包可以启动实现。
 
-模块子线程负责 goal、scope、实现、验证、diff 自检和 `WORKER_RESULT`。它可以使用内部子代理协助，但内部子代理不属于主线程的调度或身份映射。
+模块子线程负责 goal、scope、实现、验证、diff 自检和 `WORKER_RESULT`。主线程只识别通过 `create_thread` 创建并绑定的模块子线程。
 
 ## 预备与绑定
 
-收到预备包时，只确认 `dispatch_request_id` 和 `module_id`，然后等待绑定包。预备阶段不得设置 goal、读取或修改实现文件、运行命令或创建内部子代理。
+收到预备包时，只确认 `dispatch_request_id` 和 `module_id`，然后等待绑定包。预备阶段不得设置 goal、读取或修改实现文件、运行命令。
 
 收到绑定包后，在任何实现动作前验证：
 
@@ -54,12 +54,6 @@ goal_set_evidence:
 ```
 
 每次编辑前确认文件属于 `writable_paths`，不在保护边界内，并直接服务于 `task` 和 `done_when`。先只读检查候选文件和已有用户改动；遇到依赖未完成、共享冲突、需要扩大 scope 或未授权命令时停止并返回对应状态。
-
-## 内部子代理
-
-模块子线程可以调用普通子代理进行读取或实现建议。所有内部子代理必须服从当前 module 的 goal、`writable_paths`、保护边界、verification 和 done_when，不得创建用户可见 thread 或扩大 scope。
-
-不要配置、枚举或伪造内部子代理的 model、thinking、thread id 或 profile evidence。模块子线程始终对修改、验证、diff 自检和最终结果负责。
 
 ## 执行与自检
 

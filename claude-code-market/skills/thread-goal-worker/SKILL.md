@@ -24,7 +24,7 @@ description: |
 4. 包含 plan-authored 完整 `worker_profile: {model, reasoning_effort}`，以及独立 `worker_profile_evidence`。后者必须且只能用 `requested`、`dispatch_arguments`、`status` 和 `evidence` 表达调度证据。
 5. 包含 coordinator 在调用前生成的非空 `coordinator_assignment_id`。`agent_task_id` 或 `team_task_id` 是调用完成后的可选回显，不是首包前置字段；worker 不得自行生成或替换任何 id。
 6. 包含 `repair_round: 0 | 1`、保护边界和 `result_contract: WORKER_RESULT`。`repair_round: 1` 只授权处理 coordinator 指出的原 finding，不开启新的补修轮次。
-7. 分派包不得包含旧 `reviewer_subagent_profile`、`reviewer_profile_preflight`、reviewer runtime evidence、Codex `goal_set_evidence`、active goal 指令或其他未列入当前 assignment schema 的兼容字段；发现任一字段时必须在实现前阻塞，不能忽略后继续。
+7. 分派包不得包含旧 reviewer profile preflight、reviewer runtime evidence、Codex `goal_set_evidence`、active goal 指令或其他未列入当前 assignment schema 的兼容字段；发现任一字段时必须在实现前阻塞，不能忽略后继续。
 
 任一必需字段缺失、为空、无法解析、值不匹配或来源不是 coordinator 分派时，立即返回完整 blocked shape。不要修改文件、运行写入型命令、stage、commit 或 push，也不要从聊天上下文、平台默认值或计划其他位置补齐缺失字段。
 

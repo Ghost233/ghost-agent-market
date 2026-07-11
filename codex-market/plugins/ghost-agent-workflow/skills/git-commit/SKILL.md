@@ -17,7 +17,8 @@ description: |
 主线程先启动一个普通 worker 分析 dirty tree；文件很多或存在多个独立 submodule 时，可按目录或 submodule 增加只读 worker。
 
 - 使用当前 checkout / same-directory，设置 `fork_turns: "none"`，只传仓库根目录、只读范围和结果契约。
-- 若调度接口支持显式 model 和 reasoning effort，优先 `gpt-5.3-codex-spark` + `xhigh`，不可用时使用 `gpt-5.4-mini` + `xhigh`；接口不暴露这些参数时使用当前默认值，不伪造参数。
+- 固定请求 `gpt-5.3-codex-spark` + `reasoning_effort=high`。不得主动传入 `reasoning.summary`、`reasoning.summary_level`、`summary` 或 service tier / priority 参数。
+- 若该 worker 创建或首次模型请求被参数 schema 拒绝，必须在任何 Git 写操作前停止并原样报告错误；不要回退到其他模型，也不要改由主线程直接提交。
 - 只允许 `git status`、`git diff`、`git diff --cached`、`git submodule status`、`rg`、`sed`、`pwd` 等只读命令。
 - 禁止 worker 修改文件、stage、commit、push、pull、merge、rebase、reset、checkout、switch、stash 或创建 worktree。
 - 要求 worker 返回：分析范围、changed files、风险、submodule 状态、敏感文件、建议批次和中文提交信息。

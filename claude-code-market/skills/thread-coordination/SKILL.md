@@ -30,7 +30,7 @@ description: |
 2. 顶层 `planner` 严格等于 `parallel-task-planner`，`plan_format_version` 严格等于整数 `1`，`execution_platform` 严格等于 `claude_code`，`dispatch_mode` 严格等于 `parallel-plan`，`review_mode` 严格等于 `diff_self_check`。
 3. `parent_goal` 非空，`safety.status` 严格等于 `parallel_safe`。`sequential_only` 和 `needs_user_review` 一律不分派。
 4. `modules` 至少包含两个可执行 module。每个 module 有唯一非空 `id`，以及完整的 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context` 和 `worker_profile`。
-5. 每个 `worker_profile` 显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承计划外默认值、不猜测、不补字段。计划不得包含 runtime `worker_profile_evidence`、`reviewer_subagent_profile`、`reviewer_profile_preflight` 或其他 reviewer runtime 字段。
+5. 每个 `worker_profile` 显式包含非空 `model` 与 `reasoning_effort`；coordinator 不继承计划外默认值、不猜测、不补字段。计划不得包含 runtime `worker_profile_evidence`、旧 reviewer profile preflight 或其他 reviewer runtime 字段。
 6. `depends_on` 只能引用计划内 module，依赖图无环。`dispatch.batches` 中每个 module id 恰好出现一次，依赖 module 位于更早 batch。
 7. 至少一个 batch 含两个以上可同时执行的 module；若每个 batch 宽度都为 `1`，该计划应是 `sequential_only`，不能执行。
 8. 用当前工作区重新检查安全证据：同一 batch 的可写路径没有精确、父子或 glob 相交；没有共享 API、迁移、生成输出、全局配置、验证环境或现有用户改动冲突。
