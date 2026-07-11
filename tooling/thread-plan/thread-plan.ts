@@ -183,17 +183,15 @@ function parseTask(value: unknown, index: number): TaskDefinition {
 
 function parsePlan(value: unknown): Plan {
   const source = requireRecord(value, "plan");
+  const expectedExecutionPlatform = "__EXECUTION_PLATFORM__";
   if (source.planner !== "parallel-task-planner") {
     fail("planner must equal parallel-task-planner");
   }
   if (source.plan_format_version !== 3) {
     fail("plan_format_version must equal 3");
   }
-  if (
-    source.execution_platform !== "codex" &&
-    source.execution_platform !== "claude_code"
-  ) {
-    fail("execution_platform must equal codex or claude_code");
+  if (source.execution_platform !== expectedExecutionPlatform) {
+    fail(`execution_platform must equal ${expectedExecutionPlatform}`);
   }
   if (!Array.isArray(source.modules) || source.modules.length === 0) {
     fail("modules must be a non-empty array");

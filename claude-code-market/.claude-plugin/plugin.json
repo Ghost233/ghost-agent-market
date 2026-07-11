@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
   "description": "Claude Code skills for v3 task DAG coordination, reusable worker handoffs, and smart git commits.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
