@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
   short_description: "由独立线程健康检查后创建中文提交"
-  default_prompt: "使用 $git-commit，在同一项目 local 环境创建并命名一个 gpt-5.3-codex-spark/high 执行线程，把调度线程 ID 交给它；10 秒后只检查一次启动状态，仅在确认尚未执行 Git 写操作的启动失败时于原线程 fallback 到 gpt-5.4-mini/high，随后停止追踪。执行成功时静默结束，仅在失败时向调度线程通知一次，不使用 worktree、不 push、不自动归档。"
+  default_prompt: "使用 $git-commit，在同一项目 local 环境创建并命名一个 gpt-5.3-codex-spark/high 执行线程，把调度线程 ID 交给它；1 秒后只检查一次启动状态，仅在确认尚未执行 Git 写操作的启动失败时于原线程 fallback 到 gpt-5.4-mini/high，随后停止追踪。执行成功时静默结束，仅在失败时向调度线程通知一次，不使用 worktree、不 push、不自动归档。"
