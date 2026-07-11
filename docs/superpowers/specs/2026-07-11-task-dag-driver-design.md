@@ -16,6 +16,7 @@
 - 同一 module 的祖先 task 和后继 task 尽可能复用同一线程，且不引入 DAG 之外的等待。
 - Codex 和 Claude Code 使用同一份 JSON 计划契约和 DAG 驱动脚本，只在平台工具适配层保留差异。
 - 脚本仅负责拆解计划的结构校验和 DAG 推进，不演变为通用工作流系统。
+- 用户一次授权完整 `parent_goal`；同一父目标内的安全 scope 扩展、任务重分配和计划修订由主线程自主完成。
 
 ## 非目标
 
@@ -34,7 +35,7 @@
 └── state.json
 ```
 
-`plan.json` 是 planner 生成并经脚本校验的静态 v3 契约，执行期间不修改。`state.json` 只保存 plan digest、task 状态和实际 thread id。两个文件都保留，不自动删除或归档。
+`plan.json` 是 planner 生成并经脚本校验的静态 v3 契约，执行期间不原地修改。需要调整时创建新的唯一 plan 目录和独立 state，把旧版本保留为审计证据。`state.json` 只保存 plan digest、task 状态和实际 thread id。所有版本都保留，不自动删除或归档。
 
 自然语言需求和 Markdown 计划可以作为 planner 输入，但 coordinator 只接受上述目录中经脚本校验的 `plan.json`。
 
@@ -109,7 +110,7 @@ task 仅在所有 `depends_on` 均为 `completed` 时 ready。任一依赖为 `b
 - task 依赖图必须无环。
 - 任意两个写路径、共享产物、契约或环境冲突的 task 必须在 DAG 中可比，即其中一个是另一个的祖先。
 - 至少存在两个可同时 ready 的 task 时才可标记 `parallel_safe`。纯串行 DAG 标记 `sequential_only`。
-- coordinator 不接受未经脚本校验的 JSON、自然语言或 v2 计划。
+- coordinator 不接受未经脚本校验的 JSON、自然语言或 v2 计划。首次执行必须为 `parallel_safe`；同父目标修正版只剩串行尾部时可以是 `sequential_only`。
 
 ## 线程复用路由
 
@@ -180,7 +181,30 @@ coordinator 仅消费经 `validate` 通过的绝对 `plan.json` 路径。
 7. 结果不合法时仅向原线程补修一次；仍不合法时更新为 `needs_main_review`。
 8. 每次状态更新后重新运行 `next`，立即放行新的 ready task。
 
-coordinator 保持实现只读：不修改业务文件，不 stage、commit 或 push，不接管失败 task。所有创建过的线程保留，不自动归档。
+coordinator 保持实现只读：不修改业务文件，不 stage、commit 或 push。它负责判断 scope 扩展、任务重分配和修正版 DAG，并把实现继续交给子线程。所有创建过的线程保留，不自动归档。
+
+## 父目标授权与自主修订
+
+用户对执行的授权以完整 `parent_goal` 为单位，而不是绑定到某一版 plan 或某组 `writable_paths`。子线程是主线程完成父目标的执行资源；写域仅限制子线程当前 task，不能把内部编排决策转化为用户审批步骤。
+
+worker 发现完成条件需要额外路径时，保留已授权范围内成果并返回结构化 `scope_request`。若新增工作仍属于同一父目标、改动可归因于本轮子线程，且不涉及未知用户改动、敏感或破坏性操作、外部副作用、权限升级或运行中写冲突，coordinator 必须：
+
+1. 把已知 worker 改动作为受控基线。
+2. 已完成 task 不重跑；为剩余 task 重新接线，并决定扩写原 task、转交其他 module，或增加依赖以消除冲突。
+3. 生成并校验新的唯一 v3 plan，优先复用现有线程。
+4. 立即继续执行，不在 revision 之间返回最终结果，也不要求用户再次确认。
+
+`needs_main_review` 表示主线程内部复核，不表示需要用户参与。修正版只剩一个 task 或串行尾部时使用 `sequential_only` 继续，不能因为失去并行性而中止父目标。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部系统副作用、权限升级，或无法安全消歧时才暂停并询问用户。
+
+### Scope 变化决策
+
+主线程以可独立验收结果判断 scope 规模，不以文件数量判断：
+
+- 只有一个结果且无交叉：扩写原 task。
+- 存在至少两个 scope、完成条件和验证都可分离、互不依赖的结果：拆为多个不可比 task，由驱动器并行分派。
+- 与其他 task 的路径、共享契约或生成产物交叉：把交叉职责抽成新的共享前置 task，指定唯一 module 和写域，从下游消费者移除交叉职责，并让它们依赖新节点。已有唯一 owner 时转交给该 task 并重接依赖。
+
+worker 可在 `scope_request` 中提供 `split_hints` 和 `overlap_hints`，但它们只是证据；最终拆分、owner 和 DAG 流向由主线程决定。每个 baseline path/change 恰好分配给一个 owner，交叉基线只归共享前置节点。线程复用不得延迟不可比 task 的同时执行，同一线程任一时刻只绑定一个 active task。整个决策属于同一 `parent_goal` 的内部修订，不产生用户审批步骤。
 
 ## Worker 绑定与结果
 
@@ -214,11 +238,12 @@ worker 返回：
   "changed_files": [],
   "verification": [],
   "diff_self_check": "pass",
+  "scope_request": null,
   "summary": "<结果>"
 }
 ```
 
-coordinator 只接受 task、module 和 thread 与当前绑定一致的结果。worker 越界、用户向子线程插入新指令，或 thread/module 不匹配时，task 进入 `needs_main_review`，不自动迁移。
+coordinator 只接受 task、module 和 thread 与当前绑定一致的结果。需要扩大写域时，worker 返回 `needs_main_review`、`diff_self_check: scope_exception` 和 `scope_request`；意外生成且可归因的越界文件保留为受控基线，由主线程按上述协议自主修订。用户向子线程插入新指令或结果无法归因时才暂停自动推进。
 
 ## 完成与失败判定
 
@@ -226,7 +251,7 @@ coordinator 只接受 task、module 和 thread 与当前绑定一致的结果。
 - 存在 running 或 ready task 时，coordinator 继续调度和回收。
 - 所有 task 都是 `completed` 后，coordinator 才执行顶层 `project_verification`。
 - 所有 task 完成且工程总验收通过时，父目标才能报告完成。
-- 无 running/ready task 且仍存在非 completed task，或工程总验收失败时，返回具体状态、失败命令和证据，不将拆解或局部完成写成父目标完成。
+- 无 running/ready task 且仍存在非 completed task 时，先尝试同父目标内的安全修订；只有真实用户边界或无法恢复的工程总验收失败才返回具体状态、失败命令和证据。
 
 ## 平台适配
 
