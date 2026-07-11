@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
   short_description: "由独立线程健康检查后创建中文提交"
-  default_prompt: "使用 $git-commit，在同一项目 local 环境创建一个 gpt-5.3-codex-spark/xhigh 执行线程，把调度线程 ID 交给它；最多三轮，每轮等待 10 秒后读取线程，并在尚未成功时尝试命名。每轮立即判断：出现 reasoning、助手回复或工具调用才确认启动；首次发现无执行记录、无 Git 写操作的 systemError 时立即于原线程 fallback 到 gpt-5.6-luna/xhigh，不等待剩余轮次。状态尚不明确时才继续下一轮，随后停止追踪。不使用 worktree、不 push、不自动归档。"
+  default_prompt: "使用 $git-commit，在同一项目 local 环境创建一个 gpt-5.3-codex-spark/xhigh 执行线程，把调度线程 ID 交给它；最多查询三轮，第一轮创建后立即读取，不等待，状态尚不明确时第二、第三轮才各等待 10 秒。每轮在尚未成功时尝试命名并立即判断：出现 reasoning、助手回复或工具调用才确认启动；首次发现无执行记录、无 Git 写操作的 systemError 时立即于原线程 fallback 到 gpt-5.6-luna/xhigh，不等待剩余轮次。随后停止追踪，不使用 worktree、不 push、不自动归档。"
