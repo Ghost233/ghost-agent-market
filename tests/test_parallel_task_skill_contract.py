@@ -58,6 +58,49 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("dispatch_failed", coordinator)
             self.assertIn("task 保持 `pending`", coordinator)
             self.assertIn("保留 `running/thread_id`", coordinator)
+            self.assertIn("自动重试一次", coordinator)
+            self.assertIn("不得要求用户批准重试", coordinator)
+
+    def test_parent_goal_authorization_covers_internal_replanning(self) -> None:
+        for planner in (
+            self.codex_skills["parallel-task-planner"],
+            self.claude_skills["parallel-task-planner"],
+        ):
+            self.assertIn("用户授权以 `parent_goal` 为单位", planner)
+            self.assertIn("受控基线", planner)
+            self.assertIn("不要求用户再次确认", planner)
+            self.assertIn("拆成多个不可比 task", planner)
+            self.assertIn("新的共享前置 task", planner)
+
+        for coordinator in (
+            self.codex_skills["thread-coordination"],
+            self.claude_skills["thread-coordination"],
+        ):
+            self.assertIn("用户授权的是完整 `parent_goal`", coordinator)
+            self.assertIn("不得向用户请求确认", coordinator)
+            self.assertIn("自动生成新的唯一 v3 plan", coordinator)
+            self.assertIn("修正版可为 `parallel_safe` 或 `sequential_only`", coordinator)
+            self.assertIn("作为受控基线", coordinator)
+            self.assertIn("至少两个写域不交叉", coordinator)
+            self.assertIn("新的共享前置 task", coordinator)
+            self.assertIn("所有消费者依赖新节点", coordinator)
+            self.assertIn("必须恰好归属一个新 task", coordinator)
+            self.assertIn("不延迟任何不可比 task", coordinator)
+            self.assertIn(
+                "不得在 revision 之间返回最终 `PARALLEL_PLAN_RESULT`",
+                coordinator,
+            )
+
+        for worker in (
+            self.codex_skills["thread-goal-worker"],
+            self.claude_skills["thread-goal-worker"],
+        ):
+            self.assertIn("scope_request", worker)
+            self.assertIn("scope_exception", worker)
+            self.assertIn("split_hints", worker)
+            self.assertIn("overlap_hints", worker)
+            self.assertIn("不自动撤销", worker)
+            self.assertIn("不是用户确认请求", worker)
 
     def test_all_thread_skills_remove_batch_and_capacity_terms(self) -> None:
         for legacy in (
@@ -67,6 +110,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             "并发上限",
             "plan_format_version: 2",
             "plan_format_version: 1",
+            "需要扩大 scope 时停止",
         ):
             self.assertNotIn(legacy, self.all_skills)
 

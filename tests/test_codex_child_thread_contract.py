@@ -65,6 +65,20 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("WORKER_RESULT_V3", self.worker)
         self.assertIn("一个 active task", self.worker)
         self.assertIn("独立 goal", self.worker)
+        self.assertIn("scope_request", self.worker)
+
+    def test_main_thread_owns_safe_plan_revisions(self) -> None:
+        self.assertIn("完整 `parent_goal`", self.coordinator)
+        self.assertIn("主线程自主修订", self.coordinator)
+        self.assertIn("不是要求用户逐次批准的边界", self.coordinator)
+        self.assertIn("不要求用户再次确认", self.planner)
+        self.assertIn("修正版只剩串行尾部时允许 `sequential_only`", self.planner)
+        self.assertIn("不是用户确认请求", self.worker)
+        self.assertIn("scope_exception", self.worker)
+        self.assertIn("split_hints", self.worker)
+        self.assertIn("overlap_hints", self.worker)
+        self.assertIn("拆成多个不可比 task", self.planner)
+        self.assertIn("新的共享前置 task", self.coordinator)
 
     def test_legacy_worker_terms_are_removed(self) -> None:
         combined = "\n".join(
@@ -108,7 +122,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.6.0+codex."))
+        self.assertTrue(manifest["version"].startswith("0.6.2+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
