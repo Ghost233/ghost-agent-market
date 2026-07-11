@@ -29,7 +29,7 @@ description: |
 ```text
 target: {type: project, projectId: <resolved>, environment: {type: local}}
 model: gpt-5.3-codex-spark
-thinking: xhigh
+thinking: high
 prompt: <GIT_COMMIT_EXECUTOR 执行包>
 ```
 
@@ -55,7 +55,7 @@ thinking: xhigh
 prompt: GIT_COMMIT_EXECUTOR=1；启动检查触发一次性 fallback；沿用原执行包、SOURCE_THREAD_ID 和当前 checkout，从预检开始执行；不得再次 fallback 或委派。
 ```
 
-10. 向用户报告执行线程的 thread id、实际查询轮数、最终标题或命名失败、启动检查结果，以及实际使用的 `gpt-5.3-codex-spark/xhigh` 或 `gpt-5.6-luna/xhigh fallback` profile evidence 后立即结束当前任务。fallback 请求成功后也不得再次读取、等待、轮询、发送消息、归档执行线程或以其他方式追踪和干预。
+10. 向用户报告执行线程的 thread id、实际查询轮数、最终标题或命名失败、启动检查结果，以及实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.6-luna/xhigh fallback` profile evidence 后立即结束当前任务。fallback 请求成功后也不得再次读取、等待、轮询、发送消息、归档执行线程或以其他方式追踪和干预。
 
 模型和思考强度以 `create_thread` 或一次性 fallback 的 `send_message_to_thread` 调用参数为运行时证据。不得传入 `reasoning.summary`、`reasoning.summary_level`、`summary`、`service_tier` 或 `priority`。
 
@@ -148,7 +148,7 @@ Codex 沙盒阻止写入 Git index/refs 时，执行线程使用 `sandbox_permis
 
 - 每个仓库和批次的 commit hash、提交信息和文件范围。
 - submodule 到主工程的实际提交顺序。
-- 执行线程标题、实际使用的 `gpt-5.3-codex-spark/xhigh` 或 `gpt-5.6-luna/xhigh fallback` profile evidence、hooks 和 `git diff --cached --check` 结果。
+- 执行线程标题、实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.6-luna/xhigh fallback` profile evidence、hooks 和 `git diff --cached --check` 结果。
 - 剩余 staged、unstaged、untracked 和被排除的敏感或无关文件。
 
 不要把“部分批次已提交”描述为整个工作区已提交完成。

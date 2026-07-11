@@ -6,7 +6,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 AGENTS = ROOT / "AGENTS.md"
-GIT_COMMIT_AGENT = ROOT / ".codex/agents/git-commit-worker.toml"
 
 
 def read(path: str) -> str:
@@ -20,7 +19,6 @@ class CodexChildThreadContractTests(unittest.TestCase):
         cls.coordinator = read("skills/thread-coordination/SKILL.md")
         cls.worker = read("skills/thread-goal-worker/SKILL.md")
         cls.git_commit = read("skills/git-commit/SKILL.md")
-        cls.git_commit_agent = GIT_COMMIT_AGENT.read_text(encoding="utf-8") if GIT_COMMIT_AGENT.exists() else ""
         cls.metadata = "\n".join(
             read(path)
             for path in (
@@ -56,6 +54,10 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("environment: {type: local}", self.coordinator)
         self.assertIn("model", self.coordinator)
         self.assertIn("thinking", self.coordinator)
+        self.assertIn("dispatch_key", self.coordinator)
+        self.assertIn("普通错误文本不得传给 `JSON.parse`", self.coordinator)
+        self.assertIn("status: dispatch_failed", self.coordinator)
+        self.assertNotIn("pending blocked", self.coordinator)
 
     def test_worker_owns_one_active_task(self) -> None:
         self.assertIn("task_id", self.worker)
@@ -82,18 +84,18 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("task DAG", self.metadata)
         self.assertIn("gpt-5.6-terra/xhigh", self.metadata)
 
-    def test_git_commit_uses_spark_readonly_worker(self) -> None:
+    def test_git_commit_uses_spark_execution_thread(self) -> None:
         combined = "\n".join((self.git_commit, self.metadata))
         self.assertIn("gpt-5.3-codex-spark", combined)
-        self.assertIn("reasoning_effort=high", self.git_commit)
-        self.assertIn("不传 reasoning summary", self.metadata)
-        self.assertIn("不要回退到其他模型", self.git_commit)
+        self.assertIn("thinking: high", self.git_commit)
+        self.assertIn("GIT_COMMIT_EXECUTOR=1", self.git_commit)
+        self.assertIn("不得传入 `reasoning.summary`", self.git_commit)
+        self.assertIn("gpt-5.6-luna/xhigh fallback", self.git_commit)
 
-    def test_git_commit_binds_named_custom_agent(self) -> None:
-        self.assertIn("git_commit_worker", self.git_commit)
-        self.assertIn("model = \"gpt-5.3-codex-spark\"", self.git_commit_agent)
-        self.assertIn("model_reasoning_effort = ", self.git_commit_agent)
-        self.assertIn("sandbox_mode = \"read-only\"", self.git_commit_agent)
+    def test_git_commit_does_not_delegate_from_the_execution_thread(self) -> None:
+        self.assertIn("当前线程就是唯一执行线程", self.git_commit)
+        self.assertIn("不得调用 `create_thread`", self.git_commit)
+        self.assertIn("不得自行 fallback", self.git_commit)
 
     def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
         for skill in (PLUGIN / "skills").rglob("SKILL.md"):
@@ -106,7 +108,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.4.6+codex."))
+        self.assertTrue(manifest["version"].startswith("0.5.9+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 

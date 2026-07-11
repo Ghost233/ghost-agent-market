@@ -1,4 +1,4 @@
 interface:
   display_name: "Task DAG 协调"
   short_description: "驱动 Codex v3 task DAG 子线程"
-  default_prompt: "使用 $thread-coordination 执行已校验的 v3 task DAG，立即处理脚本返回的全部 ready task，并在同 module 任务链上复用原子线程。"
+  default_prompt: "使用 $thread-coordination 执行已校验的 v3 task DAG，立即处理全部 ready task，复用同 module 子线程，并将线程创建或绑定错误保留为可恢复的 dispatch_failed。"

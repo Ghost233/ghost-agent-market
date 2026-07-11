@@ -27,6 +27,8 @@ node <plugin-root>/scripts/thread-plan.mjs validate <plan_path>
 
 任一门禁失败时不执行、不修复计划，直接返回 `PARALLEL_PLAN_RESULT` 及原始证据。
 
+`validate` 只校验 profile 字段与 effort 枚举，输出 `profile_validation: syntax_only`；model/effort 组合是否可运行以 `create_thread` 的真实结果为准，不因工具说明推断成功，也不自动降级。
+
 ## DAG 执行
 
 反复运行：
@@ -39,32 +41,36 @@ node <plugin-root>/scripts/thread-plan.mjs next <plan_path> <state_path>
 
 ### create_thread
 
-从 action 的 `module_id` 读取 module `worker_profile` 和 `worker_context`，创建预备线程：
+从 action 的 `module_id` 读取 module `worker_profile` 和 `worker_context`。以 `<plan_path>#<task_id>` 作为 `dispatch_key`，创建预备线程：
 
 ```text
 create_thread(
   target={type: project, projectId: <project id>, environment: {type: local}},
   model=<module.worker_profile.model>,
   thinking=<module.worker_profile.reasoning_effort>,
-  prompt=<task_id + module_id + 等待绑定包>
+  prompt=<dispatch_key + task_id + module_id + 等待绑定包>
 )
 ```
 
-获得真实 thread id 后，用 `send_message_to_thread` 发送完整绑定包，再运行：
+单独调用并原样检查返回值。只接受对象中的非空 `threadId`，或内容本身是 JSON 对象且含非空 `threadId` 的字符串；普通错误文本不得传给 `JSON.parse`。返回不明确时用 `list_threads(query=<dispatch_key>)` 恢复：唯一匹配才采用，零个或多个匹配都视为未取得 thread id。
+
+未取得真实 thread id 时，不运行 `update`，task 保持 `pending`，返回 `PARALLEL_PLAN_RESULT.status: dispatch_failed`、`dispatch_key` 和原始错误。不得把 profile、参数、网络或工具返回错误写成 task `blocked`。
+
+取得真实 thread id 后，先持久化线程归属：
 
 ```text
 node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> running <thread_id>
 ```
 
+再用 `send_message_to_thread` 发送完整绑定包。发送失败时保留 `running/thread_id` 并返回 `dispatch_failed`；后续协调只向该 thread id 重发绑定，不再创建线程。
+
 ### reuse_thread
 
-只使用 action 中的 thread id，通过 `send_message_to_thread` 发送新 task 绑定包，再以相同 id 更新 `running`。不自行挑选其他线程。
+只使用 action 中的 thread id，先以相同 id 更新 `running`，再通过 `send_message_to_thread` 发送新 task 绑定包。不自行挑选其他线程。发送失败时保留 `running/thread_id`，后续只重发绑定。
 
-创建或发送失败时更新为 `blocked`：
+### 分派恢复
 
-```text
-node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> blocked
-```
+重新进入协调时，若 `running` 线程只有对应 `dispatch_key` 的预备消息、没有完整绑定包或 worker 活动，则向原 thread id 补发一次绑定包。状态不明或出现多个匹配时返回 `dispatch_failed`，保留原状态并要求主任务复核；不得创建替代线程。
 
 ## 绑定包
 
@@ -78,7 +84,7 @@ node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task
 
 字段缺失、验证不足或 diff 自检失败时，仅向原 thread id 发送一次聚焦补修。仍不合法、越界或用户插入新指令时更新为 `needs_main_review`。
 
-合法结果使用三命令中的 update：
+只有已经是 `running` 的 task 收到合法 worker 结果后，才使用三命令中的 update：
 
 ```text
 node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> completed|blocked|failed|needs_main_review
