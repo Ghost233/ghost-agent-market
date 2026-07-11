@@ -1,4 +1,4 @@
 interface:
-  display_name: "并发子线程规划"
-  short_description: "为 Codex 用户可见子线程生成 v2 并发计划"
-  default_prompt: "使用 $parallel-task-planner 生成包含 worker_runtime: codex_child_thread、默认 gpt-5.6-terra/xhigh profile 和拓扑 batch 的 v2 计划；仅在用户明确授权时交给 $thread-coordination 执行。"
+  display_name: "Task DAG 规划"
+  short_description: "生成 Codex v3 module/task DAG 计划"
+  default_prompt: "使用 $parallel-task-planner 在项目内生成 v3 task DAG JSON，module 默认使用 gpt-5.6-terra/xhigh，通过驱动脚本校验后再决定是否交给 $thread-coordination。"

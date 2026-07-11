@@ -1,4 +1,4 @@
 interface:
-  display_name: "版本化计划协调"
-  short_description: "按版本化计划用 Claude Agent/team 分派并验收 worker"
-  default_prompt: "使用 $thread-coordination 校验绝对 plan_path 和拓扑 batch，按 plan-authored worker_profile（默认 sonnet/max）分派 Agent 或 agent team teammate，记录 assignment 与 dispatch evidence，并汇总统一 WORKER_RESULT。"
+  display_name: "Task DAG 协调"
+  short_description: "驱动 Claude Code v3 task DAG workers"
+  default_prompt: "使用 $thread-coordination 执行已校验的 v3 task DAG，立即处理脚本返回的全部 ready task，并在同 module 任务链上复用原 Agent/team worker。"

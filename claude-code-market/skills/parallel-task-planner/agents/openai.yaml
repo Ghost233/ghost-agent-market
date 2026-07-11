@@ -1,4 +1,4 @@
 interface:
-  display_name: "并发任务规划"
-  short_description: "为 Claude Code 生成带完整 worker 配置的版本化并发计划"
-  default_prompt: "使用 $parallel-task-planner 为 Claude Code 生成带版本、结构化 marker、完整 worker_profile 和拓扑 batch 的计划；仅在至少一个 batch 可并发且状态为 parallel_safe 时交给 $thread-coordination。"
+  display_name: "Task DAG 规划"
+  short_description: "生成 Claude Code v3 module/task DAG 计划"
+  default_prompt: "使用 $parallel-task-planner 在项目内生成 v3 task DAG JSON，module 默认使用 sonnet/max，通过驱动脚本校验后再决定是否交给 $thread-coordination。"

@@ -1,88 +1,83 @@
 ---
 name: parallel-task-planner
-description: Use when Codex must turn a natural-language request or an existing plan into a versioned, dependency-safe Codex parallel plan for user-visible module threads, or must decide that the work is unsafe or sequential.
+description: Use when Codex must convert a natural-language goal or an existing plan into a dependency-safe v3 plan for user-visible child-thread execution, or decide that the work is sequential or unsafe.
 ---
 
 # Parallel Task Planner
 
 ## 目标
 
-把需求或已有计划整理为短小、可审计的 Codex v2 并发计划。planner 只负责 scope、依赖、写路径、worker profile、拓扑 batch 和安全判定；不创建模块子线程、不追加 runtime evidence，也不修改业务代码。
+把输入整理为简短、可机械校验的 v3 JSON 计划。module 定义可复用执行能力，module 不是 DAG 节点；task 是 DAG 节点，并用 `module_id` 选择执行定义。
 
-## 输入与输出
+planner 不创建子线程、不写 runtime evidence、不修改业务文件。
 
-接受自然语言目标或绝对计划文档路径。只读取确认 module、依赖、可写范围、profile 和验证冲突所需的最少仓库内容。
+## 产物
 
-每次规划写入：
+每次生成唯一 plan id，并写入当前项目：
 
 ```text
-docs/parallel-task-plans/YYYY-MM-DD-<goal-slug>.md
+.ghost-agent-workflow/parallel_plan/<plan_id>/plan.json
 ```
 
-计划必须使用下列 marker：
+只生成 JSON；自然语言或 Markdown 仅作为输入来源。计划必须包含：
 
-```yaml
-planner: parallel-task-planner
-plan_format_version: 2
-execution_platform: codex
-worker_runtime: codex_child_thread
-dispatch_mode: parallel-plan
-review_mode: diff_self_check
-parent_goal: <一句话结果>
-source: natural_language | <绝对计划来源>
-worker_defaults:
-  model: gpt-5.6-terra
-  reasoning_effort: xhigh
-modules:
-  - id: M1
-    task: <单一可执行结果>
-    writable_paths:
-      - <窄路径或 glob>
-    depends_on: []
-    done_when:
-      - <可观察完成条件>
-    verification:
-      - <定向命令或替代证据>
-    worker_context: <最少实现上下文>
-    worker_profile:
-      model: gpt-5.6-terra
-      reasoning_effort: xhigh
-safety:
-  status: parallel_safe | sequential_only | needs_user_review
-  reasons:
-    - <判定证据>
-dispatch:
-  batches:
-    - [M1, M2]
+```json
+{
+  "planner": "parallel-task-planner",
+  "plan_format_version": 3,
+  "execution_platform": "codex",
+  "parent_goal": "<可验收的父目标>",
+  "modules": [
+    {
+      "id": "implementation",
+      "worker_profile": {
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "xhigh"
+      },
+      "worker_context": "<该执行能力共享的最少上下文>"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "module_id": "implementation",
+      "task": "<单一可执行结果>",
+      "depends_on": [],
+      "writable_paths": ["<窄路径或 glob>"],
+      "done_when": ["<可观察完成条件>"],
+      "verification": ["<定向验证命令或替代证据>"]
+    }
+  ],
+  "project_verification": ["<工程总验收>"],
+  "safety": {
+    "status": "parallel_safe",
+    "reasons": ["<判定证据>"]
+  }
+}
 ```
 
-只写 plan-authored `worker_profile`。计划不得包含 `child_thread`、`worker_profile_evidence`、thread id 或任何 runtime profile/readback 字段。
+默认 profile 为 `gpt-5.6-terra/xhigh`（model: gpt-5.6-terra，reasoning_effort: xhigh）。用户可为 module 指定其他完整 model/effort；不猜 alias，不降级 effort。
 
-## Profile 解析
+## 拆解规则
 
-1. 默认使用 `gpt-5.6-terra/xhigh`。顶层 `worker_defaults` 和 module `worker_profile` 可以分别覆盖 model 或 effort。
-2. 为每个 module 写出解析后的完整 `worker_profile`；不保留继承缺口。
-3. 默认 `gpt-5.6-terra/xhigh` 始终是有效的 plan-authored profile。自定义 profile 也只要求 `model` 和 `reasoning_effort` 非空、完整且不使用猜测 alias；字段不完整时才写 `needs_user_review`。
-4. 不得检查与模块子线程无关的调度接口。非 `create_thread` 接口不能作为 profile、安全或并发门禁证据。
-5. profile 的实际应用只由 `$thread-coordination` 通过 `create_thread` 负责。规划阶段不得因为运行时 thread 创建能力不可读或 profile evidence 尚不存在而写 `needs_user_review`。
-6. 不把计划中的请求值、提示词或默认值写成已应用的 runtime evidence；不选择近似模型或降低 reasoning effort。
+1. 只有执行 profile 或共享 worker context 不同时才拆分 module。
+2. task 按可独立验收的工作结果拆分；相互无依赖且写范围不冲突的 task 保持不可比。
+3. 写路径、共享契约、生成产物或环境冲突的 task 必须用 `depends_on` 排序。
+4. 完整 task 集合共同覆盖 `parent_goal`；每个 task 都必须有 scope、`done_when` 和 `verification`。
+5. 图中存在至少两个不可比 task 才写 `parallel_safe`；纯串行图写 `sequential_only`；证据不足写 `needs_user_review`。
 
-上述接口分离只适用于 Codex module：计划判定只面向用户可见模块子线程。
+## 脚本校验
 
-## 依赖与安全门禁
+定位当前 skill 所在插件根目录，运行：
 
-- 每个 module 使用唯一 id，`depends_on` 只引用本计划 module，图必须无环。
-- 按拓扑层生成 `dispatch.batches`，每个 id 恰好出现一次，依赖必须位于更早 batch。
-- 同 batch 的 `writable_paths`、共享契约、验证产物、迁移、生成输出和环境不得冲突。精确路径、父子路径和相交 glob 都视为冲突。
-- 至少一个 batch 宽度大于一，且每个 module 都有 `done_when`、`verification`、`worker_context`、完整 profile，并共同覆盖 `parent_goal` 时，才写 `parallel_safe`。
-- 所有 batch 宽度都是一时写 `sequential_only`。范围、依赖、profile 字段完整性、共享契约或验证安全性不足时写 `needs_user_review`；非 `create_thread` 调度能力不属于这些门禁。
+```text
+node <plugin-root>/scripts/thread-plan.mjs validate <absolute-plan.json>
+```
+
+脚本生成 `dispatch.routes` 和同目录 `state.json`。校验失败时保留原错误，不手改 route 或 safety。
 
 ## 交接
 
-只在用户当前请求明确要求创建子线程并执行、且 `safety.status: parallel_safe` 时，调用 `$thread-coordination` 并传入绝对 `plan_path`。否则只返回计划路径和安全结论。
+只在用户当前请求明确要求执行子线程、脚本校验成功且 `safety.status` 为 `parallel_safe` 时，调用 `$thread-coordination` 并传入绝对 `plan_path`。否则只返回计划路径和安全结论。
 
-v1 计划与 v2 的 worker 身份和证据语义不兼容。不要手改旧计划或 safety；重新生成 v2 计划。
-
-## 输出
-
-返回绝对计划路径、格式版本、`worker_runtime`、safety 状态、完整 module profiles、拓扑 batch，以及是否已获得显式子线程执行授权。不要把“计划已生成”写成父目标已完成。
+v1/v2 计划不兼容本契约；必须重新生成 v3。“计划已生成”不等于父目标已完成。

@@ -1,4 +1,4 @@
 interface:
-  display_name: "子线程计划协调"
-  short_description: "按 v2 并发计划创建并验收 Codex 模块子线程"
-  default_prompt: "使用 $thread-coordination 执行一个已确认 parallel_safe 的 v2 plan_path：在当前项目 local 工作区创建保留的模块子线程，并原样应用 gpt-5.6-terra/xhigh profile。"
+  display_name: "Task DAG 协调"
+  short_description: "驱动 Codex v3 task DAG 子线程"
+  default_prompt: "使用 $thread-coordination 执行已校验的 v3 task DAG，立即处理脚本返回的全部 ready task，并在同 module 任务链上复用原子线程。"

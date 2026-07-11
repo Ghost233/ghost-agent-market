@@ -1,0 +1,67 @@
+{
+  "planner": "parallel-task-planner",
+  "plan_format_version": 3,
+  "execution_platform": "codex",
+  "parent_goal": "Refactor page state",
+  "modules": [
+    {
+      "id": "implementation",
+      "worker_profile": {
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "xhigh"
+      },
+      "worker_context": "Implement the assigned task within its write scope."
+    },
+    {
+      "id": "verification",
+      "worker_profile": {
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "xhigh"
+      },
+      "worker_context": "Verify the integrated result without expanding scope."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "module_id": "implementation",
+      "task": "Extract page state types.",
+      "depends_on": [],
+      "writable_paths": ["src/state/**"],
+      "done_when": ["State types live outside the page component."],
+      "verification": ["Run the state typecheck."]
+    },
+    {
+      "id": "T2",
+      "module_id": "implementation",
+      "task": "Migrate page state reads.",
+      "depends_on": ["T1"],
+      "writable_paths": ["src/page/**"],
+      "done_when": ["The page reads the extracted state types."],
+      "verification": ["Run the page tests."]
+    },
+    {
+      "id": "T3",
+      "module_id": "implementation",
+      "task": "Update independent state fixtures.",
+      "depends_on": [],
+      "writable_paths": ["tests/fixtures/**"],
+      "done_when": ["Fixtures use the new state shape."],
+      "verification": ["Run fixture tests."]
+    },
+    {
+      "id": "T4",
+      "module_id": "verification",
+      "task": "Verify the integrated page flow.",
+      "depends_on": ["T2", "T3"],
+      "writable_paths": ["tests/integration/**"],
+      "done_when": ["The integrated flow passes."],
+      "verification": ["Run integration tests."]
+    }
+  ],
+  "project_verification": ["Run the full typecheck and test suite."],
+  "safety": {
+    "status": "parallel_safe",
+    "reasons": ["T1 and T3 have disjoint write scopes and no dependency edge."]
+  }
+}

@@ -1,4 +1,4 @@
 interface:
-  display_name: "单模块 Agent 执行"
-  short_description: "执行 Claude Code Agent/team 单模块 assignment"
-  default_prompt: "使用 $thread-goal-worker 校验 Claude Code 单 module 的计划来源、Agent/team assignment 和 plan-authored worker_profile 调度证据，在限定 scope 内执行、验证、diff 自检并返回 WORKER_RESULT。"
+  display_name: "Task Worker 执行"
+  short_description: "执行并验证一个 Claude Code v3 task"
+  default_prompt: "使用 $thread-goal-worker 验证 v3 task 分派、module profile 和 assignment evidence，仅在 writable_paths 内实现、验证和 diff 自检，然后返回 WORKER_RESULT_V3。"

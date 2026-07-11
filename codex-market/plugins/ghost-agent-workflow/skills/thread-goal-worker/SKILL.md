@@ -1,103 +1,58 @@
 ---
 name: thread-goal-worker
-description: Use when a user-visible Codex module thread receives a bound v2 `parallel-task-planner` dispatch package and must implement one scoped module, manage its own goal, and return a verified result.
+description: Use when a user-visible Codex child thread receives a bound v3 task from a validated parallel-task plan in the current local workspace.
 ---
 
 # Thread Goal Worker
 
 ## 目标
 
-把当前用户可见 Codex 模块子线程作为单个 plan module 的 owner。coordinator 先创建预备线程，再向同一线程发送带真实 thread id 的绑定包；只有绑定包可以启动实现。
-
-模块子线程负责 goal、scope、实现、验证、diff 自检和 `WORKER_RESULT`。主线程只识别通过 `create_thread` 创建并绑定的模块子线程。
+当前子线程可以顺序执行同一 module 的多个 task，但任一时刻只能有一个 active task。每个 task 负责自己的独立 goal、scope、实现、验证和 diff 自检。
 
 ## 预备与绑定
 
-收到预备包时，只确认 `dispatch_request_id` 和 `module_id`，然后等待绑定包。预备阶段不得设置 goal、读取或修改实现文件、运行命令。
+收到预备 prompt 时只确认 `task_id` 和 `module_id`，然后等待带真实 `thread_id` 的绑定包。此前不设置 goal、不读写实现文件、不运行命令。复用线程收到新绑定包时，上一 task 必须已返回终止结果。
 
-收到绑定包后，在任何实现动作前验证：
+实现前验证：
 
-1. 包含与预备包相同的 `dispatch_request_id`、唯一 `module_id`、绝对 `plan_path` 和非空 `parent_goal`。
-2. marker 严格为 `planner: parallel-task-planner`、`plan_format_version: 2`、`execution_platform: codex`、`worker_runtime: codex_child_thread`、`dispatch_mode: parallel-plan`、`review_mode: diff_self_check`。
-3. 包只携带一个 module，并包含 `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context`、完整 `worker_profile`、`child_thread`、`worker_profile_evidence`、`repair_round: 0 | 1` 和 `result_contract: WORKER_RESULT`。
-4. `child_thread.id` 非空且 `environment: local`。当前线程把这个绑定 id 原样用于结果；coordinator 负责将它与创建记录核对，worker 不伪造或替换该值。
-5. `worker_profile_evidence.requested` 与 module `worker_profile` 逐字段相等；`dispatch_arguments.model` 等于 requested model；`dispatch_arguments.thinking` 等于 requested reasoning effort；`status: applied`，并有创建请求和 thread id evidence。
-6. `repair_round: 1` 必须来自当前 module 的同一绑定线程，且只处理 coordinator 指出的 finding；不启动第二次补修。
+1. `plan_path` 是绝对可读 v3 JSON，标记为 `planner: parallel-task-planner`、`plan_format_version: 3`、`execution_platform: codex`。
+2. 绑定包只包含一个 `task_id`，并含 `module_id`、`task`、`depends_on`、`writable_paths`、`done_when`、`verification`、`worker_context`、`thread_id` 和 `result_contract: WORKER_RESULT_V3`。
+3. `task_id` 在计划中唯一存在；绑定字段与该 task 原文逐字段一致；task `module_id` 指向存在的 module。
+4. module `worker_profile` 与创建证据一致，实际 `thread_id` 与绑定包一致。不猜 alias，不降级 effort。
+5. 当前没有另一个未终止 active task。
 
-字段缺失、request id 不一致、Plan Binding 失败、profile evidence 非 `applied` 或 scope 不可核对时，返回完整 blocked `WORKER_RESULT`。不要设置 goal、读取或修改实现文件、stage、commit 或 push。
-
-## Plan Binding
-
-输入门禁通过后、设置 goal 前读取 `plan_path` 并验证：
-
-- 顶层 marker、`parent_goal` 和计划来源与绑定包一致。
-- `module_id` 在计划中唯一存在。
-- `task`、`writable_paths`、`depends_on`、`done_when`、`verification`、`worker_context` 和 plan-authored `worker_profile` 与该 module 原文逐字段一致。
-- 计划不包含 runtime `child_thread` 或 `worker_profile_evidence`；绑定包不包含其他 module 的任务、上下文或写权限。
-
-绑定包中的 profile evidence 是 coordinator 的创建记录，不能覆盖计划 profile。提示词、默认值或自述不能替代该 evidence；不要猜 alias 或降低 effort。
+任一项失败时不设置 goal、不修改文件，返回字段完整的 blocked `WORKER_RESULT_V3`。
 
 ## Goal 与 Scope
 
-Plan Binding 通过后读取当前 goal。若 active goal 已绑定相同 `module_id`、scope 和 repair round 则恢复；否则创建当前 module goal 并二次确认。首次执行完成后更新 goal。补修无法恢复原 goal 时，才在同一子线程创建同 module 的 repair goal。
+首次执行 task 时创建绑定 `task_id`、`module_id` 和 `writable_paths` 的独立 goal，并在编辑前二次确认。补修时恢复当前 task goal，不为同一 task 创建第二个实现 goal。
 
-返回结构化 evidence：
+只允许修改 `writable_paths` 内且直接服务当前 `task` / `done_when` 的文件。共享契约冲突、未满足依赖、现有用户改动冲突或需要扩大 scope 时停止，不自行修改计划。
 
-```yaml
-goal_set_evidence:
-  child_thread_id: <bound thread id>
-  module_id: M1
-  repair_round: 0
-  action: created | resumed | repair_created
-  goal_id: <goal id>
-  status: active | complete | blocked
-```
+## 执行
 
-每次编辑前确认文件属于 `writable_paths`，不在保护边界内，并直接服务于 `task` 和 `done_when`。先只读检查候选文件和已有用户改动；遇到依赖未完成、共享冲突、需要扩大 scope 或未授权命令时停止并返回对应状态。
-
-## 执行与自检
-
-执行循环固定为：
-
-```text
-确认 goal -> 检查 scope -> 实现 -> 验证 -> diff 自检 -> WORKER_RESULT
-```
-
-1. 在 `writable_paths` 内完成当前 module，保护已有改动。
-2. 执行授权 `verification`；不能执行时记录原因和明确替代证据。
-3. 检查 changed files、scope、用户改动、done_when、验证证据、diff 聚焦度和共享冲突。
-4. 使用 `diff_self_check: {status: pass | failed | not_run, evidence: []}`，不得改为字符串或列表。
-5. scope 内问题在本轮修复并复验；`repair_round: 1` 仍失败或出现超 scope finding 时停止。
+1. 读取候选文件与现有改动，确认 scope。
+2. 实现最小完整结果，保留无关改动。
+3. 运行 task `verification`；不安装依赖，不运行未授权的全局生成或格式化。
+4. 检查 changed files、`done_when`、验证证据、diff 聚焦度和用户改动。
+5. 返回 `WORKER_RESULT_V3`。worker 不 stage、commit 或 push。
 
 ## 结果契约
 
-所有状态返回：
-
-```text
-WORKER_RESULT:
-- status: completed | blocked | failed | needs_main_review
-- module_id: "<module id>"
-- dispatch_mode: parallel-plan
-- review_mode: diff_self_check
-- child_thread: {id: "<bound thread id>", environment: local}
-- goal_set_evidence:
-    child_thread_id: "<bound thread id>"
-    module_id: "<module id>"
-    repair_round: 0 | 1
-    action: created | resumed | repair_created
-    goal_id: "<goal id | unavailable>"
-    status: active | complete | blocked
-- changed_files: ["<path>"]
-- verification: ["<result or alternative evidence>"]
-- diff_self_check: {status: pass | failed | not_run, evidence: ["<summary>"]}
-- worker_profile: {model: "<plan value>", reasoning_effort: "<plan value>"}
-- worker_profile_evidence:
-    requested: {model: "<plan value>", reasoning_effort: "<plan value>"}
-    dispatch_arguments: {model: "<canonical model>", thinking: "<effort>"}
-    status: applied | rejected | unavailable
-    evidence: "<create_thread evidence>"
-- goal_alignment: ["<done_when to parent_goal evidence>"]
-- risks: ["<none or remaining risk>"]
+```json
+{
+  "contract": "WORKER_RESULT_V3",
+  "status": "completed",
+  "task_id": "T1",
+  "module_id": "implementation",
+  "thread_id": "<bound thread id>",
+  "changed_files": ["<path>"],
+  "verification": ["<command and result>"],
+  "diff_self_check": "pass",
+  "summary": "<result or blocking evidence>"
+}
 ```
 
-`completed` 要求 goal、scope、verification、`done_when`、diff self-check 和 applied profile evidence 全部通过。`blocked` 表示实现前的输入、binding、goal、依赖或外部阻塞；不可获得字段写 `unavailable`。`failed` 表示实现后验证或自检失败。`needs_main_review` 表示用户干预、共享冲突、越界修改或需要主线程决策；不得自行扩大 scope。
+`status` 只能是 `completed | blocked | failed | needs_main_review`。`completed` 必须同时满足：Plan Binding 通过；changed files 全部在 scope；`done_when` 满足；verification 通过或有明确替代证据；`diff_self_check` 为 `pass`；无未解决依赖、共享文件冲突或用户干预。
+
+外部基线失败必须清楚区分“当前 task 验证通过”与“工程总验收受阻”，不伪造 completed。

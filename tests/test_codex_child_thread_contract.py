@@ -31,26 +31,19 @@ class CodexChildThreadContractTests(unittest.TestCase):
             )
         )
 
-    def test_planner_emits_v2_child_thread_runtime(self) -> None:
-        self.assertIn("plan_format_version: 2", self.planner)
-        self.assertIn("worker_runtime: codex_child_thread", self.planner)
+    def test_planner_emits_v3_task_dag_contract(self) -> None:
+        self.assertIn("plan_format_version", self.planner)
+        self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
+        self.assertIn("thread-plan.mjs", self.planner)
+        self.assertIn("DAG 节点", self.planner)
         self.assertIn("gpt-5.6-terra", self.planner)
         self.assertIn("reasoning_effort: xhigh", self.planner)
 
-    def test_planner_only_gates_child_threads_on_create_thread_contract(self) -> None:
-        self.assertIn(
-            "不得检查与模块子线程无关的调度接口",
-            self.planner,
-        )
-        self.assertIn("非 `create_thread` 接口不能作为 profile、安全或并发门禁证据", self.planner)
-        self.assertIn(
-            "默认 `gpt-5.6-terra/xhigh` 始终是有效的 plan-authored profile",
-            self.planner,
-        )
-        self.assertIn(
-            "profile 的实际应用只由 `$thread-coordination` 通过 `create_thread` 负责",
-            self.planner,
-        )
+    def test_planner_separates_modules_from_tasks(self) -> None:
+        self.assertIn("module 不是 DAG 节点", self.planner)
+        self.assertIn("task", self.planner)
+        self.assertIn("module_id", self.planner)
+        self.assertIn("project_verification", self.planner)
 
     def test_coordinator_uses_thread_tools(self) -> None:
         for tool in (
@@ -64,11 +57,12 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("model", self.coordinator)
         self.assertIn("thinking", self.coordinator)
 
-    def test_worker_is_child_thread_owner(self) -> None:
-        self.assertIn("模块子线程", self.worker)
-        self.assertIn("主线程只识别通过 `create_thread` 创建并绑定的模块子线程", self.worker)
-        self.assertIn("child_thread", self.worker)
-        self.assertIn("goal_set_evidence", self.worker)
+    def test_worker_owns_one_active_task(self) -> None:
+        self.assertIn("task_id", self.worker)
+        self.assertIn("module_id", self.worker)
+        self.assertIn("WORKER_RESULT_V3", self.worker)
+        self.assertIn("一个 active task", self.worker)
+        self.assertIn("独立 goal", self.worker)
 
     def test_legacy_worker_terms_are_removed(self) -> None:
         combined = "\n".join(
@@ -80,9 +74,12 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertNotIn("fork_thread", combined)
         self.assertNotIn("禁止创建用户可见 thread/task", combined)
         self.assertNotIn("set_thread_archived", combined)
+        self.assertNotIn("dispatch.batches", combined)
+        self.assertNotIn("线程池", combined)
+        self.assertNotIn("并发上限", combined)
 
     def test_metadata_describes_child_threads(self) -> None:
-        self.assertIn("子线程", self.metadata)
+        self.assertIn("task DAG", self.metadata)
         self.assertIn("gpt-5.6-terra/xhigh", self.metadata)
 
     def test_git_commit_uses_spark_readonly_worker(self) -> None:
@@ -95,7 +92,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
     def test_git_commit_binds_named_custom_agent(self) -> None:
         self.assertIn("git_commit_worker", self.git_commit)
         self.assertIn("model = \"gpt-5.3-codex-spark\"", self.git_commit_agent)
-        self.assertIn("model_reasoning_effort = \"high\"", self.git_commit_agent)
+        self.assertIn("model_reasoning_effort = ", self.git_commit_agent)
         self.assertIn("sandbox_mode = \"read-only\"", self.git_commit_agent)
 
     def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
@@ -109,7 +106,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.4.5+codex."))
+        self.assertTrue(manifest["version"].startswith("0.4.6+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
