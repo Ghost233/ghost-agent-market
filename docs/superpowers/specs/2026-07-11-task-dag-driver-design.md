@@ -51,7 +51,7 @@
       "id": "implementation",
       "worker_profile": {
         "model": "gpt-5.6-terra",
-        "reasoning_effort": "xhigh"
+        "reasoning_effort": "medium"
       },
       "worker_context": "实现并自检限定范围内的代码"
     }

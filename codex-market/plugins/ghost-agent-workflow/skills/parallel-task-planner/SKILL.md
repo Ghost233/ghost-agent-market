@@ -32,7 +32,7 @@ planner 不创建子线程、不写 runtime evidence、不修改业务文件。
       "id": "implementation",
       "worker_profile": {
         "model": "gpt-5.6-terra",
-        "reasoning_effort": "xhigh"
+        "reasoning_effort": "medium"
       },
       "worker_context": "<该执行能力共享的最少上下文>"
     }
@@ -56,7 +56,7 @@ planner 不创建子线程、不写 runtime evidence、不修改业务文件。
 }
 ```
 
-默认 profile 为 `gpt-5.6-terra/xhigh`（model: gpt-5.6-terra，reasoning_effort: xhigh）。用户可为 module 指定其他完整 model/effort；不猜 alias，不降级 effort。
+默认 profile 为 `gpt-5.6-terra/medium`（model: gpt-5.6-terra，reasoning_effort: medium）。用户可为 module 指定其他完整 model/effort；不猜 alias，不降级 effort。
 
 ## 拆解规则
 

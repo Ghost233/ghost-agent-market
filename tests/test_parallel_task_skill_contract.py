@@ -85,7 +85,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
 
     def test_platform_default_profiles_remain_distinct(self) -> None:
         self.assertIn(
-            "gpt-5.6-terra/xhigh",
+            "gpt-5.6-terra/medium",
             self.codex_skills["parallel-task-planner"],
         )
         self.assertIn(

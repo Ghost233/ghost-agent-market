@@ -35,7 +35,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("thread-plan.mjs", self.planner)
         self.assertIn("DAG 节点", self.planner)
         self.assertIn("gpt-5.6-terra", self.planner)
-        self.assertIn("reasoning_effort: xhigh", self.planner)
+        self.assertIn("reasoning_effort: medium", self.planner)
 
     def test_planner_separates_modules_from_tasks(self) -> None:
         self.assertIn("module 不是 DAG 节点", self.planner)
@@ -82,7 +82,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_metadata_describes_child_threads(self) -> None:
         self.assertIn("task DAG", self.metadata)
-        self.assertIn("gpt-5.6-terra/xhigh", self.metadata)
+        self.assertIn("gpt-5.6-terra/medium", self.metadata)
 
     def test_git_commit_uses_spark_execution_thread(self) -> None:
         combined = "\n".join((self.git_commit, self.metadata))
@@ -108,7 +108,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.5.9+codex."))
+        self.assertTrue(manifest["version"].startswith("0.6.0+codex."))
         self.assertIn("child thread", manifest["description"].lower())
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
