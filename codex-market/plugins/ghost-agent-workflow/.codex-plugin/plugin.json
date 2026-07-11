@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.4.6+codex.20260711041029",
+  "version": "0.5.6+codex.20260711091639",
   "description": "Codex skills for v3 task DAG planning, reusable child thread coordination, scoped workers, and safe Git commits.",
   "author": {
     "name": "Ghost233",
@@ -37,7 +37,7 @@
       "Use $parallel-task-planner to generate a validated v3 module/task DAG plan with complete worker profiles.",
       "Use $thread-coordination to execute every ready task in an authorized v3 plan and reuse same-module child threads.",
       "Use $thread-goal-worker for one scoped task bound to a retained child thread by the coordinator.",
-      "Use $git-commit to analyze current changes with the named git_commit_worker agent, then commit them from the main thread."
+      "Use $git-commit to create a local execution thread with a one-shot startup health check and model fallback, then commit the current changes there."
     ]
   }
 }

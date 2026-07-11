@@ -8,6 +8,8 @@ description: |
 
 # Git 智能提交
 
+本实现仅用于 Codex App，依赖其用户可见线程工具和运行时模型参数。在本仓库提交此 skill 时，这项专属依赖就是 `AGENTS.md` 所要求的单端实现理由；只校验项目测试版与 Codex marketplace 源同步。
+
 在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
 提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
@@ -27,27 +29,33 @@ description: |
 ```text
 target: {type: project, projectId: <resolved>, environment: {type: local}}
 model: gpt-5.3-codex-spark
-thinking: high
+thinking: xhigh
 prompt: <GIT_COMMIT_EXECUTOR 执行包>
 ```
 
 4. `create_thread` 会在新线程的委派元数据中附加当前调度线程的 `source_thread_id`。执行包必须要求执行线程读取该值，并将其保存为非空的 `SOURCE_THREAD_ID`；缺失时不得进行 Git 写操作。
 5. 执行包还必须包含 `GIT_COMMIT_EXECUTOR=1`、仓库绝对路径、用户原始提交范围，并明确要求：使用当前项目本地 `$git-commit`；检测到执行标记后跳过本节，不再创建线程；直接从“预检”开始完成全部提交；不使用 worktree、不切换分支、不 push、不自动归档；成功时静默结束，只有失败或阻塞时才向 `SOURCE_THREAD_ID` 通知一次。
-6. `create_thread` 返回 thread id 后立即使用 `set_thread_title` 设置第 2 步生成的标题。任一接口拒绝指定模型或强度、缺少 thread id、命名失败时停止；不要降低强度、替换模型或回退到其他调度方式。
-7. 命名成功后等待 1 秒，仅调用一次 `read_thread` 进行启动健康检查：
-   - `running`，或已出现模型回复、工具调用、提交结果时，视为正常启动。不得继续读取、等待或干预。
-   - `systemError`，或线程已终止但没有任何模型回复和工具调用时，视为启动失败。只有同时确认没有 Git 写操作时，才允许执行第 8 步。
-   - 状态不明确、读取失败、线程被用户中断，或无法排除已经发生 Git 写操作时，不得 fallback；报告检查结果后停止，避免重复提交。
-8. 启动失败时，仅调用一次 `send_message_to_thread` 在原执行线程重试，固定传入：
+6. `create_thread` 返回 thread id 后执行最多三轮启动确认。每轮必须依次：等待 10 秒；调用一次 `read_thread`；尚未命名成功时调用一次 `set_thread_title`；立即按第 8 步判断。命名成功后后续轮次不得重复改名；单次读取或命名失败只记录原始错误。
+7. 只有同时满足以下条件才算启动成功，可提前结束确认循环：
+   - `read_thread` 已返回该 thread id，证明线程存在。
+   - 状态为 `running`、`active` 或 `inProgress`，或者线程已经正常完成。
+   - 已出现执行线程产生的记录，例如 reasoning、助手回复（包括“思考中”）或工具调用。只有原始 `userMessage`、`codex_delegation`、空 items 或自动标题不算启动成功。
+8. 每轮读取后立即处理：
+   - 已确认启动：不 fallback，立即结束确认循环；标题失败只作为警告报告。
+   - 首次出现 `systemError` 或其他终止失败，且没有执行线程记录并能确认没有 Git 写操作：立即执行第 9 步，不等待剩余轮次。标题是否成功不得阻断 fallback。
+   - 状态仍在运行但没有执行线程记录、读取失败或暂时找不到线程：继续下一轮，直到最多三轮。
+   - 线程被用户中断或无法排除 Git 写操作：状态记为“启动未确认”，立即停止且不得 fallback，避免重复提交。
+   - 第三轮仍未确认启动且不满足安全 fallback 条件：报告“启动未确认”，停止读取和改名，不得进行第四轮。
+9. 安全确认启动失败时，仅调用一次 `send_message_to_thread` 在原执行线程重试，固定传入：
 
 ```text
 threadId: <create_thread 返回的 thread id>
-model: gpt-5.4-mini
-thinking: high
+model: gpt-5.6-luna
+thinking: xhigh
 prompt: GIT_COMMIT_EXECUTOR=1；启动检查触发一次性 fallback；沿用原执行包、SOURCE_THREAD_ID 和当前 checkout，从预检开始执行；不得再次 fallback 或委派。
 ```
 
-9. 向用户报告执行线程的 thread id、标题、启动检查结果，以及实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.4-mini/high fallback` profile evidence 后立即结束当前任务。fallback 请求成功后也不得再次读取、等待、轮询、发送消息、归档执行线程或以其他方式追踪和干预。
+10. 向用户报告执行线程的 thread id、实际查询轮数、最终标题或命名失败、启动检查结果，以及实际使用的 `gpt-5.3-codex-spark/xhigh` 或 `gpt-5.6-luna/xhigh fallback` profile evidence 后立即结束当前任务。fallback 请求成功后也不得再次读取、等待、轮询、发送消息、归档执行线程或以其他方式追踪和干预。
 
 模型和思考强度以 `create_thread` 或一次性 fallback 的 `send_message_to_thread` 调用参数为运行时证据。不得传入 `reasoning.summary`、`reasoning.summary_level`、`summary`、`service_tier` 或 `priority`。
 
@@ -67,6 +75,13 @@ prompt: GIT_COMMIT_EXECUTOR=1；启动检查触发一次性 fallback；沿用原
 6. 检查 `.env*`、credentials、私钥、token、证书、生产配置和疑似生成的大文件。存在敏感或归属不明内容时保持未暂存并报告。
 
 没有可提交改动时停止，返回当前状态；不要创建空提交。
+
+## 决策边界
+
+- 只为解决客观疑点读取一次必要的指令、diff 或历史；证据充分后立即决定提交或失败，不反复考古。
+- 只有身份不符、敏感内容、归属不明的 staged 内容、明确违反仓库指令或 Git 命令失败才阻塞。明确记录的平台差异不是阻塞理由。
+- 多轮用户编辑可能在一次提交前累计多次合法版本递增。若最终版本格式、进位和 cachebuster 均符合仓库规则，不得仅因它高于 `HEAD + 0.0.1` 而降级、改写或停止。
+- 当前授权范围内的问题能安全修复时直接修复并继续；必须扩大范围时才停止并通知。
 
 ## 规划提交批次
 
@@ -116,13 +131,24 @@ Codex 沙盒阻止写入 Git index/refs 时，执行线程使用 `sandbox_permis
 3. 消息必须包含执行线程标题、失败阶段、原始错误、已经创建的 commit，以及最新 staged、unstaged、untracked 状态。开头使用 `[git-commit 执行失败]`。
 4. 无论通知成功或失败，都不得重试、等待源线程响应或继续执行；在当前线程记录通知结果后自然结束。
 
+通知采用固定结构：
+
+```text
+[git-commit 执行失败]
+线程：<title>
+阶段：<stage>
+错误：<raw error>
+已提交：<commits or none>
+状态：<staged / unstaged / untracked>
+```
+
 ## 执行线程回报
 
 报告：
 
 - 每个仓库和批次的 commit hash、提交信息和文件范围。
 - submodule 到主工程的实际提交顺序。
-- 执行线程标题、实际使用的 `gpt-5.3-codex-spark/high` 或 `gpt-5.4-mini/high fallback` profile evidence、hooks 和 `git diff --cached --check` 结果。
+- 执行线程标题、实际使用的 `gpt-5.3-codex-spark/xhigh` 或 `gpt-5.6-luna/xhigh fallback` profile evidence、hooks 和 `git diff --cached --check` 结果。
 - 剩余 staged、unstaged、untracked 和被排除的敏感或无关文件。
 
 不要把“部分批次已提交”描述为整个工作区已提交完成。
