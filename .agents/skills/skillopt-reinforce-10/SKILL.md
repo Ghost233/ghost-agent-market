@@ -46,7 +46,9 @@ bash "$SKILLOPT_REPO/plugins/run-sleep.sh" harvest \
    目标 skill 相符，再将顶层 `reviewed` 字段设为 `true`。未审核语料不得使用
    真实后端。
 4. 若语料没有足够独立的真实任务来保留有意义的留出集，立即停止。向用户索取
-   更多有代表性的任务证据，不得编造示例。
+   更多有代表性的任务证据，不得编造示例。运行器至少要求两个 `train` 和两个
+   `val`；所有 `train/val/test` 均须来自互不重叠的真实会话，并且语料记录的
+   `transcript_source` 必须与本次 `--source` 一致。
 
 ## 同意边界
 
@@ -77,8 +79,16 @@ Claude Code 使用 `--backend claude --source claude`。`--edit-budget`、
 `--claude-home` 只能在用户明确同意后覆盖。
 
 运行器会强制 `evolve_memory=false`、`evolve_skill=true` 以及
-`gate_mode=on`，只会修改指定的目标 skill。它会跨调用保留 SkillOpt state，并输出
-每轮的留出集 baseline/candidate 分数、gate 动作、staging 目录和已采纳路径。
+`gate_mode=on`，只会修改指定的目标 skill。Codex 后端会把 `--codex-home`
+传播为嵌套 CLI 的 `CODEX_HOME`；该目录必须可写且已经登录。运行器先在独立事务
+目录中执行一轮，累计检查 attempt、带工具 attempt、judge、reflect 及内部直接
+调用，确认没有调用错误或空任务响应，再把 manifest 中的候选固定为不可变快照。
+只有全部诊断通过后，才会在项目 staging、目标 skill 与 canonical state 的互斥锁
+内提交精确目标和本轮 state；三项资源均不共享的强化仍可并行。完整落盘的事务
+标记区分 prepared 与 started，异常或进程中断会保留原状态，并在下次启动时恢复
+真正开始写入的事务。审计报告只记录真实后端，不保留未参与执行的 replay 标签。
+运行器会输出每轮的留出集 baseline/candidate 分数、gate 动作、staging 目录和已
+采纳路径。
 
 ## 复核
 
@@ -90,5 +100,10 @@ Claude Code 使用 `--backend claude --source claude`。`--edit-budget`、
 
 - 会话归档保持只读；不得在报告中暴露原始会话内容或密钥。
 - 运行器失败时立即停止；不得跳过失败轮次后仍称其为十轮运行。
+- 真实后端的任一调用错误或空任务响应必须使当前运行失败，不得作为普通 gate
+  reject 继续消耗剩余轮次。
+- 采纳前必须确认 manifest 仅包含精确目标 `SKILL.md`，不得写 memory 或其他路径。
+- 一轮只有在诊断、候选与路径全部通过后才提交目标和 SkillOpt state；失败轮次
+  不得污染 night、任务归档或 accepted 记录。
 - 不得在两轮之间手动编辑目标。让验证门控的运行器执行被接受的更新并保留备份。
 - 此 skill-only 运行中不得修改 `CLAUDE.md` 或其他 memory 文件。
