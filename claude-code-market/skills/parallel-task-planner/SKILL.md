@@ -1,74 +1,54 @@
 ---
 name: parallel-task-planner
-description: Use when Claude Code must convert a natural-language goal or an existing plan into a dependency-safe v3 plan for Agent or agent-team execution, or decide that the work is sequential or unsafe.
+description: 当 Claude Code 需要把自然语言目标或现有方案整理为可校验的 v3 任务 DAG、修订同一父目标的既有计划、规划跨版本执行单元复用，或判断任务应并行、串行还是暂停复核时使用。
 ---
 
-# Parallel Task Planner
+# 并行任务规划
 
-## 目标
+## 职责
 
-把输入整理为简短、可机械校验的 v3 JSON 计划。module 定义可复用执行能力，module 不是 DAG 节点；task 是 DAG 节点，并用 `module_id` 选择执行定义。
+把输入整理为简短、可机械校验的 v3 JSON 计划。`module` 定义可复用的执行配置，不是 DAG 节点；`task` 是 DAG 节点，通过 `module_id` 选择执行配置。
 
-planner 不创建 worker、不写 runtime evidence、不修改业务文件。
+只负责规划：不创建执行单元，不写运行证据，不修改业务文件。用户授权以 `parent_goal` 为单位；同一父目标的安全修正版继承原授权。
 
-用户授权以 `parent_goal` 为单位。coordinator 为完成同一父目标发起修正版规划时，继承原执行授权，不要求用户再次确认。
+## 输出
 
-## 产物
-
-每次生成唯一 plan id，并写入当前项目：
+每次创建唯一计划目录：
 
 ```text
 .ghost-agent-workflow/parallel_plan/<plan_id>/plan.json
 ```
 
-自然语言或 Markdown 仅作为 planner 输入；coordinator 只消费 JSON。计划必须包含：
+写计划前必须读取 [references/templates.md](references/templates.md)，根据“初始计划”或“修正版片段”填充模板。只输出 JSON；自然语言和 Markdown 只能作为输入。
 
-```json
-{
-  "planner": "parallel-task-planner",
-  "plan_format_version": 3,
-  "execution_platform": "claude_code",
-  "parent_goal": "<可验收的父目标>",
-  "modules": [
-    {
-      "id": "implementation",
-      "worker_profile": {
-        "model": "sonnet",
-        "reasoning_effort": "max"
-      },
-      "worker_context": "<该执行能力共享的最少上下文>"
-    }
-  ],
-  "tasks": [
-    {
-      "id": "T1",
-      "module_id": "implementation",
-      "task": "<单一可执行结果>",
-      "depends_on": [],
-      "writable_paths": ["<窄路径或 glob>"],
-      "done_when": ["<可观察完成条件>"],
-      "verification": ["<定向验证命令或替代证据>"]
-    }
-  ],
-  "project_verification": ["<工程总验收>"],
-  "safety": {
-    "status": "parallel_safe",
-    "reasons": ["<判定证据>"]
-  }
-}
-```
+默认执行配置为 `sonnet/max`。用户可为不同 `module` 指定完整的 `model` 与 `reasoning_effort`；不猜测别名，不降低强度。
 
-默认 profile 为 `sonnet/max`。用户可为 module 指定其他完整 model/effort；不猜 alias，不降级 effort。
+## 规划顺序
 
-## 拆解规则
+1. 明确可验收的 `parent_goal`、工程现状、已知改动和总验证方式。
+2. 仅在执行配置或共享上下文确实不同时拆分 `module`。
+3. 按可独立验收的结果拆分 `task`；每项都写明窄化的 `writable_paths`、`done_when` 和 `verification`。
+4. 为每项任务生成同一父目标内唯一且跨 revision 稳定的 `logical_id`，并生成不超过 80 字符的可读 `title`。禁止使用“等待绑定包”、单独的 T 编号或其他占位标题。
+5. 用 `depends_on` 表达真实依赖。无依赖且写域不冲突的任务保持不可比，不人为串行化。
+6. 检查写路径、共享契约、生成产物和环境冲突；需要排序的任务必须显式连边。
+7. 完整任务集合必须覆盖父目标，并设置 `project_verification`。
+8. 至少存在两个不可比任务才标记 `parallel_safe`；纯串行图标记 `sequential_only`；证据不足或存在真实用户边界时标记 `needs_user_review`。
 
-1. 只有执行 profile 或共享 worker context 不同时才拆分 module。
-2. task 按可独立验收的工作结果拆分；相互无依赖且写范围不冲突的 task 保持不可比。
-3. 写路径、共享契约、生成产物或环境冲突的 task 必须用 `depends_on` 排序。
-4. 完整 task 集合共同覆盖 `parent_goal`；每个 task 都必须有 scope、`done_when` 和 `verification`。
-5. 图中存在至少两个不可比 task 才写 `parallel_safe`；纯串行图写 `sequential_only`；证据不足写 `needs_user_review`。
+## 修正版规划
 
-## 脚本校验与交接
+收到旧计划、状态、执行结果或当前差异时，按以下顺序处理：
+
+1. 读取直接前版的 plan 和 state，确认 `parent_goal` 未变化，并把可由执行单元、任务、文件和执行记录归因的改动视为受控基线。
+2. 对全部未完成任务做一次闭包审查，覆盖调用方、消费者、共享契约、适配层、生成产物和当前工程验证缺口；把已有证据能确认的缺口合并到同一 revision，不创建推测任务。
+3. 让每项受控基线恰好归属一个新任务。交叉职责抽成唯一共享前置任务；已有唯一负责人时直接转交并重接依赖。
+4. 一个变化包含多个可独立验收、互不依赖且写域不冲突的结果时拆成不可比任务；真实依赖必须保留，不能按文件数量猜测规模。
+5. `reviewed_task_ids` 和 `replacements` 覆盖旧 state 的全部未完成任务。旧计划仍有 `running` 时先回收，不生成 revision。
+6. 同一 `logical_id` 的续作使用 `continue`；从已完成任务移交给不同职责时使用 `handoff`。只有 module、profile、context 和真实执行单元 id 均匹配时才复用；一个旧执行单元最多映射一个当前任务。
+7. revision 只比直接前版增加 1。驱动器用唯一永久 claim 阻止分叉；不要手工创建、删除或改写 claim。
+
+内部拆分、重接依赖和同父目标修订不要求用户确认。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时，才标记 `needs_user_review`。
+
+## 校验
 
 定位当前 skill 所在插件根目录，运行：
 
@@ -76,20 +56,10 @@ planner 不创建 worker、不写 runtime evidence、不修改业务文件。
 node <plugin-root>/scripts/thread-plan.mjs validate <absolute-plan.json>
 ```
 
-脚本生成 `dispatch.routes` 和同目录 `state.json`。校验失败时保留原错误，不手改 route 或 safety。
+脚本生成确定性 `dispatch.routes` 和同目录 `state.json`。校验失败时保留原始错误，不手改 route、safety 或运行状态。v1/v2 计划必须重新生成 v3。
 
-## 继续规划
+## 交接
 
-coordinator 可携带旧 plan、state、worker 结果和当前 diff 请求修正版计划。能够由 worker id、task id、changed files 与执行记录归因的本轮 worker 改动是受控基线，不算未知用户改动；新计划必须为它们分配明确 owner、写域、依赖和复查条件。
+首次计划只有在用户明确授权执行、脚本校验成功且 `safety.status` 为 `parallel_safe` 时，才调用 `$thread-coordination`。
 
-scope 扩展与任务重分配由 coordinator 在原 `parent_goal` 内决定。已完成 task 不在修正版中重跑，其产物作为受控基线；未完成 task 重新接线，原依赖已由基线满足时移除对应边。
-
-- 一个扩展包含至少两个 scope、完成条件和验证都能分离且互不依赖的结果时，拆成多个不可比 task；不得让单一 task 串行包办。
-- 扩展与其他 task 的路径、共享契约或生成产物交叉时，把交叉职责抽成新的共享前置 task，指定唯一 `module_id` 和写域，从消费者移除该职责，并让所有消费者依赖新节点。已有唯一 owner 时直接转交并重接依赖。
-- 不以文件数判断规模，不为追求并行拆开真实依赖；修正版只剩串行尾部时允许 `sequential_only` 并继续执行。
-
-不要把内部编排选择升级为用户确认。只有父目标变化、无法归因的用户改动、敏感/破坏性操作、外部副作用或无法安全消歧时写 `needs_user_review`。
-
-首次规划只在用户当前请求明确要求执行、脚本校验成功且 `safety.status` 为 `parallel_safe` 时，调用 `$thread-coordination`。由 coordinator 发起的同父目标继续规划在校验成功后直接恢复执行，不再次询问用户，也不只停在计划路径。
-
-v1/v2 计划必须重新生成 v3。“计划已生成”不等于父目标已完成。
+由协调会话请求的同父目标修正版在校验成功后直接恢复 `$thread-coordination`，不再次询问用户，也不只停在计划路径。计划生成不代表父目标已经完成。

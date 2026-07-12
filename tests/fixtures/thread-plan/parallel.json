@@ -1,6 +1,7 @@
 {
   "planner": "parallel-task-planner",
   "plan_format_version": 3,
+  "revision": 1,
   "execution_platform": "codex",
   "parent_goal": "Refactor page state",
   "modules": [
@@ -24,6 +25,8 @@
   "tasks": [
     {
       "id": "T1",
+      "logical_id": "state.extract-types",
+      "title": "抽离页面状态类型",
       "module_id": "implementation",
       "task": "Extract page state types.",
       "depends_on": [],
@@ -33,6 +36,8 @@
     },
     {
       "id": "T2",
+      "logical_id": "state.migrate-reads",
+      "title": "迁移页面状态读取",
       "module_id": "implementation",
       "task": "Migrate page state reads.",
       "depends_on": ["T1"],
@@ -42,6 +47,8 @@
     },
     {
       "id": "T3",
+      "logical_id": "state.update-fixtures",
+      "title": "更新独立状态夹具",
       "module_id": "implementation",
       "task": "Update independent state fixtures.",
       "depends_on": [],
@@ -51,6 +58,8 @@
     },
     {
       "id": "T4",
+      "logical_id": "state.verify-flow",
+      "title": "验证页面集成流程",
       "module_id": "verification",
       "task": "Verify the integrated page flow.",
       "depends_on": ["T2", "T3"],

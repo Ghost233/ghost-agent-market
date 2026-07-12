@@ -1,12 +1,12 @@
-# Ghost Agent Workflow Codex Plugin
+# Ghost Agent Workflow Codex 插件
 
-Codex plugin packaging for:
+包含以下 skill：
 
 - `parallel-task-planner`
 - `thread-coordination`
 - `thread-goal-worker`
 - `git-commit`
 
-`parallel-task-planner` writes v2 dependency-safe plans. With explicit user authorization, `thread-coordination` creates one retained user-visible child thread per ready module in the current project's local workspace, applies the module profile at thread creation, and aggregates bound `WORKER_RESULT` values. `thread-goal-worker` owns goal, scope, verification, and diff self-check inside that module thread.
+`parallel-task-planner` 生成经过校验的 v3 module/task DAG。`module` 只定义可复用的执行配置，`task` 才是 DAG 节点。
 
-Module threads may use ordinary internal subagents, but the coordinator does not configure or track those internal agents.
+用户授权完整父目标后，`thread-coordination` 在当前项目的本地工作区立即分派全部就绪任务，并复用同一 module 的已保留子线程。`thread-goal-worker` 在子线程中负责单个任务的目标、写入范围、验证和差异自检。

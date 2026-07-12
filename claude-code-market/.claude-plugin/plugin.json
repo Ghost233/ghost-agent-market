@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "description": "Claude Code skills for v3 task DAG coordination, reusable worker handoffs, and smart git commits.",
-  "version": "0.2.6",
+  "description": "面向 Claude Code 的 v3 任务 DAG 协调、可复用执行单元交接与智能 Git 提交技能。",
+  "version": "0.3.0",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

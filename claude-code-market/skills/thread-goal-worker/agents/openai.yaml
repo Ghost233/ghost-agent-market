@@ -1,4 +1,4 @@
 interface:
-  display_name: "Task Worker 执行"
-  short_description: "执行并验证一个 Claude Code v3 task"
-  default_prompt: "使用 $thread-goal-worker 完成分派 task；scope 变化时返回含 split_hints/overlap_hints 的 scope_request，交主 session 自主重规划。"
+  display_name: "任务执行单元"
+  short_description: "在限定范围内执行并验证 Claude Code v3 任务"
+  default_prompt: "使用 $thread-goal-worker 完成 logical_id 绑定的任务；写入范围变化时返回结构化 scope_request，交主会话自主重规划。"

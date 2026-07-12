@@ -1,4 +1,4 @@
 interface:
-  display_name: "Task DAG 协调"
-  short_description: "驱动 Claude Code v3 task DAG workers"
-  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；主 session 审查 scope 变化，大任务拆成并行 task，交叉职责抽成共享前置节点并自动继续。"
+  display_name: "任务 DAG 协调"
+  short_description: "协调 Claude Code 执行单元完成 v3 任务 DAG"
+  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；用 logical_id 和 title 命名任务，在 revision 中安全复用旧执行单元。"

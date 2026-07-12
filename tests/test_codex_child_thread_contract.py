@@ -16,9 +16,22 @@ class CodexChildThreadContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.planner = read("skills/parallel-task-planner/SKILL.md")
+        cls.planner_templates = read(
+            "skills/parallel-task-planner/references/templates.md"
+        )
         cls.coordinator = read("skills/thread-coordination/SKILL.md")
+        cls.coordinator_templates = read(
+            "skills/thread-coordination/references/templates.md"
+        )
         cls.worker = read("skills/thread-goal-worker/SKILL.md")
+        cls.worker_templates = read(
+            "skills/thread-goal-worker/references/templates.md"
+        )
+        cls.planner_contract = f"{cls.planner}\n{cls.planner_templates}"
+        cls.coordinator_contract = f"{cls.coordinator}\n{cls.coordinator_templates}"
+        cls.worker_contract = f"{cls.worker}\n{cls.worker_templates}"
         cls.git_commit = read("skills/git-commit/SKILL.md")
+        cls.readme = read("README.md")
         cls.metadata = "\n".join(
             read(path)
             for path in (
@@ -30,18 +43,26 @@ class CodexChildThreadContractTests(unittest.TestCase):
         )
 
     def test_planner_emits_v3_task_dag_contract(self) -> None:
-        self.assertIn("plan_format_version", self.planner)
+        self.assertIn("plan_format_version", self.planner_contract)
         self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
         self.assertIn("thread-plan.mjs", self.planner)
         self.assertIn("DAG 节点", self.planner)
         self.assertIn("gpt-5.6-terra", self.planner)
-        self.assertIn("reasoning_effort: medium", self.planner)
+        self.assertIn('"reasoning_effort": "medium"', self.planner_templates)
+        self.assertIn("logical_id", self.planner_contract)
+        self.assertIn("continuation", self.planner_contract)
+        self.assertIn('"revision": 1', self.planner_templates)
+        self.assertIn("永久 claim", self.planner)
+        self.assertIn("reviewed_task_ids", self.planner_contract)
+        self.assertIn("replacements", self.planner_contract)
+        self.assertIn("闭包审查", self.planner)
 
     def test_planner_separates_modules_from_tasks(self) -> None:
-        self.assertIn("module 不是 DAG 节点", self.planner)
-        self.assertIn("task", self.planner)
-        self.assertIn("module_id", self.planner)
-        self.assertIn("project_verification", self.planner)
+        self.assertIn("`module`", self.planner)
+        self.assertIn("不是 DAG 节点", self.planner)
+        self.assertIn("`task` 是 DAG 节点", self.planner)
+        self.assertIn("module_id", self.planner_contract)
+        self.assertIn("project_verification", self.planner_contract)
 
     def test_coordinator_uses_thread_tools(self) -> None:
         for tool in (
@@ -49,40 +70,53 @@ class CodexChildThreadContractTests(unittest.TestCase):
             "create_thread",
             "read_thread",
             "send_message_to_thread",
+            "set_thread_title",
         ):
-            self.assertIn(tool, self.coordinator)
+            self.assertIn(tool, self.coordinator_contract)
         self.assertIn("environment: {type: local}", self.coordinator)
-        self.assertIn("model", self.coordinator)
-        self.assertIn("thinking", self.coordinator)
-        self.assertIn("dispatch_key", self.coordinator)
+        self.assertIn("model", self.coordinator_contract)
+        self.assertIn("thinking", self.coordinator_templates)
+        self.assertIn("dispatch_key", self.coordinator_contract)
         self.assertIn("普通错误文本不得传给 `JSON.parse`", self.coordinator)
-        self.assertIn("status: dispatch_failed", self.coordinator)
+        self.assertIn("dispatch_failed", self.coordinator_contract)
+        self.assertIn("reuse_existing_thread", self.coordinator)
+        self.assertIn("[完成]", self.coordinator)
+        self.assertIn("[复核]", self.coordinator)
+        self.assertIn("状态：预备", self.coordinator_templates)
         self.assertNotIn("pending blocked", self.coordinator)
 
     def test_worker_owns_one_active_task(self) -> None:
-        self.assertIn("task_id", self.worker)
-        self.assertIn("module_id", self.worker)
-        self.assertIn("WORKER_RESULT_V3", self.worker)
-        self.assertIn("一个 active task", self.worker)
-        self.assertIn("独立 goal", self.worker)
-        self.assertIn("scope_request", self.worker)
+        self.assertIn("task_id", self.worker_contract)
+        self.assertIn("module_id", self.worker_contract)
+        self.assertIn("WORKER_RESULT_V3", self.worker_contract)
+        self.assertIn("一个活动任务", self.worker)
+        self.assertIn("独立目标", self.worker)
+        self.assertIn("scope_request", self.worker_contract)
+        self.assertIn("logical_id", self.worker_contract)
 
     def test_main_thread_owns_safe_plan_revisions(self) -> None:
-        self.assertIn("完整 `parent_goal`", self.coordinator)
-        self.assertIn("主线程自主修订", self.coordinator)
-        self.assertIn("不是要求用户逐次批准的边界", self.coordinator)
-        self.assertIn("不要求用户再次确认", self.planner)
-        self.assertIn("修正版只剩串行尾部时允许 `sequential_only`", self.planner)
+        self.assertIn("完整父目标", self.coordinator)
+        self.assertIn("## 内部修订", self.coordinator)
+        self.assertIn("不要求用户逐次批准", self.coordinator)
+        self.assertIn("不要求用户确认", self.planner)
+        self.assertIn("纯串行图标记 `sequential_only`", self.planner)
         self.assertIn("不是用户确认请求", self.worker)
         self.assertIn("scope_exception", self.worker)
-        self.assertIn("split_hints", self.worker)
-        self.assertIn("overlap_hints", self.worker)
-        self.assertIn("拆成多个不可比 task", self.planner)
-        self.assertIn("新的共享前置 task", self.coordinator)
+        self.assertIn("split_hints", self.worker_contract)
+        self.assertIn("overlap_hints", self.worker_contract)
+        self.assertIn("拆成不可比任务", self.planner)
+        self.assertIn("共享前置任务", self.planner)
+        self.assertIn("$parallel-task-planner", self.coordinator)
 
     def test_legacy_worker_terms_are_removed(self) -> None:
         combined = "\n".join(
-            (self.planner, self.coordinator, self.worker, self.metadata)
+            (
+                self.planner_contract,
+                self.coordinator_contract,
+                self.worker_contract,
+                self.metadata,
+                self.readme,
+            )
         )
         self.assertNotIn("subagent", combined.lower())
         self.assertNotIn("子代理", combined)
@@ -93,9 +127,10 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertNotIn("dispatch.batches", combined)
         self.assertNotIn("线程池", combined)
         self.assertNotIn("并发上限", combined)
+        self.assertIn("v3 module/task DAG", self.readme)
 
     def test_metadata_describes_child_threads(self) -> None:
-        self.assertIn("task DAG", self.metadata)
+        self.assertIn("任务 DAG", self.metadata)
         self.assertIn("gpt-5.6-terra/medium", self.metadata)
 
     def test_git_commit_uses_spark_execution_thread(self) -> None:
@@ -122,8 +157,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.6.2+codex."))
-        self.assertIn("child thread", manifest["description"].lower())
+        self.assertTrue(manifest["version"].startswith("0.6.6+codex."))
+        self.assertIn("子线程", manifest["description"])
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
 

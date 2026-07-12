@@ -19,7 +19,7 @@ const targets = [
 const source = readFileSync(sourcePath, "utf8");
 const outputTemplate = [
   "// Generated from tooling/thread-plan/thread-plan.ts. Do not edit directly.",
-  stripTypeScriptTypes(source, { mode: "strip" }),
+  stripTypeScriptTypes(source, { mode: "strip" }).replace(/[ \t]+$/gm, ""),
 ].join("\n");
 
 for (const target of targets) {

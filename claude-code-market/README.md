@@ -1,7 +1,8 @@
 # Claude Code Market
 
-这个目录提供 Claude Code 可安装插件，包含以下三个 skill：
+这个目录提供 Claude Code 可安装插件，包含以下四个 skill：
 
+- `parallel-task-planner`
 - `thread-coordination`
 - `thread-goal-worker`
 - `git-commit`

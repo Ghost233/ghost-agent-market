@@ -1,6 +1,7 @@
 {
   "planner": "parallel-task-planner",
   "plan_format_version": 3,
+  "revision": 1,
   "execution_platform": "codex",
   "parent_goal": "Demonstrate conflicting tasks",
   "modules": [
