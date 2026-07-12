@@ -81,6 +81,7 @@ prompt: GIT_COMMIT_EXECUTOR=1；启动检查触发一次性 fallback；沿用原
 - 只为解决客观疑点读取一次必要的指令、diff 或历史；证据充分后立即决定提交或失败，不反复考古。
 - 只有身份不符、敏感内容、归属不明的 staged 内容、明确违反仓库指令或 Git 命令失败才阻塞。明确记录的平台差异不是阻塞理由。
 - 多轮用户编辑可能在一次提交前累计多次合法版本递增。若最终版本格式、进位和 cachebuster 均符合仓库规则，不得仅因它高于 `HEAD + 0.0.1` 而降级、改写或停止。
+- 执行线程尚未进行 Git 写操作时，若两次只读状态出现差异，先比较具体路径。能够明确归因且仍在授权范围内时以新状态重新规划；无法归因时在 stage 前停止并通知。不得删除、覆盖或静默吸收并发改动。
 - 当前授权范围内的问题能安全修复时直接修复并继续；必须扩大范围时才停止并通知。
 
 ## 规划提交批次
@@ -109,7 +110,7 @@ submodule 提交与主工程提交必须是不同提交。
 
 ## 执行提交
 
-Codex 沙盒阻止写入 Git index/refs 时，执行线程使用 `sandbox_permissions: "require_escalated"`，并用最小、具体的 justification 请求授权；只读检查不提权。
+Codex 沙盒阻止写入 Git index/refs 时，执行线程先重新读取 `git status --short` 和 `git diff --cached`，确认失败命令没有改变 index；随后只为同一条具体写命令和同一组显式路径使用 `sandbox_permissions: "require_escalated"`，并给出最小、具体的 justification。只读检查不提权，也不得把沙盒拒绝误报为“没有可提交改动”。
 
 对每个批次依次执行：
 
@@ -119,6 +120,8 @@ Codex 沙盒阻止写入 Git index/refs 时，执行线程使用 `sandbox_permis
 4. 创建提交。不得使用 `--no-verify` 绕过 hooks。
 5. hook 或 commit 失败时保留现场并报告。只在当前授权范围内修复；需要扩大修改范围时停止。
 6. 提交后读取新 hash，并重新运行 `git status --short`；再决定是否继续下一批次。
+
+提交后同一路径出现新修改时，把已创建 commit 与新增未提交内容分开报告；不得自动 amend、追加暂存或宣称整个工作区已经提交完成。
 
 ## 完成与失败通知
 

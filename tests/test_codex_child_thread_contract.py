@@ -146,6 +146,12 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("不得调用 `create_thread`", self.git_commit)
         self.assertIn("不得自行 fallback", self.git_commit)
 
+    def test_git_commit_preserves_state_across_write_failures_and_concurrent_edits(self) -> None:
+        self.assertIn("确认失败命令没有改变 index", self.git_commit)
+        self.assertIn("无法归因时在 stage 前停止并通知", self.git_commit)
+        self.assertIn("提交后同一路径出现新修改时", self.git_commit)
+        self.assertIn("不得自动 amend", self.git_commit)
+
     def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
         for skill in (PLUGIN / "skills").rglob("SKILL.md"):
             self.assertNotIn("claude", skill.read_text(encoding="utf-8").lower(), skill)
@@ -157,7 +163,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.6.6+codex."))
+        self.assertTrue(manifest["version"].startswith("0.6.7+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 

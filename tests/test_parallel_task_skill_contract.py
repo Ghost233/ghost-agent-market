@@ -303,7 +303,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         claude_manifest = json.loads(
             (CLAUDE / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
         )
-        self.assertTrue(codex_manifest["version"].startswith("0.6.6+codex."))
+        self.assertTrue(codex_manifest["version"].startswith("0.6.7+codex."))
         self.assertEqual(claude_manifest["version"], "0.3.0")
 
 
