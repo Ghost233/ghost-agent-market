@@ -42,13 +42,13 @@ node <plugin-root>/scripts/thread-plan.mjs next <plan_path> <state_path>
 ```
 
 2. 立即处理本次返回的全部 actions；不能因为其他任务仍在运行而延后已就绪任务。
-3. 取得真实线程 id 后，先持久化归属：
+3. 取得真实线程 id 后，先按 action 的 `thread_role` 设置 `[GA][实施|审查][待命]` 标题，再持久化归属：
 
 ```text
 node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> running <thread_id>
 ```
 
-4. 设置任务标题并发送模板中的完整绑定包。
+4. 发送模板中的完整绑定包；发送成功后把状态段更新为 `[执行]`。
 5. 用 `read_thread(includeOutputs: true)` 低频回收结果；运行中不是失败。
 6. 校验结果并更新终止状态：
 
@@ -62,7 +62,7 @@ node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task
 
 ### `create_thread`
 
-从 action 的 `module_id` 读取 `worker_profile` 和 `worker_context`，以 `<plan_path>#<task_id>` 作为 `dispatch_key`。
+从 action 的 `module_id` 读取 `worker_profile` 和 `worker_context`，以 `<plan_path>#<task_id>` 作为 `dispatch_key`。action 必须带有计划已校验的 `thread_role`，协调器不得根据任务文本猜测用途。
 
 每个 `create_thread` action 真正创建前，先调用 `list_threads(query=<dispatch_key>)`。唯一匹配时恢复其线程 id，直接更新 `running` 后发送绑定包；零匹配时才按模板调用 `create_thread`；多个匹配时不再创建，保持 `pending`，进入内部复核并返回 `dispatch_failed` 与匹配证据。
 
@@ -70,27 +70,29 @@ node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task
 
 ### `reuse_thread`
 
-只使用 action 指定的线程 id。按该 id 更新 `running`、更新标题并发送新绑定包；不得自行挑选其他线程。
+只使用 action 指定的线程 id。确认 action 的 `thread_role` 与该复用链一致后，按该 id 更新标题、写入 `running` 并发送新绑定包；不得自行挑选其他线程。
 
 ### `reuse_existing_thread`
 
 只使用驱动器从旧计划与状态验证后返回的 `from_plan`、`from_task` 和线程 id。旧来源必须属于同一父目标，且 module、profile、context、终止状态和真实线程 id 均满足复用约束。
 
-旧线程不可读取、仍有活动任务或已被用户插入新任务时，停止该映射并进入主线程内部复核；不得创建同职责重复线程。
+旧线程不可读取、仍有活动任务或已被用户插入新任务时，停止该映射并进入主线程内部复核；不得创建同职责重复线程。跨 revision 复用时 `thread_role` 也必须一致。
 
 ## 命名与分派恢复
 
-写入 `running` 后，用 `set_thread_title` 把标题设置为 `[执行] <logical_id> · <title>`。终止后分别改为 `[完成]`、`[复核]`、`[阻塞]` 或 `[失败]`，并保留相同标识与标题。命名失败只记录警告，不改变任务状态或触发重复执行。
+统一用 `set_thread_title` 设置标题，格式为 `[GA][<用途>][<状态>] <logical_id> · <title>`。每次改名都保留 `[GA]`、用途、稳定标识和可读标题。用途由 `thread_role` 唯一映射：`work -> [实施]`，表示正式修改；`review -> [审查]`，表示只读审查。不得使用其他近义词或根据运行结果改变用途。
 
-用 `send_message_to_thread` 发送绑定包。首次发送失败时，保留 `running/thread_id` 并向同一线程重发一次。重新进入协调时，如果线程只有预备消息且没有绑定包或执行活动，也只补发一次。仍失败或匹配不唯一时返回 `dispatch_failed` 并保留原状态；不得创建替代线程。
+状态段只使用两个中文字：取得真实线程 id 后为 `[待命]`；绑定包发送成功后为 `[执行]`；发送聚焦补修前为 `[补修]`；终止状态固定映射为 `completed -> [完成]`、`needs_main_review -> [复核]`、`blocked -> [阻塞]`、`failed -> [失败]`。绑定或恢复失败但已有唯一线程时使用 `[阻塞]`；没有真实线程 id 时不执行命名。命名失败只记录警告，不改变任务状态或触发重复执行。
+
+用 `send_message_to_thread` 发送绑定包。首次发送失败时，保留 `running/thread_id` 并向同一线程重发一次。重新进入协调时，如果线程只有预备消息且没有绑定包或执行活动，也只补发一次。仍失败或匹配不唯一时返回 `dispatch_failed` 并保留原状态；已有唯一线程时把标题更新为 `[阻塞]`，不得创建替代线程。
 
 ## 结果回收与补修
 
-只接受符合模板“WORKER_RESULT_V3 普通结果”或“WORKER_RESULT_V3 写入范围变化”章节，且与当前 `task_id`、`logical_id`、`module_id` 和 `thread_id` 一致的结果。
+只接受符合模板“WORKER_RESULT_V3 普通结果”或“WORKER_RESULT_V3 写入范围变化”章节，且与当前 `task_id`、`logical_id`、`thread_role`、`module_id` 和 `thread_id` 一致的结果。
 
-`completed` 必须同时满足：模型配置证据可核对；changed files 全部在写入范围内；`done_when` 已满足；验证通过或有明确替代证据；`diff_self_check` 为 `pass`；不存在用户干预、未解决依赖或共享文件冲突。
+`completed` 必须同时满足：模型配置证据可核对；changed files 全部在写入范围内；审查任务的 changed files 为空；`done_when` 已满足；验证通过或有明确替代证据；`diff_self_check` 为 `pass`；不存在用户干预、未解决依赖或共享文件冲突。
 
-字段缺失、验证不足或普通差异自检失败时，只向原线程发送一次聚焦补修。契约合法且带完整 `scope_request` 的越界结果不做无意义补修，直接记录 `needs_main_review` 并进入内部修订。补修仍不合法时同样进入内部修订；该状态本身不代表需要用户确认。
+字段缺失、验证不足或普通差异自检失败时，先把标题更新为 `[补修]`，再只向原线程发送一次聚焦补修。契约合法且带完整 `scope_request` 的越界结果不做无意义补修，直接记录 `needs_main_review`、更新为 `[复核]` 并进入内部修订。审查任务发现需要修改时也走该路径，由规划器生成 `work` 任务；审查线程不得直接修改。补修仍不合法时同样进入内部修订；该状态本身不代表需要用户确认。
 
 ## 内部修订
 

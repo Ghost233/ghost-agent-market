@@ -1,4 +1,4 @@
 interface:
   display_name: "任务执行单元"
   short_description: "在限定范围内执行并验证 Claude Code v3 任务"
-  default_prompt: "使用 $thread-goal-worker 完成 logical_id 绑定的任务；写入范围变化时返回结构化 scope_request，交主会话自主重规划。"
+  default_prompt: "使用 $thread-goal-worker 按 thread_role 完成绑定任务；审查严格只读，写入范围变化时返回 scope_request。"

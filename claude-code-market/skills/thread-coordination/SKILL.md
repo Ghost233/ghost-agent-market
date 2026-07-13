@@ -41,13 +41,13 @@ node <plugin-root>/scripts/thread-plan.mjs next <plan_path> <state_path>
 ```
 
 2. 立即处理本次返回的全部 actions；不能因为其他任务仍在运行而延后已就绪任务。
-3. 取得真实执行单元 id 后，先统一写入 `thread_id`：
+3. 取得真实执行单元 id 后，先按 action 的 `thread_role` 设置 `[GA][实施|审查][待命]` 名称，再统一写入 `thread_id`：
 
 ```text
 node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> running <thread_id>
 ```
 
-4. 设置任务名称并发送模板中的完整分派包。
+4. 发送模板中的完整分派包；发送成功后把状态段更新为 `[执行]`。
 5. 低频回收执行结果；运行中不是失败。
 6. 校验结果并更新终止状态：
 
@@ -59,9 +59,9 @@ node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task
 
 ## 分派动作
 
-- `create_thread`：从 action 的 `module_id` 读取执行配置和共享上下文，以 `<plan_path>#<task_id>` 作为 `dispatch_key`。真正创建前，先用平台可用的列表或查询能力按 `dispatch_key` 查找已有执行单元；唯一匹配时恢复其 id 并直接更新 `running`，零匹配时才创建，多个匹配时保持 `pending`、进入内部复核并返回 `dispatch_failed` 与匹配证据。
-- `reuse_thread`：只使用 action 指定的原执行单元 id，不自行挑选其他执行单元。
-- `reuse_existing_thread`：只使用驱动器从旧计划与状态验证后返回的 id、`from_plan` 和 `from_task`；不得替换或另建同职责执行单元。
+- `create_thread`：从 action 的 `module_id` 读取执行配置和共享上下文，以 `<plan_path>#<task_id>` 作为 `dispatch_key`。action 必须带有计划已校验的 `thread_role`，协调器不得根据任务文本猜测用途。真正创建前，先用平台可用的列表或查询能力按 `dispatch_key` 查找已有执行单元；唯一匹配时恢复其 id 并直接更新 `running`，零匹配时才创建，多个匹配时保持 `pending`、进入内部复核并返回 `dispatch_failed` 与匹配证据。
+- `reuse_thread`：只使用 action 指定的原执行单元 id，并确认 `thread_role` 与复用链一致；不自行挑选其他执行单元。
+- `reuse_existing_thread`：只使用驱动器从旧计划与状态验证后返回的 id、`from_plan` 和 `from_task`；`thread_role` 必须一致，不得替换或另建同职责执行单元。
 
 创建后未取得真实 id 时再次按 `dispatch_key` 查询；唯一匹配才采用，多个匹配进入内部复核，零匹配时使用相同配置自动重试一次。再次失败时保持任务为 `pending`，返回 `dispatch_failed` 与两次原始错误；不要求用户批准重试，也不把平台创建错误写成任务 `blocked`。
 
@@ -69,17 +69,19 @@ node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task
 
 ## 命名与分派恢复
 
-写入 `running` 后，把名称设置为 `[执行] <logical_id> · <title>`。终止后分别改为 `[完成]`、`[复核]`、`[阻塞]` 或 `[失败]`，并保留相同标识与标题。平台不支持改名或命名失败时只记录警告。
+统一名称格式为 `[GA][<用途>][<状态>] <logical_id> · <title>`，每次改名都保留 `[GA]`、用途、稳定标识和可读标题。用途由 `thread_role` 唯一映射：`work -> [实施]`，表示正式修改；`review -> [审查]`，表示只读审查。不得使用其他近义词或根据运行结果改变用途。
 
-分派包首次发送失败时，保留 `running/thread_id` 并向同一执行单元重发一次。重新进入协调时，如果执行单元没有完整分派包或执行活动，也只补发一次。仍失败或匹配不唯一时返回 `dispatch_failed` 并保留原状态；不得创建替代执行单元。
+状态段只使用两个中文字：取得真实执行单元 id 后为 `[待命]`；分派包发送成功后为 `[执行]`；发送聚焦补修前为 `[补修]`；终止状态固定映射为 `completed -> [完成]`、`needs_main_review -> [复核]`、`blocked -> [阻塞]`、`failed -> [失败]`。分派或恢复失败但已有唯一执行单元时使用 `[阻塞]`；没有真实 id 时不执行命名。平台不支持改名或命名失败时只记录警告，不改变任务状态或触发重复执行。
+
+分派包首次发送失败时，保留 `running/thread_id` 并向同一执行单元重发一次。重新进入协调时，如果执行单元没有完整分派包或执行活动，也只补发一次。仍失败或匹配不唯一时返回 `dispatch_failed` 并保留原状态；已有唯一执行单元时把名称更新为 `[阻塞]`，不得创建替代执行单元。
 
 ## 结果回收与补修
 
-只接受符合模板“WORKER_RESULT_V3 普通结果”或“WORKER_RESULT_V3 写入范围变化”章节，且与当前 `task_id`、`logical_id`、`module_id` 和 `thread_id` 一致的结果。
+只接受符合模板“WORKER_RESULT_V3 普通结果”或“WORKER_RESULT_V3 写入范围变化”章节，且与当前 `task_id`、`logical_id`、`thread_role`、`module_id` 和 `thread_id` 一致的结果。
 
-`completed` 必须同时满足：changed files 全部在写入范围内；`done_when` 已满足；验证通过或有明确替代证据；`diff_self_check` 为 `pass`；模型与分派证据可核对；不存在用户干预、未解决依赖或共享文件冲突。
+`completed` 必须同时满足：changed files 全部在写入范围内；审查任务的 changed files 为空；`done_when` 已满足；验证通过或有明确替代证据；`diff_self_check` 为 `pass`；模型与分派证据可核对；不存在用户干预、未解决依赖或共享文件冲突。
 
-字段缺失、验证不足或普通差异自检失败时，只向原执行单元发送一次聚焦补修。契约合法且带完整 `scope_request` 的越界结果不做无意义补修，直接记录 `needs_main_review` 并进入内部修订。补修仍不合法时同样进入内部修订；该状态本身不代表需要用户确认。
+字段缺失、验证不足或普通差异自检失败时，先把名称更新为 `[补修]`，再只向原执行单元发送一次聚焦补修。契约合法且带完整 `scope_request` 的越界结果不做无意义补修，直接记录 `needs_main_review`、更新为 `[复核]` 并进入内部修订。审查任务发现需要修改时也走该路径，由规划器生成 `work` 任务；审查执行单元不得直接修改。补修仍不合法时同样进入内部修订；该状态本身不代表需要用户确认。
 
 ## 内部修订
 

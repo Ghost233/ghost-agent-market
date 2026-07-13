@@ -7,7 +7,7 @@ create_thread(
   target={type: project, projectId: <项目 id>, environment: {type: local}},
   model=<module.worker_profile.model>,
   thinking=<module.worker_profile.reasoning_effort>,
-  prompt=<任务：logical_id · title；dispatch_key；task_id；module_id；状态：预备；收到完整绑定包前不得执行>
+  prompt=<任务：logical_id · title；dispatch_key；task_id；thread_role；module_id；状态：待命；收到完整绑定包前不得执行>
 )
 ```
 
@@ -24,6 +24,7 @@ create_thread(
   "task_id": "T1",
   "logical_id": "state.extract-types",
   "title": "抽离页面状态类型",
+  "thread_role": "work | review",
   "module_id": "implementation",
   "task": "<单一可执行结果>",
   "depends_on": [],
@@ -49,6 +50,7 @@ create_thread(
   "status": "completed | blocked | failed",
   "task_id": "T1",
   "logical_id": "state.extract-types",
+  "thread_role": "work | review",
   "module_id": "implementation",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",
@@ -68,6 +70,7 @@ create_thread(
   "status": "needs_main_review",
   "task_id": "T1",
   "logical_id": "state.extract-types",
+  "thread_role": "work | review",
   "module_id": "implementation",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",

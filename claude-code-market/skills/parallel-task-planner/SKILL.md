@@ -28,11 +28,12 @@ description: 当 Claude Code 需要把自然语言目标或现有方案整理为
 1. 明确可验收的 `parent_goal`、工程现状、已知改动和总验证方式。
 2. 仅在执行配置或共享上下文确实不同时拆分 `module`。
 3. 按可独立验收的结果拆分 `task`；每项都写明窄化的 `writable_paths`、`done_when` 和 `verification`。
-4. 为每项任务生成同一父目标内唯一且跨 revision 稳定的 `logical_id`，并生成不超过 80 字符的可读 `title`。禁止使用“等待绑定包”、单独的 T 编号或其他占位标题。
-5. 用 `depends_on` 表达真实依赖。无依赖且写域不冲突的任务保持不可比，不人为串行化。
-6. 检查写路径、共享契约、生成产物和环境冲突；需要排序的任务必须显式连边。
-7. 完整任务集合必须覆盖父目标，并设置 `project_verification`。
-8. 至少存在两个不可比任务才标记 `parallel_safe`；纯串行图标记 `sequential_only`；证据不足或存在真实用户边界时标记 `needs_user_review`。
+4. 为每项任务显式设置 `thread_role`：`work` 表示正式实施且 `writable_paths` 不得为空，`review` 表示只读审查且 `writable_paths` 必须为 `[]`。工作执行单元仍需自检，不为重复自检额外创建审查任务。
+5. 为每项任务生成同一父目标内唯一且跨 revision 稳定的 `logical_id`，并生成不超过 80 字符的可读 `title`。禁止使用“等待绑定包”、单独的 T 编号或其他占位标题。
+6. 用 `depends_on` 表达真实依赖。无依赖且写域不冲突的任务保持不可比，不人为串行化。
+7. 检查写路径、共享契约、生成产物和环境冲突；需要排序的任务必须显式连边。
+8. 完整任务集合必须覆盖父目标，并设置 `project_verification`。
+9. 至少存在两个不可比任务才标记 `parallel_safe`；纯串行图标记 `sequential_only`；证据不足或存在真实用户边界时标记 `needs_user_review`。
 
 ## 修正版规划
 
@@ -43,10 +44,12 @@ description: 当 Claude Code 需要把自然语言目标或现有方案整理为
 3. 让每项受控基线恰好归属一个新任务。交叉职责抽成唯一共享前置任务；已有唯一负责人时直接转交并重接依赖。
 4. 一个变化包含多个可独立验收、互不依赖且写域不冲突的结果时拆成不可比任务；真实依赖必须保留，不能按文件数量猜测规模。
 5. `reviewed_task_ids` 和 `replacements` 覆盖旧 state 的全部未完成任务。旧计划仍有 `running` 时先回收，不生成 revision。
-6. 同一 `logical_id` 的续作使用 `continue`；从已完成任务移交给不同职责时使用 `handoff`。只有 module、profile、context 和真实执行单元 id 均匹配时才复用；一个旧执行单元最多映射一个当前任务。
+6. 同一 `logical_id` 的续作使用 `continue`；从已完成任务移交给不同职责时使用 `handoff`。只有 `thread_role`、module、profile、context 和真实执行单元 id 均匹配时才复用；一个旧执行单元最多映射一个当前任务。
 7. revision 只比直接前版增加 1。驱动器用唯一永久 claim 阻止分叉；不要手工创建、删除或改写 claim。
 
 内部拆分、重接依赖和同父目标修订不要求用户确认。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时，才标记 `needs_user_review`。
+
+审查任务发现需要修改时，不把自身改成写任务，也不直接修改文件；它返回审查证据，由主会话在下一 revision 新建或重接 `work` 任务。
 
 ## 校验
 

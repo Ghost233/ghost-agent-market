@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 协调"
   short_description: "协调 Codex 子线程执行 v3 任务 DAG"
-  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；用 logical_id 和 title 命名任务，在 revision 中安全复用旧线程。"
+  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；按 [GA][实施|审查][状态] 命名并安全复用子线程。"

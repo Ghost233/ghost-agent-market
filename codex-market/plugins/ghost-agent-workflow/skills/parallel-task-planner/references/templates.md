@@ -24,6 +24,7 @@
       "id": "T1",
       "logical_id": "state.extract-types",
       "title": "抽离页面状态类型",
+      "thread_role": "work",
       "module_id": "implementation",
       "task": "在独立文件定义并导出页面状态类型",
       "depends_on": [],
@@ -33,20 +34,21 @@
     },
     {
       "id": "T2",
-      "logical_id": "parser.add-boundary-tests",
-      "title": "补充解析器边界测试",
+      "logical_id": "parser.review-boundaries",
+      "title": "审查解析器边界行为",
+      "thread_role": "review",
       "module_id": "implementation",
-      "task": "为既有解析器补充独立的边界测试",
+      "task": "只读审查既有解析器的空输入与非法输入行为",
       "depends_on": [],
-      "writable_paths": ["tests/parser-boundary.test.ts"],
-      "done_when": ["空输入与非法输入都有测试覆盖"],
-      "verification": ["运行解析器边界测试"]
+      "writable_paths": [],
+      "done_when": ["形成可核对的边界行为审查结论"],
+      "verification": ["读取并运行既有解析器边界测试，不修改文件"]
     }
   ],
   "project_verification": ["<工程总验收>"],
   "safety": {
     "status": "parallel_safe",
-    "reasons": ["T1 与 T2 无依赖且写入路径不交叉，可以并行执行"]
+    "reasons": ["T1 与 T2 无依赖，且只读审查不与实施写域冲突，可以并行执行"]
   }
 }
 ```

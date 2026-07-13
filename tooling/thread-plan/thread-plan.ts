@@ -20,10 +20,13 @@ type ModuleDefinition = {
   worker_context: string;
 };
 
+type ThreadRole = "work" | "review";
+
 type TaskDefinition = {
   id: string;
   logical_id: string;
   title: string;
+  thread_role: ThreadRole;
   module_id: string;
   task: string;
   depends_on: string[];
@@ -117,6 +120,8 @@ const REASONING_EFFORTS = new Set([
   "max",
   "ultra",
 ]);
+
+const THREAD_ROLES = new Set<ThreadRole>(["work", "review"]);
 
 function fail(message: string): never {
   throw new Error(message);
@@ -387,20 +392,37 @@ function parseTask(value: unknown, index: number): TaskDefinition {
   ) {
     fail(`tasks[${index}].title is a generic placeholder: ${title}`);
   }
+  const writablePaths = requireStringArray(
+    task.writable_paths,
+    `tasks[${index}].writable_paths`,
+  );
+  const threadRole =
+    task.thread_role === undefined
+      ? writablePaths.length === 0
+        ? "review"
+        : "work"
+      : requireString(task.thread_role, `tasks[${index}].thread_role`);
+  if (!THREAD_ROLES.has(threadRole as ThreadRole)) {
+    fail(`tasks[${index}].thread_role is invalid: ${threadRole}`);
+  }
+  if (threadRole === "review" && writablePaths.length > 0) {
+    fail(`tasks[${index}] review thread must have empty writable_paths`);
+  }
+  if (threadRole === "work" && writablePaths.length === 0) {
+    fail(`tasks[${index}] work thread must have non-empty writable_paths`);
+  }
   return {
     id,
     logical_id: logicalId,
     title,
+    thread_role: threadRole as ThreadRole,
     module_id: requireString(task.module_id, `tasks[${index}].module_id`),
     task: taskText,
     depends_on: requireStringArray(
       task.depends_on,
       `tasks[${index}].depends_on`,
     ),
-    writable_paths: requireStringArray(
-      task.writable_paths,
-      `tasks[${index}].writable_paths`,
-    ),
+    writable_paths: writablePaths,
     done_when: requireStringArray(
       task.done_when,
       `tasks[${index}].done_when`,
@@ -636,6 +658,7 @@ function buildRoutes(
         !resumedTargets.has(target.id) &&
         source.id !== target.id &&
         source.module_id === target.module_id &&
+        source.thread_role === target.thread_role &&
         ancestors.get(target.id)?.has(source.id) === true;
       if (!candidate || seen.has(target.id)) continue;
       seen.add(target.id);
@@ -779,6 +802,11 @@ function resolveContinuationRoutes(
     if (targetTask.module_id !== sourceTask.module_id) {
       fail(
         `continuation module mismatch: ${targetTaskId} cannot reuse ${sourceTaskId}`,
+      );
+    }
+    if (targetTask.thread_role !== sourceTask.thread_role) {
+      fail(
+        `continuation thread_role mismatch: ${targetTaskId} cannot reuse ${sourceTaskId}`,
       );
     }
     const currentModule = currentModuleById.get(targetTask.module_id);
@@ -1123,6 +1151,7 @@ function nextCommand(planArgument: string, stateArgument: string): void {
         task_id: task.id,
         logical_id: task.logical_id,
         title: task.title,
+        thread_role: task.thread_role,
         module_id: task.module_id,
       };
       if (route?.action === "resume") {
