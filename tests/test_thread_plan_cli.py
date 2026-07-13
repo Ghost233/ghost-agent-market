@@ -85,6 +85,36 @@ class ThreadPlanCliTests(unittest.TestCase):
             actions = {action["task_id"]: action for action in payload["actions"]}
             self.assertEqual(actions["T1"]["logical_id"], "state.extract-types")
             self.assertEqual(actions["T1"]["title"], "抽离页面状态类型")
+            self.assertEqual(actions["T1"]["thread_role"], "work")
+            self.assertEqual(actions["T3"]["thread_role"], "work")
+
+    def test_next_exposes_review_role_after_dependencies_complete(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            for task_id, thread_id in (("T1", "thread-1"), ("T3", "thread-3")):
+                self.assertEqual(
+                    self.update(plan_path, state_path, task_id, "running", thread_id).returncode,
+                    0,
+                )
+                self.assertEqual(
+                    self.update(plan_path, state_path, task_id, "completed").returncode,
+                    0,
+                )
+            self.assertEqual(
+                self.update(plan_path, state_path, "T2", "running", "thread-1").returncode,
+                0,
+            )
+            self.assertEqual(
+                self.update(plan_path, state_path, "T2", "completed").returncode,
+                0,
+            )
+
+            payload = self.run_json("next", plan_path, state_path)
+
+            self.assertEqual(len(payload["actions"]), 1)
+            self.assertEqual(payload["actions"][0]["task_id"], "T4")
+            self.assertEqual(payload["actions"][0]["thread_role"], "review")
+            self.assertEqual(payload["actions"][0]["action"], "create_thread")
 
     def test_concurrent_running_updates_preserve_both_tasks(self) -> None:
         with self.workspace() as (plan_path, state_path):
@@ -348,6 +378,69 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("reasoning_effort is invalid", result.stderr)
             self.assertFalse(state_path.exists())
+
+    def test_validate_rejects_invalid_thread_roles(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "observer"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("thread_role is invalid", result.stderr)
+            self.assertFalse(state_path.exists())
+
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "review"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("review thread must have empty writable_paths", result.stderr)
+            self.assertFalse(state_path.exists())
+
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["writable_paths"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("work thread must have non-empty writable_paths", result.stderr)
+            self.assertFalse(state_path.exists())
+
+    def test_validate_derives_roles_for_legacy_v3_plans(self) -> None:
+        with self.workspace() as (plan_path, _):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            for task in plan["tasks"]:
+                task.pop("thread_role")
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            self.validate(plan_path)
+
+            normalized = json.loads(plan_path.read_text(encoding="utf-8"))
+            roles = {task["id"]: task["thread_role"] for task in normalized["tasks"]}
+            self.assertEqual(roles["T1"], "work")
+            self.assertEqual(roles["T4"], "review")
+
+    def test_route_reuse_requires_the_same_thread_role(self) -> None:
+        with self.workspace() as (plan_path, _):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][1]["thread_role"] = "review"
+            plan["tasks"][1]["writable_paths"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            self.validate(plan_path)
+
+            normalized = json.loads(plan_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                normalized["dispatch"]["routes"]["T2"],
+                {"action": "create"},
+            )
 
     def test_conflicting_incomparable_tasks_are_rejected(self) -> None:
         with self.workspace("conflict.json") as (plan_path, state_path):
@@ -627,6 +720,15 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertIn("logical_id changed", changed_logical_id.stderr)
 
             plan["tasks"][0]["logical_id"] = "state.extract-types"
+            plan["tasks"][0]["thread_role"] = "review"
+            plan["tasks"][0]["writable_paths"] = []
+            current_plan.write_text(json.dumps(plan), encoding="utf-8")
+            changed_thread_role = self.run_cli("validate", current_plan)
+            self.assertNotEqual(changed_thread_role.returncode, 0)
+            self.assertIn("thread_role mismatch", changed_thread_role.stderr)
+
+            plan["tasks"][0]["thread_role"] = "work"
+            plan["tasks"][0]["writable_paths"] = ["src/state/**"]
             plan["continuation"]["reuse"]["T1"]["mode"] = "handoff"
             current_plan.write_text(json.dumps(plan), encoding="utf-8")
             same_logical_handoff = self.run_cli("validate", current_plan)

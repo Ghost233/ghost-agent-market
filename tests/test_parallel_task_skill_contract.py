@@ -79,6 +79,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn(".ghost-agent-workflow/parallel_plan", skill)
             self.assertIn("logical_id", contract)
             self.assertIn("title", contract)
+            self.assertIn("thread_role", contract)
             self.assertIn('"revision": 1', templates)
             self.assertIn("永久 claim", skill)
             self.assertIn('"continuation"', templates)
@@ -105,6 +106,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("不要求用户批准重试", coordinator)
             self.assertIn("reuse_existing_thread", coordinator)
             self.assertIn("<logical_id> · <title>", coordinator)
+            self.assertIn("[GA][<用途>][<状态>]", coordinator)
             self.assertIn("闭包审查", coordinator)
             self.assertIn("所有未完成任务", coordinator)
             self.assertIn("$parallel-task-planner", coordinator)
@@ -150,6 +152,53 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("logical_id", worker)
             self.assertIn("不自动撤销", worker)
             self.assertIn("不是用户确认请求", worker)
+
+    def test_thread_roles_and_titles_are_deterministic(self) -> None:
+        for planner, templates in (
+            (
+                self.codex_skills["parallel-task-planner"],
+                self.codex_templates["parallel-task-planner"],
+            ),
+            (
+                self.claude_skills["parallel-task-planner"],
+                self.claude_templates["parallel-task-planner"],
+            ),
+        ):
+            contract = f"{planner}\n{templates}"
+            self.assertIn("`work` 表示正式实施", contract)
+            self.assertIn("`review` 表示只读审查", contract)
+            self.assertIn('"thread_role": "work"', templates)
+            self.assertIn('"thread_role": "review"', templates)
+            review = read_json_blocks(templates)[0]["tasks"][1]
+            self.assertEqual(review["writable_paths"], [])
+
+        for coordinator in (
+            self.codex_skills["thread-coordination"],
+            self.claude_skills["thread-coordination"],
+        ):
+            self.assertIn("work -> [实施]", coordinator)
+            self.assertIn("review -> [审查]", coordinator)
+            for marker in (
+                "[GA]",
+                "[待命]",
+                "[执行]",
+                "[补修]",
+                "[完成]",
+                "[复核]",
+                "[阻塞]",
+                "[失败]",
+            ):
+                self.assertIn(marker, coordinator)
+
+        for worker in (
+            self.codex_skills["thread-goal-worker"],
+            self.claude_skills["thread-goal-worker"],
+        ):
+            self.assertIn("`review` 是严格只读任务", worker)
+            self.assertIn("changed files 必须为 `[]`", worker)
+            self.assertIn("不得把当前审查任务自行升级为实施任务", worker)
+
+        self.assertIn("[GA][实施|审查][状态]", self.all_metadata)
 
     def test_templates_are_isolated_in_references(self) -> None:
         for root, skills, templates in (
@@ -303,8 +352,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         claude_manifest = json.loads(
             (CLAUDE / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
         )
-        self.assertTrue(codex_manifest["version"].startswith("0.6.7+codex."))
-        self.assertEqual(claude_manifest["version"], "0.3.0")
+        self.assertTrue(codex_manifest["version"].startswith("0.6.9+codex."))
+        self.assertEqual(claude_manifest["version"], "0.3.1")
 
 
 if __name__ == "__main__":

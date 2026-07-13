@@ -50,6 +50,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("gpt-5.6-terra", self.planner)
         self.assertIn('"reasoning_effort": "medium"', self.planner_templates)
         self.assertIn("logical_id", self.planner_contract)
+        self.assertIn("thread_role", self.planner_contract)
         self.assertIn("continuation", self.planner_contract)
         self.assertIn('"revision": 1', self.planner_templates)
         self.assertIn("永久 claim", self.planner)
@@ -82,7 +83,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("reuse_existing_thread", self.coordinator)
         self.assertIn("[完成]", self.coordinator)
         self.assertIn("[复核]", self.coordinator)
-        self.assertIn("状态：预备", self.coordinator_templates)
+        self.assertIn("状态：待命", self.coordinator_templates)
+        self.assertIn("[GA][<用途>][<状态>]", self.coordinator)
         self.assertNotIn("pending blocked", self.coordinator)
 
     def test_worker_owns_one_active_task(self) -> None:
@@ -93,6 +95,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("独立目标", self.worker)
         self.assertIn("scope_request", self.worker_contract)
         self.assertIn("logical_id", self.worker_contract)
+        self.assertIn("thread_role", self.worker_contract)
+        self.assertIn("`review` 是严格只读任务", self.worker)
 
     def test_main_thread_owns_safe_plan_revisions(self) -> None:
         self.assertIn("完整父目标", self.coordinator)
@@ -147,7 +151,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("不得自行 fallback", self.git_commit)
 
     def test_git_commit_preserves_state_across_write_failures_and_concurrent_edits(self) -> None:
-        self.assertIn("确认失败命令没有改变 index", self.git_commit)
+        self.assertIn("所有 Git 写命令第一次执行时就必须主动提权", self.git_commit)
+        self.assertIn("提权或前缀审批被拒绝时保留现场并报告", self.git_commit)
         self.assertIn("无法归因时在 stage 前停止并通知", self.git_commit)
         self.assertIn("提交后同一路径出现新修改时", self.git_commit)
         self.assertIn("不得自动 amend", self.git_commit)
@@ -163,7 +168,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.6.7+codex."))
+        self.assertTrue(manifest["version"].startswith("0.6.9+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 
