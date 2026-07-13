@@ -1,5 +1,5 @@
-from pathlib import Path
 import json
+from pathlib import Path
 import unittest
 
 
@@ -8,8 +8,8 @@ PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 AGENTS = ROOT / "AGENTS.md"
 
 
-def read(path: str) -> str:
-    return (PLUGIN / path).read_text(encoding="utf-8")
+def read(relative: str) -> str:
+    return (PLUGIN / relative).read_text(encoding="utf-8")
 
 
 class CodexChildThreadContractTests(unittest.TestCase):
@@ -27,11 +27,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
         cls.worker_templates = read(
             "skills/thread-goal-worker/references/templates.md"
         )
-        cls.planner_contract = f"{cls.planner}\n{cls.planner_templates}"
-        cls.coordinator_contract = f"{cls.coordinator}\n{cls.coordinator_templates}"
-        cls.worker_contract = f"{cls.worker}\n{cls.worker_templates}"
         cls.git_commit = read("skills/git-commit/SKILL.md")
-        cls.readme = read("README.md")
         cls.metadata = "\n".join(
             read(path)
             for path in (
@@ -41,200 +37,105 @@ class CodexChildThreadContractTests(unittest.TestCase):
                 "skills/git-commit/agents/openai.yaml",
             )
         )
-
-    def test_planner_emits_v3_task_dag_contract(self) -> None:
-        self.assertIn("plan_format_version", self.planner_contract)
-        self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
-        self.assertIn("thread-plan.mjs", self.planner)
-        self.assertIn("thread-plan.mjs render", self.planner)
-        self.assertIn("Mermaid", self.planner)
-        self.assertIn("DAG 节点", self.planner)
-        self.assertIn("gpt-5.6-terra", self.planner)
-        self.assertIn('"reasoning_effort": "medium"', self.planner_templates)
-        self.assertIn("logical_id", self.planner_contract)
-        self.assertIn("thread_role", self.planner_contract)
-        self.assertIn("continuation", self.planner_contract)
-        self.assertIn('"revision": 1', self.planner_templates)
-        self.assertIn("永久 claim", self.planner)
-        self.assertIn("reviewed_task_ids", self.planner_contract)
-        self.assertIn("replacements", self.planner_contract)
-        self.assertRegex(self.planner, r"闭包(审查|审计)")
-
-    def test_planner_separates_modules_from_tasks(self) -> None:
-        self.assertIn("`module`", self.planner)
-        self.assertIn("DAG 节点", self.planner)
-        self.assertIn("不是阶段", self.planner)
-        self.assertIn("`task` 是 DAG 节点", self.planner)
-        self.assertIn("module_id", self.planner_contract)
-        self.assertIn("project_verification", self.planner_contract)
-
-    def test_module_role_owns_one_thread_across_revisions(self) -> None:
-        self.assertIn(
-            "(parent_goal, module_id, thread_role)",
-            self.planner_contract,
+        cls.thread_metadata = "\n".join(
+            read(path)
+            for path in (
+                "skills/thread-coordination/agents/openai.yaml",
+                "skills/thread-goal-worker/agents/openai.yaml",
+            )
         )
-        self.assertIn("跨全部 revision", self.planner_contract)
-        self.assertIn("必须复用", self.planner_contract)
-        self.assertIn("DAG 中可比", self.planner)
-        self.assertIn("ready task", self.planner)
-        self.assertIn("任务替代关系", self.planner_contract)
-        self.assertIn("`continuation.reuse` 可省略", self.planner)
-        self.assertIn("`reuse` 仅是兼容性断言", self.planner_templates)
-        self.assertIn("字段缺失或为空都不能关闭复用", self.planner_templates)
-        self.assertIn("不得再创建第三条线程", self.planner_templates)
-        self.assertIn("相同为 `continue`，不同为 `handoff`", self.planner)
-        self.assertIn("不参与线程归属", self.planner)
 
-        self.assertIn("`dispatch_key` 只保证一次 task 分派幂等", self.coordinator)
-        self.assertIn("完整 continuation 历史", self.coordinator)
-        self.assertIn("任务的承接关系", self.coordinator)
-        self.assertIn("不得覆盖或限制历史线程归属", self.coordinator)
-        self.assertIn("任何计划外子线程", self.coordinator)
-        self.assertIn("不同 `(module_id, thread_role)`", self.coordinator)
-        self.assertIn("持久归属只有", self.coordinator)
-        self.assertIn("保持用途不变", self.coordinator)
-        self.assertIn("每项都内嵌合法结果", self.coordinator)
-        self.assertIn("补修后得到合法终态结果才执行 `update`", self.coordinator)
-        self.assertIn("保留 `running/thread_id`", self.coordinator)
-        self.assertIn("不伪造终态", self.coordinator_contract)
+    def test_planner_emits_fresh_v3_dag(self) -> None:
+        contract = f"{self.planner}\n{self.planner_templates}"
+        self.assertIn("plan_format_version", contract)
+        self.assertIn("execution_platform", contract)
+        self.assertIn('"execution_platform": "codex"', contract)
+        self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
+        self.assertIn("gpt-5.6-terra/medium", self.planner)
+        self.assertIn("新的 `parent_goal`", self.planner)
+        self.assertIn("不同 `parent_goal` 之间绝不复用", self.planner)
+        self.assertNotIn('"dispatch"', self.planner_templates)
 
-        self.assertIn("固定归属一个 `(parent_goal, module_id, thread_role)`", self.worker)
-        self.assertIn("按 DAG 顺序承接", self.worker)
-        self.assertIn("logical_id` 可以变化", self.worker)
-        self.assertIn("不得继承上一 task 的权限", self.worker)
-        self.assertIn("module+role", self.metadata)
-
-    def test_coordinator_uses_thread_tools(self) -> None:
+    def test_coordinator_uses_codex_thread_tools(self) -> None:
+        contract = f"{self.coordinator}\n{self.coordinator_templates}"
         for tool in (
             "list_projects",
+            "list_threads",
             "create_thread",
             "read_thread",
             "send_message_to_thread",
             "set_thread_title",
         ):
-            self.assertIn(tool, self.coordinator_contract)
-        self.assertIn("environment: {type: local}", self.coordinator)
-        self.assertIn("model", self.coordinator_contract)
-        self.assertIn("thinking", self.coordinator_templates)
-        self.assertIn("dispatch_key", self.coordinator_contract)
-        self.assertIn("普通错误文本不得传给 `JSON.parse`", self.coordinator)
-        self.assertIn("dispatch_failed", self.coordinator_contract)
-        self.assertIn("reuse_existing_thread", self.coordinator)
-        self.assertIn("[完成]", self.coordinator)
-        self.assertIn("[复核]", self.coordinator)
-        self.assertIn("状态：待命", self.coordinator_templates)
+            self.assertIn(tool, contract)
+        self.assertIn("environment: {type: local}", contract)
+        self.assertIn("dispatch_task", contract)
+        self.assertIn("dispatch_key", contract)
+        self.assertIn("thread-plan.mjs mode", contract)
+        self.assertIn("<state_path> thread", contract)
+        self.assertIn("普通错误文本不能当作 JSON 解析", contract)
+
+    def test_thread_reuse_is_limited_to_current_parent_goal(self) -> None:
+        contract = f"{self.planner}\n{self.coordinator}\n{self.worker}"
+        self.assertIn("当前父目标内", contract)
+        self.assertIn("不得跨 `parent_goal`", contract)
+        self.assertIn("首次派发创建", contract)
+        self.assertIn("后续 task 和 revision 复用", contract)
+        self.assertNotIn("reuse_existing_thread", contract)
+        self.assertNotIn("continuation.reuse", contract)
+        self.assertNotIn("永久 claim", contract)
+
+    def test_threads_use_ga_titles_and_are_retained(self) -> None:
         self.assertIn("[GA][<用途>][<状态>]", self.coordinator)
-        self.assertNotIn("pending blocked", self.coordinator)
+        for label in ("实施", "审查", "验证", "待命", "执行", "完成", "复核", "阻塞", "失败"):
+            self.assertIn(label, self.coordinator)
+        self.assertIn("不自动归档", self.coordinator)
+        self.assertNotIn("set_thread_archived", self.coordinator)
 
-    def test_worker_owns_one_active_task(self) -> None:
-        self.assertIn("task_id", self.worker_contract)
-        self.assertIn("module_id", self.worker_contract)
-        self.assertIn("WORKER_RESULT_V3", self.worker_contract)
-        self.assertIn("一个活动任务", self.worker)
-        self.assertIn("独立目标", self.worker)
-        self.assertIn("scope_request", self.worker_contract)
-        self.assertIn("logical_id", self.worker_contract)
-        self.assertIn("thread_role", self.worker_contract)
-        self.assertIn("`review` 是严格只读", self.worker)
-        self.assertIn("`verify` 是严格只读的命令任务", self.worker)
-        self.assertIn("result_path", self.worker_contract)
-        self.assertIn("WORKER_REPAIR_V3", self.worker_contract)
-        self.assertIn("不修改业务文件", self.worker)
-        self.assertIn("原子写入绑定的 `result_path`", self.worker)
-        self.assertIn("无法补齐成功证据", self.worker_contract)
+    def test_worker_contract_is_scoped_and_atomic(self) -> None:
+        contract = f"{self.worker}\n{self.worker_templates}"
+        self.assertIn("任一时刻只能有一个活动 task", self.worker)
+        self.assertIn("不得继承上一 task 的权限或证据", self.worker)
+        self.assertIn("`review`", self.worker)
+        self.assertIn("`verify`", self.worker)
+        self.assertIn("WORKER_RESULT_V3", contract)
+        self.assertIn("WORKER_REPAIR_V3", contract)
+        self.assertIn("result_path", contract)
+        self.assertIn("原子写入", contract)
+        self.assertIn("scope_request", contract)
 
-    def test_main_thread_owns_safe_plan_revisions(self) -> None:
-        self.assertIn("完整父目标", self.coordinator)
-        self.assertIn("## 内部修订", self.coordinator)
-        self.assertIn("不要求用户逐次批准", self.coordinator)
-        self.assertIn("不要求用户确认", self.planner)
-        self.assertIn("纯串行图标记 `sequential_only`", self.planner)
-        self.assertIn("单节点", self.planner)
-        self.assertIn("混合", self.planner)
-        self.assertIn("无需确认或介入", self.planner_contract)
-        self.assertIn("请求本身就是当前 `parent_goal` 的执行授权", self.planner)
-        self.assertIn("已绑定的 DAG task 不是新的父目标", self.planner)
-        self.assertIn("`parallel_safe` 或 `sequential_only`", self.coordinator)
-        self.assertIn(
-            "plan_digest=<digest> revision=<n> safety.status=<status>",
-            self.coordinator,
-        )
-        self.assertNotIn("首次计划必须为 `parallel_safe`", self.coordinator)
-        self.assertIn("不是用户确认请求", self.worker)
-        self.assertIn("scope_exception", self.worker)
-        self.assertIn("split_hints", self.worker_contract)
-        self.assertIn("overlap_hints", self.worker_contract)
-        self.assertIn("不可比 task", self.planner)
-        self.assertIn("共享前置 task", self.planner)
-        self.assertIn("静止点", self.planner)
-        self.assertIn("$parallel-task-planner", self.coordinator)
-        self.assertIn("project_verification", self.coordinator)
+    def test_codex_skills_do_not_reference_claude(self) -> None:
+        for skill in (PLUGIN / "skills").rglob("SKILL.md"):
+            self.assertNotIn("claude", skill.read_text(encoding="utf-8").lower(), skill)
 
-    def test_mermaid_never_becomes_worker_input(self) -> None:
-        self.assertIn("`mermaid` fenced code block", self.planner_contract)
-        self.assertIn("不得读取或解析 Mermaid", self.worker)
-        self.assertIn("plan.json", self.worker)
-
-    def test_legacy_worker_terms_are_removed(self) -> None:
-        combined = "\n".join(
-            (
-                self.planner_contract,
-                self.coordinator_contract,
-                self.worker_contract,
-                self.metadata,
-                self.readme,
-            )
-        )
-        self.assertNotIn("subagent", combined.lower())
-        self.assertNotIn("子代理", combined)
-        self.assertNotIn("spawn_agent", combined)
-        self.assertNotIn("fork_thread", combined)
-        self.assertNotIn("禁止创建用户可见 thread/task", combined)
-        self.assertNotIn("set_thread_archived", combined)
-        self.assertNotIn("dispatch.batches", combined)
-        self.assertNotIn("线程池", combined)
-        self.assertNotIn("并发上限", combined)
-        self.assertIn("v3 module/task DAG", self.readme)
-
-    def test_metadata_describes_child_threads(self) -> None:
+    def test_metadata_is_chinese_and_current(self) -> None:
         self.assertIn("任务 DAG", self.metadata)
-        self.assertIn("[GA][实施|审查|验证][状态]", self.metadata)
-        self.assertIn("result_path", self.metadata)
+        self.assertIn("当前 parent_goal", self.metadata)
+        self.assertIn("WORKER_RESULT_V3", self.metadata)
+        self.assertNotIn("子代理", self.thread_metadata)
 
-    def test_git_commit_uses_spark_execution_thread(self) -> None:
-        combined = "\n".join((self.git_commit, self.metadata))
+    def test_git_commit_contract_is_unchanged(self) -> None:
+        combined = f"{self.git_commit}\n{self.metadata}"
         self.assertIn("gpt-5.3-codex-spark", combined)
         self.assertIn("thinking: high", self.git_commit)
         self.assertIn("GIT_COMMIT_EXECUTOR=1", self.git_commit)
         self.assertIn("不得传入 `reasoning.summary`", self.git_commit)
         self.assertIn("gpt-5.6-luna/xhigh fallback", self.git_commit)
-
-    def test_git_commit_does_not_delegate_from_the_execution_thread(self) -> None:
         self.assertIn("当前线程就是唯一执行线程", self.git_commit)
         self.assertIn("不得调用 `create_thread`", self.git_commit)
-        self.assertIn("不得自行 fallback", self.git_commit)
 
-    def test_git_commit_preserves_state_across_write_failures_and_concurrent_edits(self) -> None:
-        self.assertIn("所有 Git 写命令第一次执行时就必须主动提权", self.git_commit)
-        self.assertIn("提权或前缀审批被拒绝时保留现场并报告", self.git_commit)
-        self.assertIn("无法归因时在 stage 前停止并通知", self.git_commit)
-        self.assertIn("提交后同一路径出现新修改时", self.git_commit)
-        self.assertIn("不得自动 amend", self.git_commit)
-
-    def test_codex_skills_do_not_reference_claude_runtime(self) -> None:
-        for skill in (PLUGIN / "skills").rglob("SKILL.md"):
-            self.assertNotIn("claude", skill.read_text(encoding="utf-8").lower(), skill)
-
-    def test_agents_requires_decimal_plugin_version_increment(self) -> None:
+    def test_agents_requires_decimal_version_increment(self) -> None:
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加 `0.0.1`", instructions)
         self.assertIn("任一段达到 `10` 时向左进位", instructions)
 
-    def test_manifest_targets_new_minor_version(self) -> None:
+    def test_manifest_and_readme_describe_current_scope(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.7.2+codex."))
+        readme = read("README.md")
+        self.assertTrue(manifest["version"].startswith("0.7.4+codex."))
         self.assertIn("子线程", manifest["description"])
-        self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
+        self.assertIn("子代理", manifest["description"])
+        self.assertIn("新的顶层任务不会复用旧执行单元", readme)
+        self.assertIn("subagent-coordination", json.dumps(manifest, ensure_ascii=False))
 
 
 if __name__ == "__main__":

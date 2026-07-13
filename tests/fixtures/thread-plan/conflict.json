@@ -17,6 +17,8 @@
   "tasks": [
     {
       "id": "T1",
+      "logical_id": "shared-state.change-all",
+      "title": "修改共享状态",
       "thread_role": "work",
       "module_id": "shared-state",
       "task": "Change shared state files.",
@@ -27,6 +29,8 @@
     },
     {
       "id": "T2",
+      "logical_id": "shared-state.change-page",
+      "title": "独立修改页面状态",
       "thread_role": "work",
       "module_id": "shared-state",
       "task": "Change one shared state file independently.",
