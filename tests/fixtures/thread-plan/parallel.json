@@ -20,6 +20,14 @@
         "reasoning_effort": "medium"
       },
       "worker_context": "Verify the integrated result without expanding scope."
+    },
+    {
+      "id": "state-fixtures",
+      "worker_profile": {
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium"
+      },
+      "worker_context": "Update independent test fixtures within their write scope."
     }
   ],
   "tasks": [
@@ -52,7 +60,7 @@
       "logical_id": "state.update-fixtures",
       "title": "更新独立状态夹具",
       "thread_role": "work",
-      "module_id": "state-domain",
+      "module_id": "state-fixtures",
       "task": "Update independent state fixtures.",
       "depends_on": [],
       "writable_paths": ["tests/fixtures/**"],

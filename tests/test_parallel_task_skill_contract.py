@@ -90,7 +90,91 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("handoff", contract)
             self.assertRegex(skill, r"闭包(审查|审计)")
 
-    def test_both_coordinators_use_the_three_command_driver(self) -> None:
+    def test_thread_ownership_is_stable_across_revisions(self) -> None:
+        for planner, templates in (
+            (
+                self.codex_skills["parallel-task-planner"],
+                self.codex_templates["parallel-task-planner"],
+            ),
+            (
+                self.claude_skills["parallel-task-planner"],
+                self.claude_templates["parallel-task-planner"],
+            ),
+        ):
+            contract = f"{planner}\n{templates}"
+            self.assertIn("(parent_goal, module_id, thread_role)", contract)
+            self.assertIn("跨全部 revision", contract)
+            self.assertIn("必须复用", contract)
+            self.assertIn("profile 与 context", planner)
+            self.assertIn("不属于", planner)
+            self.assertIn("worker_context", planner)
+            self.assertIn("DAG 中可比", planner)
+            self.assertIn("ready task", planner)
+            self.assertIn("任务替代关系", contract)
+            self.assertIn("归属关系正交", contract)
+            self.assertIn("`continuation.reuse` 可省略", planner)
+            self.assertIn("`reuse` 仅是兼容性断言", templates)
+            self.assertIn("字段缺失或为空都不能关闭复用", templates)
+            self.assertRegex(templates, r"不得再创建第三(条线程|个执行单元)")
+            self.assertRegex(planner, r"不参与(线程|执行单元)归属")
+            for status in ("completed", "needs_main_review", "blocked", "failed"):
+                self.assertIn(status, contract)
+            self.assertIn("相同为 `continue`，不同为 `handoff`", planner)
+
+        for coordinator in (
+            self.codex_skills["thread-coordination"],
+            self.claude_skills["thread-coordination"],
+        ):
+            self.assertIn("(parent_goal, module_id, thread_role)", coordinator)
+            self.assertIn("`dispatch_key`", coordinator)
+            self.assertIn("不是线程身份", coordinator.replace("执行单元身份", "线程身份"))
+            self.assertIn("完整 continuation 历史", coordinator)
+            self.assertIn("profile 或 context 变化不改变", coordinator)
+            self.assertIn("任务的承接关系", coordinator)
+            self.assertIn("不得覆盖或限制历史", coordinator)
+            self.assertIn("范围分析、交叉检查、编译诊断或审查", coordinator)
+            self.assertIn("任何计划外", coordinator)
+            self.assertIn("持久归属只有", coordinator)
+            self.assertIn("每项都内嵌合法结果", coordinator)
+            self.assertIn("补修后得到合法终态结果才执行 `update`", coordinator)
+            self.assertIn("不伪造终态", coordinator)
+
+        for worker in (
+            self.codex_skills["thread-goal-worker"],
+            self.claude_skills["thread-goal-worker"],
+        ):
+            self.assertIn("(parent_goal, module_id, thread_role)", worker)
+            self.assertIn("按 DAG 顺序承接", worker)
+            self.assertIn("logical_id` 可以变化", worker)
+            self.assertIn("不得继承上一 task 的权限", worker)
+            self.assertIn("profile 或 context 更新不改变", worker)
+
+        for worker, templates in (
+            (
+                self.codex_skills["thread-goal-worker"],
+                self.codex_templates["thread-goal-worker"],
+            ),
+            (
+                self.claude_skills["thread-goal-worker"],
+                self.claude_templates["thread-goal-worker"],
+            ),
+        ):
+            self.assertIn("WORKER_REPAIR_V3", templates)
+            self.assertIn("不修改业务文件", worker)
+            self.assertIn("原子写入", worker)
+            self.assertIn("无法补齐成功证据", f"{worker}\n{templates}")
+
+        self.assertIn("module+role", self.all_metadata)
+        self.assertIn("计划外诊断或审查", self.all_metadata)
+
+    def test_workflow_uses_the_four_command_driver(self) -> None:
+        for planner in (
+            self.codex_skills["parallel-task-planner"],
+            self.claude_skills["parallel-task-planner"],
+        ):
+            self.assertIn("thread-plan.mjs validate", planner)
+            self.assertIn("thread-plan.mjs render", planner)
+
         for coordinator in (
             self.codex_skills["thread-coordination"],
             self.claude_skills["thread-coordination"],
@@ -132,12 +216,93 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         ):
             self.assertIn("用户授权的是完整父目标", coordinator)
             self.assertIn("不要求用户逐次批准", coordinator)
-            self.assertIn("修正版可为 `parallel_safe` 或 `sequential_only`", coordinator)
+            self.assertIn("`parallel_safe`", coordinator)
+            self.assertIn("`sequential_only`", coordinator)
+            self.assertIn("可执行 DAG", coordinator)
             self.assertIn("视为受控基线", coordinator)
             self.assertIn("静止点", coordinator)
             self.assertIn("$parallel-task-planner", coordinator)
             self.assertIn("内部修订不能作为最终失败返回", coordinator)
             self.assertIn("project_verification", coordinator)
+
+    def test_every_goal_becomes_an_executable_dag(self) -> None:
+        serial_notice = (
+            "执行模式：串行 DAG（sequential_only）\n"
+            "当前计划已通过校验，将按依赖顺序自动执行全部任务，无需确认或介入。"
+        )
+        for planner, templates in (
+            (
+                self.codex_skills["parallel-task-planner"],
+                self.codex_templates["parallel-task-planner"],
+            ),
+            (
+                self.claude_skills["parallel-task-planner"],
+                self.claude_templates["parallel-task-planner"],
+            ),
+        ):
+            contract = f"{planner}\n{templates}"
+            self.assertRegex(planner, r"(每个|所有)顶层父目标.*DAG")
+            for topology in ("单节点", "纯串行", "并行", "混合"):
+                self.assertIn(topology, planner)
+            self.assertIn("请求本身就是当前 `parent_goal` 的执行授权", planner)
+            self.assertIn("只规划", planner)
+            self.assertIn("已绑定的 DAG task 不是新的父目标", planner)
+            self.assertIn("普通工程证据不足", planner)
+            self.assertIn(serial_notice, contract)
+            self.assertIn("`mermaid` fenced code block", contract)
+            self.assertIn("`parallel_safe`", contract)
+            self.assertIn("`sequential_only`", contract)
+            self.assertIn("`needs_user_review`", contract)
+            self.assertNotIn("首次计划只有在", planner)
+
+        for coordinator in (
+            self.codex_skills["thread-coordination"],
+            self.claude_skills["thread-coordination"],
+        ):
+            self.assertIn("`parallel_safe`", coordinator)
+            self.assertIn("`sequential_only`", coordinator)
+            self.assertIn("可执行 DAG", coordinator)
+            self.assertIn("needs_user_review", coordinator)
+            self.assertIn("不等待", coordinator)
+            self.assertRegex(
+                coordinator,
+                r"(任务|目标)本身就是当前 `parent_goal` 的授权",
+            )
+            self.assertIn(
+                "plan_digest=<digest> revision=<n> safety.status=<status>",
+                coordinator,
+            )
+            self.assertNotIn("首次计划必须为 `parallel_safe`", coordinator)
+
+    def test_mermaid_is_a_read_only_projection(self) -> None:
+        for planner in (
+            self.codex_skills["parallel-task-planner"],
+            self.claude_skills["parallel-task-planner"],
+        ):
+            self.assertIn("Mermaid", planner)
+            self.assertIn("plan.json", planner)
+            self.assertRegex(planner, r"(只读投影|只用于会话展示)")
+            self.assertIn("每个", planner)
+            self.assertIn("revision", planner)
+
+        for worker in (
+            self.codex_skills["thread-goal-worker"],
+            self.claude_skills["thread-goal-worker"],
+        ):
+            self.assertIn("Mermaid", worker)
+            self.assertIn("解析 Mermaid", worker)
+            self.assertIn("已绑定 task 不是新的顶层父目标", worker)
+
+    def test_claude_revision_and_project_verification_cover_the_full_dag(self) -> None:
+        planner = self.claude_skills["parallel-task-planner"]
+        templates = self.claude_templates["parallel-task-planner"]
+        coordinator = self.claude_skills["thread-coordination"]
+        self.assertIn("全部受控基线", planner)
+        self.assertIn("已完成 producer", planner)
+        self.assertIn("已完成任务不重跑", templates)
+        self.assertIn("只聚合", planner)
+        self.assertIn("不执行计划外命令", coordinator)
+        self.assertIn("不重复运行 build、test、lint", coordinator)
 
         for skill, templates in (
             (
@@ -333,6 +498,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             "plan_format_version: 2",
             "plan_format_version: 1",
             "需要扩大 scope 时停止",
+            '"id": "build-verification"',
         ):
             self.assertNotIn(legacy, self.all_skills)
 
@@ -374,8 +540,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         claude_manifest = json.loads(
             (CLAUDE / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
         )
-        self.assertTrue(codex_manifest["version"].startswith("0.7.0+codex."))
-        self.assertEqual(claude_manifest["version"], "0.3.2")
+        self.assertTrue(codex_manifest["version"].startswith("0.7.2+codex."))
+        self.assertEqual(claude_manifest["version"], "0.3.4")
 
 
 if __name__ == "__main__":

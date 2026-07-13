@@ -46,6 +46,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("plan_format_version", self.planner_contract)
         self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
         self.assertIn("thread-plan.mjs", self.planner)
+        self.assertIn("thread-plan.mjs render", self.planner)
+        self.assertIn("Mermaid", self.planner)
         self.assertIn("DAG 节点", self.planner)
         self.assertIn("gpt-5.6-terra", self.planner)
         self.assertIn('"reasoning_effort": "medium"', self.planner_templates)
@@ -65,6 +67,42 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("`task` 是 DAG 节点", self.planner)
         self.assertIn("module_id", self.planner_contract)
         self.assertIn("project_verification", self.planner_contract)
+
+    def test_module_role_owns_one_thread_across_revisions(self) -> None:
+        self.assertIn(
+            "(parent_goal, module_id, thread_role)",
+            self.planner_contract,
+        )
+        self.assertIn("跨全部 revision", self.planner_contract)
+        self.assertIn("必须复用", self.planner_contract)
+        self.assertIn("DAG 中可比", self.planner)
+        self.assertIn("ready task", self.planner)
+        self.assertIn("任务替代关系", self.planner_contract)
+        self.assertIn("`continuation.reuse` 可省略", self.planner)
+        self.assertIn("`reuse` 仅是兼容性断言", self.planner_templates)
+        self.assertIn("字段缺失或为空都不能关闭复用", self.planner_templates)
+        self.assertIn("不得再创建第三条线程", self.planner_templates)
+        self.assertIn("相同为 `continue`，不同为 `handoff`", self.planner)
+        self.assertIn("不参与线程归属", self.planner)
+
+        self.assertIn("`dispatch_key` 只保证一次 task 分派幂等", self.coordinator)
+        self.assertIn("完整 continuation 历史", self.coordinator)
+        self.assertIn("任务的承接关系", self.coordinator)
+        self.assertIn("不得覆盖或限制历史线程归属", self.coordinator)
+        self.assertIn("任何计划外子线程", self.coordinator)
+        self.assertIn("不同 `(module_id, thread_role)`", self.coordinator)
+        self.assertIn("持久归属只有", self.coordinator)
+        self.assertIn("保持用途不变", self.coordinator)
+        self.assertIn("每项都内嵌合法结果", self.coordinator)
+        self.assertIn("补修后得到合法终态结果才执行 `update`", self.coordinator)
+        self.assertIn("保留 `running/thread_id`", self.coordinator)
+        self.assertIn("不伪造终态", self.coordinator_contract)
+
+        self.assertIn("固定归属一个 `(parent_goal, module_id, thread_role)`", self.worker)
+        self.assertIn("按 DAG 顺序承接", self.worker)
+        self.assertIn("logical_id` 可以变化", self.worker)
+        self.assertIn("不得继承上一 task 的权限", self.worker)
+        self.assertIn("module+role", self.metadata)
 
     def test_coordinator_uses_thread_tools(self) -> None:
         for tool in (
@@ -100,6 +138,10 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("`review` 是严格只读", self.worker)
         self.assertIn("`verify` 是严格只读的命令任务", self.worker)
         self.assertIn("result_path", self.worker_contract)
+        self.assertIn("WORKER_REPAIR_V3", self.worker_contract)
+        self.assertIn("不修改业务文件", self.worker)
+        self.assertIn("原子写入绑定的 `result_path`", self.worker)
+        self.assertIn("无法补齐成功证据", self.worker_contract)
 
     def test_main_thread_owns_safe_plan_revisions(self) -> None:
         self.assertIn("完整父目标", self.coordinator)
@@ -107,6 +149,17 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("不要求用户逐次批准", self.coordinator)
         self.assertIn("不要求用户确认", self.planner)
         self.assertIn("纯串行图标记 `sequential_only`", self.planner)
+        self.assertIn("单节点", self.planner)
+        self.assertIn("混合", self.planner)
+        self.assertIn("无需确认或介入", self.planner_contract)
+        self.assertIn("请求本身就是当前 `parent_goal` 的执行授权", self.planner)
+        self.assertIn("已绑定的 DAG task 不是新的父目标", self.planner)
+        self.assertIn("`parallel_safe` 或 `sequential_only`", self.coordinator)
+        self.assertIn(
+            "plan_digest=<digest> revision=<n> safety.status=<status>",
+            self.coordinator,
+        )
+        self.assertNotIn("首次计划必须为 `parallel_safe`", self.coordinator)
         self.assertIn("不是用户确认请求", self.worker)
         self.assertIn("scope_exception", self.worker)
         self.assertIn("split_hints", self.worker_contract)
@@ -116,6 +169,11 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("静止点", self.planner)
         self.assertIn("$parallel-task-planner", self.coordinator)
         self.assertIn("project_verification", self.coordinator)
+
+    def test_mermaid_never_becomes_worker_input(self) -> None:
+        self.assertIn("`mermaid` fenced code block", self.planner_contract)
+        self.assertIn("不得读取或解析 Mermaid", self.worker)
+        self.assertIn("plan.json", self.worker)
 
     def test_legacy_worker_terms_are_removed(self) -> None:
         combined = "\n".join(
@@ -174,7 +232,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.7.0+codex."))
+        self.assertTrue(manifest["version"].startswith("0.7.2+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 

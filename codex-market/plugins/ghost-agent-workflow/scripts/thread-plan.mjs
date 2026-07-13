@@ -137,6 +137,18 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 const FAILURE_STATUSES = new Set            ([
   "blocked",
   "failed",
@@ -182,6 +194,12 @@ const STATUS_TITLE_LABELS                             = {
 
 function fail(message        )        {
   throw new Error(message);
+}
+
+function assertPlanExecutable(plan      , operation                   )       {
+  if (plan.safety.status === "needs_user_review") {
+    fail(`plan safety requires user review; ${operation} is not executable`);
+  }
 }
 
 function isRecord(value         )                                   {
@@ -499,7 +517,10 @@ function parseTask(value         , index        )                 {
 function parseContinuation(value         )                           {
   if (value === undefined) return undefined;
   const source = requireRecord(value, "continuation");
-  const reuse = requireRecord(source.reuse, "continuation.reuse");
+  const reuse =
+    source.reuse === undefined
+      ? {}
+      : requireRecord(source.reuse, "continuation.reuse");
   const replacements = requireRecord(
     source.replacements,
     "continuation.replacements",
@@ -802,7 +823,14 @@ function parseWorkerResult(
   };
 }
 
-function validateGraph(plan      )                           {
+function threadOwnerKey(plan      , task                )         {
+  return JSON.stringify([plan.parent_goal, task.module_id, task.thread_role]);
+}
+
+function validateGraph(
+  plan      ,
+  requireComparableThreadOwners = false,
+)                           {
   ensureUnique(plan.modules.map((module) => module.id), "module id");
   ensureUnique(plan.tasks.map((task) => task.id), "task id");
   ensureUnique(plan.tasks.map((task) => task.logical_id), "logical task id");
@@ -843,6 +871,15 @@ function validateGraph(plan      )                           {
       );
       if (conflict && !comparable) {
         fail(`writable_paths conflict between ${left.id} and ${right.id}`);
+      }
+      if (
+        requireComparableThreadOwners &&
+        threadOwnerKey(plan, left) === threadOwnerKey(plan, right) &&
+        !comparable
+      ) {
+        fail(
+          `tasks with the same module_id and thread_role must be DAG-comparable: ${left.id} and ${right.id}`,
+        );
       }
     }
   }
@@ -911,9 +948,101 @@ function buildRoutes(
   );
 }
 
+function loadContinuationAncestry(
+  firstPlanPath        ,
+  parentGoal        ,
+  firstRevision        ,
+)                  {
+  const ancestry                  = [];
+  const visitedPlanPaths = new Set        ();
+  let planPath = firstPlanPath;
+  let expectedRevision = firstRevision;
+
+  while (true) {
+    if (visitedPlanPaths.has(planPath)) {
+      fail(`continuation ancestry cycle detected at ${planPath}`);
+    }
+    visitedPlanPaths.add(planPath);
+    const { plan, state } = loadPlanAndState(planPath, statePathFor(planPath));
+    if (plan.parent_goal !== parentGoal) {
+      fail("continuation parent_goal does not match the previous plan");
+    }
+    if (plan.revision !== expectedRevision) {
+      fail("continuation revision must increment the previous revision by one");
+    }
+    ancestry.push({ plan_path: planPath, plan, state });
+
+    if (plan.continuation === undefined) {
+      if (plan.revision !== 1) {
+        fail("continuation ancestry must end at revision 1");
+      }
+      return ancestry;
+    }
+    if (!isAbsolute(plan.continuation.previous_plan_path)) {
+      fail("continuation.previous_plan_path must be absolute");
+    }
+    const previousPlanPath = resolve(plan.continuation.previous_plan_path);
+    if (statePathFor(previousPlanPath) === statePathFor(planPath)) {
+      fail("continuation plans must use separate plan directories");
+    }
+    planPath = previousPlanPath;
+    expectedRevision -= 1;
+  }
+}
+
+function latestReusableOwner(
+  historicalRun               ,
+  ownerKey        ,
+)                          {
+  const candidates = historicalRun.plan.tasks.filter((task) => {
+    const taskState = historicalRun.state.tasks[task.id];
+    return (
+      threadOwnerKey(historicalRun.plan, task) === ownerKey &&
+      TERMINAL_STATUSES.has(taskState.status                      ) &&
+      typeof taskState.thread_id === "string"
+    );
+  });
+  if (candidates.length === 0) return undefined;
+
+  const ancestors = buildAncestors(historicalRun.plan.tasks);
+  let latest = candidates[0];
+  for (const candidate of candidates.slice(1)) {
+    if (
+      ancestors.get(candidate.id)?.has(latest.id) === true ||
+      ancestors.get(latest.id)?.has(candidate.id) !== true
+    ) {
+      latest = candidate;
+    }
+  }
+  return {
+    plan_path: historicalRun.plan_path,
+    task: latest,
+    thread_id: historicalRun.state.tasks[latest.id].thread_id          ,
+  };
+}
+
+function firstCurrentTasksByOwnerKey(
+  plan      ,
+  ancestors                          ,
+)                              {
+  const firstTasks = new Map                        ();
+  for (const task of plan.tasks) {
+    const ownerKey = threadOwnerKey(plan, task);
+    const currentFirst = firstTasks.get(ownerKey);
+    if (
+      currentFirst === undefined ||
+      ancestors.get(currentFirst.id)?.has(task.id) === true
+    ) {
+      firstTasks.set(ownerKey, task);
+    }
+  }
+  return firstTasks;
+}
+
 function resolveContinuationRoutes(
   planPath        ,
   plan      ,
+  ancestors                          ,
 )                         {
   const routes = new Map               ();
   const continuation = plan.continuation;
@@ -936,16 +1065,13 @@ function resolveContinuationRoutes(
   if (statePathFor(previousPlanPath) === statePathFor(planPath)) {
     fail("continuation plans must use separate plan directories");
   }
-  const { plan: previousPlan, state: previousState } = loadPlanAndState(
+
+  const ancestry = loadContinuationAncestry(
     previousPlanPath,
-    statePathFor(previousPlanPath),
+    plan.parent_goal,
+    plan.revision - 1,
   );
-  if (previousPlan.parent_goal !== plan.parent_goal) {
-    fail("continuation parent_goal does not match the previous plan");
-  }
-  if (plan.revision !== previousPlan.revision + 1) {
-    fail("continuation revision must increment the previous revision by one");
-  }
+  const { plan: previousPlan, state: previousState } = ancestry[0];
   if (
     previousState.continued_by !== null &&
     previousState.continued_by !== planPath
@@ -984,16 +1110,14 @@ function resolveContinuationRoutes(
   const previousById = new Map(
     previousPlan.tasks.map((task) => [task.id, task]),
   );
-  const currentModuleById = new Map(
-    plan.modules.map((module) => [module.id, module]),
-  );
-  const previousModuleById = new Map(
-    previousPlan.modules.map((module) => [module.id, module]),
-  );
-  const reusedThreadIds = new Set        ();
   for (const [sourceTaskId, targetTaskIds] of Object.entries(
     continuation.replacements,
   )) {
+    if (!previousById.has(sourceTaskId)) {
+      fail(
+        `continuation replacement references unknown previous task: ${sourceTaskId}`,
+      );
+    }
     for (const targetTaskId of targetTaskIds) {
       if (!currentById.has(targetTaskId)) {
         fail(
@@ -1001,90 +1125,51 @@ function resolveContinuationRoutes(
         );
       }
     }
-    if (!previousById.has(sourceTaskId)) {
-      fail(
-        `continuation replacement references unknown previous task: ${sourceTaskId}`,
-      );
-    }
   }
+
+  const reusedThreadIds = new Set        ();
+  for (const [ownerKey, targetTask] of firstCurrentTasksByOwnerKey(
+    plan,
+    ancestors,
+  )) {
+    let owner                         ;
+    for (const historicalRun of ancestry) {
+      owner = latestReusableOwner(historicalRun, ownerKey);
+      if (owner !== undefined) break;
+    }
+    if (owner === undefined) continue;
+    if (reusedThreadIds.has(owner.thread_id)) {
+      fail(`continuation reuses thread more than once: ${owner.thread_id}`);
+    }
+    reusedThreadIds.add(owner.thread_id);
+    routes.set(targetTask.id, {
+      action: "resume",
+      from_plan: owner.plan_path,
+      from_task: owner.task.id,
+      thread_id: owner.thread_id,
+      mode:
+        targetTask.logical_id === owner.task.logical_id
+          ? "continue"
+          : "handoff",
+    });
+  }
+
   for (const [targetTaskId, binding] of Object.entries(
     continuation.reuse,
   )) {
-    const sourceTaskId = binding.from_task;
-    const targetTask = currentById.get(targetTaskId);
-    if (targetTask === undefined) {
+    if (!currentById.has(targetTaskId)) {
       fail(`continuation references unknown target task: ${targetTaskId}`);
     }
-    const sourceTask = previousById.get(sourceTaskId);
-    if (sourceTask === undefined) {
-      fail(`continuation references unknown previous task: ${sourceTaskId}`);
-    }
-    if (targetTask.module_id !== sourceTask.module_id) {
-      fail(
-        `continuation module mismatch: ${targetTaskId} cannot reuse ${sourceTaskId}`,
-      );
-    }
-    if (targetTask.thread_role !== sourceTask.thread_role) {
-      fail(
-        `continuation thread_role mismatch: ${targetTaskId} cannot reuse ${sourceTaskId}`,
-      );
-    }
-    const currentModule = currentModuleById.get(targetTask.module_id);
-    const previousModule = previousModuleById.get(sourceTask.module_id);
+    const route = routes.get(targetTaskId);
     if (
-      JSON.stringify(currentModule) !== JSON.stringify(previousModule)
+      route?.action !== "resume" ||
+      route.from_task !== binding.from_task ||
+      route.mode !== binding.mode
     ) {
-      fail(
-        `continuation module definition changed: ${targetTask.module_id}`,
-      );
+      fail(`continuation.reuse assertion does not match automatic route: ${targetTaskId}`);
     }
-    const sourceState = previousState.tasks[sourceTaskId];
-    if (
-      sourceState.status !== "completed" &&
-      sourceState.status !== "needs_main_review"
-    ) {
-      fail(`continuation source task is not reusable: ${sourceTaskId}`);
-    }
-    if (
-      binding.mode === "continue" &&
-      targetTask.logical_id !== sourceTask.logical_id
-    ) {
-      fail(
-        `continuation logical_id changed for continued task: ${sourceTaskId}`,
-      );
-    }
-    if (binding.mode === "handoff" && sourceState.status !== "completed") {
-      fail(`continuation handoff source must be completed: ${sourceTaskId}`);
-    }
-    if (
-      binding.mode === "handoff" &&
-      targetTask.logical_id === sourceTask.logical_id
-    ) {
-      fail(`continuation handoff must change logical_id: ${sourceTaskId}`);
-    }
-    if (
-      sourceState.status !== "completed" &&
-      !continuation.replacements[sourceTaskId]?.includes(targetTaskId)
-    ) {
-      fail(
-        `continuation reuse target must replace unfinished task: ${sourceTaskId}`,
-      );
-    }
-    if (typeof sourceState.thread_id !== "string") {
-      fail(`continuation source thread is unavailable: ${sourceTaskId}`);
-    }
-    if (reusedThreadIds.has(sourceState.thread_id)) {
-      fail(`continuation reuses thread more than once: ${sourceState.thread_id}`);
-    }
-    reusedThreadIds.add(sourceState.thread_id);
-    routes.set(targetTaskId, {
-      action: "resume",
-      from_plan: previousPlanPath,
-      from_task: sourceTaskId,
-      thread_id: sourceState.thread_id,
-      mode: binding.mode,
-    });
   }
+
   return {
     routes,
     previous_state_path: statePathFor(previousPlanPath),
@@ -1300,8 +1385,8 @@ function assertPlanIsActive(
 function validateCommand(planArgument        )       {
   const planPath = resolve(planArgument);
   const plan = parsePlan(readJson(planPath));
-  const ancestors = validateGraph(plan);
-  const continuation = resolveContinuationRoutes(planPath, plan);
+  const ancestors = validateGraph(plan, true);
+  const continuation = resolveContinuationRoutes(planPath, plan, ancestors);
   plan.dispatch = {
     strategy: "dependency_ready",
     routes: buildRoutes(plan, ancestors, continuation.routes),
@@ -1363,12 +1448,61 @@ function validateCommand(planArgument        )       {
   );
 }
 
+function compareStableStrings(left        , right        )         {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function escapeMermaidLabel(value        )         {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("`", "&#96;")
+    .replaceAll("\r", "&#13;")
+    .replaceAll("\n", "&#10;");
+}
+
+function renderCommand(planArgument        )       {
+  const planPath = resolve(planArgument);
+  const planSource = readJson(planPath);
+  const plan = parsePlan(planSource);
+  validateGraph(plan);
+  const planDigest = digestJson(planSource);
+
+  const tasks = [...plan.tasks].sort((left, right) =>
+    compareStableStrings(left.id, right.id),
+  );
+  const aliases = new Map(
+    tasks.map((task, index) => [task.id, `N${index}`]),
+  );
+  const lines = [
+    `%% thread-plan plan_digest=${planDigest} revision=${plan.revision} safety.status=${plan.safety.status}`,
+    "flowchart LR",
+  ];
+  for (const task of tasks) {
+    const label = escapeMermaidLabel(
+      `${task.id} · [${ROLE_TITLE_LABELS[task.thread_role]}] ${task.title} · ${task.module_id}`,
+    );
+    lines.push(`  ${aliases.get(task.id)}["${label}"]`);
+  }
+  for (const task of tasks) {
+    for (const dependencyId of [...task.depends_on].sort(compareStableStrings)) {
+      lines.push(`  ${aliases.get(dependencyId)} --> ${aliases.get(task.id)}`);
+    }
+  }
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
+
 function nextCommand(planArgument        , stateArgument        )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalStatePath(planPath, stateArgument);
   const payload = withStateLock(statePath, () => {
     const { plan, state } = loadPlanAndState(planPath, statePath);
     assertPlanIsActive(planPath, statePath, plan, state);
+    assertPlanExecutable(plan, "next");
     let changed = true;
     let stateChanged = false;
     while (changed) {
@@ -1469,6 +1603,7 @@ function updateCommand(
   const payload = withStateLock(statePath, () => {
     const { plan, state } = loadPlanAndState(planPath, statePath);
     assertPlanIsActive(planPath, statePath, plan, state);
+    assertPlanExecutable(plan, "update");
     const task = plan.tasks.find((candidate) => candidate.id === taskId);
     if (task === undefined) fail(`unknown task: ${taskId}`);
     const current = state.tasks[taskId];
@@ -1548,6 +1683,10 @@ function main(argv          )       {
     validateCommand(args[0]);
     return;
   }
+  if (command === "render" && args.length === 1) {
+    renderCommand(args[0]);
+    return;
+  }
   if (command === "next" && args.length === 2) {
     nextCommand(args[0], args[1]);
     return;
@@ -1557,7 +1696,7 @@ function main(argv          )       {
     return;
   }
   fail(
-    "usage: thread-plan.mjs validate <plan.json> | next <plan.json> <state.json> | update <plan.json> <state.json> <task_id> running <thread_id> | update <plan.json> <state.json> <task_id> <terminal_status> <result_path>",
+    "usage: thread-plan.mjs validate <plan.json> | render <plan.json> | next <plan.json> <state.json> | update <plan.json> <state.json> <task_id> running <thread_id> | update <plan.json> <state.json> <task_id> <terminal_status> <result_path>",
   );
 }
 
