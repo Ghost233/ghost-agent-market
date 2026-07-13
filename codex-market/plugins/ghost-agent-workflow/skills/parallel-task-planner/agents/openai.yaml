@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 规划"
-  short_description: "按稳定 module 生成 Codex v3 任务 DAG"
-  default_prompt: "使用 $parallel-task-planner 把完整任务按稳定领域 module 生成 v3 任务 DAG；task 只选择 module，同 module+role 跨 revision 复用线程，并按真实依赖校验、展示 Mermaid 和交接。"
+  short_description: "为完整任务生成可校验并可选择执行方式的 v3 任务 DAG"
+  default_prompt: "使用 $parallel-task-planner 为完整任务生成并展示 v3 DAG，再按用户选择交给子线程或子代理协调器执行。"

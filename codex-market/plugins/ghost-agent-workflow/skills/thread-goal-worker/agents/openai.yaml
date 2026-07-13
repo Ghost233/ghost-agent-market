@@ -1,4 +1,4 @@
 interface:
-  display_name: "任务执行线程"
-  short_description: "在固定 module+role 下执行 Codex v3 任务"
-  default_prompt: "使用 $thread-goal-worker 在固定 module+role 线程中按顺序承接 work、review 或 verify task；每次重置 task 局部权限和 result_path，不解析 Mermaid，并原子写入 WORKER_RESULT_V3。"
+  display_name: "子线程任务执行"
+  short_description: "在 Codex 子线程中执行范围受控的单个 v3 DAG 任务"
+  default_prompt: "使用 $thread-goal-worker 在子线程模式下执行当前绑定的单个 v3 DAG task，并原子写入 WORKER_RESULT_V3。"

@@ -1,4 +1,4 @@
 interface:
-  display_name: "任务 DAG 协调"
-  short_description: "复用 Claude Code 执行单元完成 v3 DAG"
-  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；按 module+role 跨 revision 复用 [GA][实施|审查|验证][状态] 执行单元，不创建计划外诊断或审查执行单元，并立即推进所有不同归属的 ready task。"
+  display_name: "执行线程 DAG 协调"
+  short_description: "使用 Claude Code 执行线程完成已校验的 v3 任务 DAG"
+  default_prompt: "使用 $thread-coordination 以执行线程模式一次性完成已校验的 parent_goal，并只在当前 parent_goal 内复用 module+role 执行单元。"

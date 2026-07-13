@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "description": "面向 Claude Code 的串行或并行 v3 任务 DAG 协调、按 module 与用途跨 revision 自动复用执行单元，以及智能 Git 提交技能。",
-  "version": "0.3.4",
+  "description": "面向 Claude Code 的 v3 任务 DAG 规划、可选执行线程或子代理协调、当前父目标内执行单元复用，以及智能 Git 提交技能。",
+  "version": "0.3.6",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -12,6 +12,9 @@
   "keywords": [
     "thread-coordination",
     "thread-goal-worker",
+    "subagent-coordination",
+    "subagent-goal-worker",
+    "subagent",
     "parallel-task-planner",
     "task-dag",
     "git-commit",

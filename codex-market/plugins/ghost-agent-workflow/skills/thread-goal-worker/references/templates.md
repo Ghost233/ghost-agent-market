@@ -2,7 +2,7 @@
 
 执行线程只消费 `plan.json`、`state.json` 和绑定包；面向用户展示的 Mermaid 不进入任何模板或结果契约。
 
-当前线程固定归属一个 `(parent_goal, module_id, thread_role)`，可以顺序承接该归属的多个 task。`dispatch_key` 只标识一次 task 分派，不是线程身份；每次新绑定都必须替换 task 局部目标、权限、结果路径和证据。
+当前线程固定归属一个 `parent_goal` 内的 `(module_id, thread_role)`，可以顺序承接该归属的多个 task，但不得承接其他父目标。module 的 profile 与 context 在当前父目标内固定；每次新绑定只替换 task 局部目标、权限、结果路径和证据。
 
 ## 输入绑定包
 
@@ -13,6 +13,7 @@
   "plan_path": "<计划绝对路径>",
   "state_path": "<状态绝对路径>",
   "parent_goal": "<完整父目标>",
+  "executor_mode": "thread",
   "dispatch_key": "<plan_path>#<task_id>",
   "result_path": "<plan_dir>/results/<task_id>.json",
   "task_id": "T1",

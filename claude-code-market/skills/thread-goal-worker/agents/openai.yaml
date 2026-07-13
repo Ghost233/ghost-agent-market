@@ -1,4 +1,4 @@
 interface:
-  display_name: "任务执行单元"
-  short_description: "在固定 module+role 下执行 Claude Code v3 任务"
-  default_prompt: "使用 $thread-goal-worker 在固定 module+role 执行单元中按顺序承接 work、review 或 verify task；每次重置 task 局部权限和 result_path，不解析 Mermaid，并原子写入 WORKER_RESULT_V3。"
+  display_name: "执行线程任务"
+  short_description: "在 Claude Code 执行单元中完成范围受控的单个 DAG 任务"
+  default_prompt: "使用 $thread-goal-worker 在执行线程模式下完成当前绑定的单个 v3 DAG task，并原子写入 WORKER_RESULT_V3。"
