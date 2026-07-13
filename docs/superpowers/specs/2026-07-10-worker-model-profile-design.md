@@ -1,5 +1,7 @@
 # Worker 模型配置设计
 
+> 本文保留早期 profile 设计背景；其中 batch、module 作为执行节点和旧平台调度描述已由 [Task DAG 驱动与线程复用设计](2026-07-11-task-dag-driver-design.md) 取代。当前实现以 v3 task DAG、领域 module 和 `work | review | verify` 为准。
+
 ## 目标
 
 为 `$parallel-task-planner`、`$thread-coordination` 和 `$thread-goal-worker` 提供轻量、可执行的并发契约：planner 负责生成版本化计划，coordinator 负责按 batch 调度实现 worker，worker 负责限定 scope、验证和 diff 自检。

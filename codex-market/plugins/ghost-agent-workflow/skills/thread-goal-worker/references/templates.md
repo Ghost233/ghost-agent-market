@@ -10,11 +10,12 @@
   "state_path": "<状态绝对路径>",
   "parent_goal": "<完整父目标>",
   "dispatch_key": "<plan_path>#<task_id>",
+  "result_path": "<plan_dir>/results/<task_id>.json",
   "task_id": "T1",
   "logical_id": "state.extract-types",
   "title": "抽离页面状态类型",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "task": "<单一可执行结果>",
   "depends_on": [],
   "writable_paths": ["<授权写入路径>"],
@@ -31,6 +32,8 @@
 }
 ```
 
+`result_path` 是唯一允许写出业务范围外的协调元数据。先把完整结果原子写入该路径，再在聊天中返回语义相同的 JSON；`changed_files` 不包含该文件。
+
 ## 普通结果
 
 根据实际情况填写 `status` 和证据；`completed` 时 `scope_request` 必须为 `null`。
@@ -41,11 +44,11 @@
   "status": "completed | blocked | failed",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",
-  "changed_files": ["<路径>"],
+  "changed_files": ["<work 的业务路径；review/verify 填 []>"],
   "verification": ["<命令及结果>"],
   "diff_self_check": "pass | fail",
   "scope_request": null,
@@ -61,11 +64,11 @@
   "status": "needs_main_review",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",
-  "changed_files": ["<已产生且可归因的路径>"],
+  "changed_files": ["<work 已产生且可归因的路径；review/verify 填 []>"],
   "verification": ["<已完成的验证及结果>"],
   "diff_self_check": "scope_exception",
   "scope_request": {

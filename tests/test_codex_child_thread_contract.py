@@ -56,11 +56,12 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("永久 claim", self.planner)
         self.assertIn("reviewed_task_ids", self.planner_contract)
         self.assertIn("replacements", self.planner_contract)
-        self.assertIn("闭包审查", self.planner)
+        self.assertRegex(self.planner, r"闭包(审查|审计)")
 
     def test_planner_separates_modules_from_tasks(self) -> None:
         self.assertIn("`module`", self.planner)
-        self.assertIn("不是 DAG 节点", self.planner)
+        self.assertIn("DAG 节点", self.planner)
+        self.assertIn("不是阶段", self.planner)
         self.assertIn("`task` 是 DAG 节点", self.planner)
         self.assertIn("module_id", self.planner_contract)
         self.assertIn("project_verification", self.planner_contract)
@@ -96,7 +97,9 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("scope_request", self.worker_contract)
         self.assertIn("logical_id", self.worker_contract)
         self.assertIn("thread_role", self.worker_contract)
-        self.assertIn("`review` 是严格只读任务", self.worker)
+        self.assertIn("`review` 是严格只读", self.worker)
+        self.assertIn("`verify` 是严格只读的命令任务", self.worker)
+        self.assertIn("result_path", self.worker_contract)
 
     def test_main_thread_owns_safe_plan_revisions(self) -> None:
         self.assertIn("完整父目标", self.coordinator)
@@ -108,9 +111,11 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("scope_exception", self.worker)
         self.assertIn("split_hints", self.worker_contract)
         self.assertIn("overlap_hints", self.worker_contract)
-        self.assertIn("拆成不可比任务", self.planner)
-        self.assertIn("共享前置任务", self.planner)
+        self.assertIn("不可比 task", self.planner)
+        self.assertIn("共享前置 task", self.planner)
+        self.assertIn("静止点", self.planner)
         self.assertIn("$parallel-task-planner", self.coordinator)
+        self.assertIn("project_verification", self.coordinator)
 
     def test_legacy_worker_terms_are_removed(self) -> None:
         combined = "\n".join(
@@ -135,7 +140,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_metadata_describes_child_threads(self) -> None:
         self.assertIn("任务 DAG", self.metadata)
-        self.assertIn("gpt-5.6-terra/medium", self.metadata)
+        self.assertIn("[GA][实施|审查|验证][状态]", self.metadata)
+        self.assertIn("result_path", self.metadata)
 
     def test_git_commit_uses_spark_execution_thread(self) -> None:
         combined = "\n".join((self.git_commit, self.metadata))
@@ -168,7 +174,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_manifest_targets_new_minor_version(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertTrue(manifest["version"].startswith("0.6.9+codex."))
+        self.assertTrue(manifest["version"].startswith("0.7.0+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertNotIn("subagent", json.dumps(manifest, ensure_ascii=False).lower())
 

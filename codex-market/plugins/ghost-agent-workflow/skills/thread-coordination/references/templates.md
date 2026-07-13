@@ -7,7 +7,7 @@ create_thread(
   target={type: project, projectId: <项目 id>, environment: {type: local}},
   model=<module.worker_profile.model>,
   thinking=<module.worker_profile.reasoning_effort>,
-  prompt=<任务：logical_id · title；dispatch_key；task_id；thread_role；module_id；状态：待命；收到完整绑定包前不得执行>
+  prompt=<expected_title；dispatch_key；task_id；thread_role；module_id；状态：待命；收到完整绑定包前不得执行>
 )
 ```
 
@@ -21,11 +21,12 @@ create_thread(
   "state_path": "<状态绝对路径>",
   "parent_goal": "<完整父目标>",
   "dispatch_key": "<plan_path>#<task_id>",
+  "result_path": "<plan_dir>/results/<task_id>.json",
   "task_id": "T1",
   "logical_id": "state.extract-types",
   "title": "抽离页面状态类型",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "task": "<单一可执行结果>",
   "depends_on": [],
   "writable_paths": ["<授权写入路径>"],
@@ -42,6 +43,8 @@ create_thread(
 }
 ```
 
+执行线程把完整结果原子写入唯一 `result_path`，并在聊天中返回语义相同的 JSON。终态更新把该路径传给 driver；校验通过后，完整结果保存为 `state.tasks.<task_id>.result`。
+
 ## WORKER_RESULT_V3 普通结果
 
 ```json
@@ -50,11 +53,11 @@ create_thread(
   "status": "completed | blocked | failed",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",
-  "changed_files": ["<路径>"],
+  "changed_files": ["<work 的业务路径；review/verify 填 []>"],
   "verification": ["<命令及结果>"],
   "diff_self_check": "pass | fail",
   "scope_request": null,
@@ -70,11 +73,11 @@ create_thread(
   "status": "needs_main_review",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
   "profile_evidence": "<模型配置核对结果>",
-  "changed_files": ["<已产生且可归因的路径>"],
+  "changed_files": ["<work 已产生且可归因的路径；review/verify 填 []>"],
   "verification": ["<已完成的验证及结果>"],
   "diff_self_check": "scope_exception",
   "scope_request": {

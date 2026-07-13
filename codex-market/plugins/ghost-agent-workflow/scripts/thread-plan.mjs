@@ -3,12 +3,45 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   linkSync,
+  mkdirSync,
   readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -122,7 +155,30 @@ const REASONING_EFFORTS = new Set([
   "ultra",
 ]);
 
-const THREAD_ROLES = new Set            (["work", "review"]);
+const THREAD_ROLES = new Set            (["work", "review", "verify"]);
+
+const TERMINAL_STATUSES = new Set                    ([
+  "completed",
+  "blocked",
+  "failed",
+  "needs_main_review",
+]);
+
+const ROLE_TITLE_LABELS                             = {
+  work: "实施",
+  review: "审查",
+  verify: "验证",
+};
+
+const STATUS_TITLE_LABELS                             = {
+  pending: "待命",
+  running: "执行",
+  completed: "完成",
+  blocked: "阻塞",
+  failed: "失败",
+  needs_main_review: "复核",
+  dependency_blocked: "阻塞",
+};
 
 function fail(message        )        {
   throw new Error(message);
@@ -406,8 +462,11 @@ function parseTask(value         , index        )                 {
   if (!THREAD_ROLES.has(threadRole              )) {
     fail(`tasks[${index}].thread_role is invalid: ${threadRole}`);
   }
-  if (threadRole === "review" && writablePaths.length > 0) {
-    fail(`tasks[${index}] review thread must have empty writable_paths`);
+  if (
+    (threadRole === "review" || threadRole === "verify") &&
+    writablePaths.length > 0
+  ) {
+    fail(`tasks[${index}] ${threadRole} thread must have empty writable_paths`);
   }
   if (threadRole === "work" && writablePaths.length === 0) {
     fail(`tasks[${index}] work thread must have non-empty writable_paths`);
@@ -581,6 +640,166 @@ function pathsOverlap(left        , right        )          {
   const b = pathPrefix(right);
   if (a === "" || b === "") return true;
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function expectedTitle(task                , status            )         {
+  return `[GA][${ROLE_TITLE_LABELS[task.thread_role]}][${STATUS_TITLE_LABELS[status]}] ${task.logical_id} · ${task.title}`;
+}
+
+function parseScopeRequest(value         , label        )               {
+  const source = requireRecord(value, label);
+  return {
+    paths: requireStringArray(source.paths, `${label}.paths`, false),
+    reason: requireString(source.reason, `${label}.reason`),
+    required_for_done_when: requireString(
+      source.required_for_done_when,
+      `${label}.required_for_done_when`,
+    ),
+    suggested_owner: requireString(
+      source.suggested_owner,
+      `${label}.suggested_owner`,
+    ),
+    split_hints: requireStringArray(
+      source.split_hints,
+      `${label}.split_hints`,
+    ),
+    overlap_hints: requireStringArray(
+      source.overlap_hints,
+      `${label}.overlap_hints`,
+    ),
+  };
+}
+
+function parseWorkerResult(
+  value         ,
+  task                ,
+  taskState           ,
+  expectedStatus                    ,
+)                 {
+  const source = requireRecord(value, "worker result");
+  if (source.contract !== "WORKER_RESULT_V3") {
+    fail("worker result contract must equal WORKER_RESULT_V3");
+  }
+  const status = requireString(source.status, "worker result.status");
+  if (!TERMINAL_STATUSES.has(status                      )) {
+    fail(`worker result.status is invalid: ${status}`);
+  }
+  if (status !== expectedStatus) {
+    fail(`worker result status mismatch: expected ${expectedStatus}, got ${status}`);
+  }
+
+  const taskId = requireString(source.task_id, "worker result.task_id");
+  const logicalId = requireString(
+    source.logical_id,
+    "worker result.logical_id",
+  );
+  const threadRole = requireString(
+    source.thread_role,
+    "worker result.thread_role",
+  );
+  const moduleId = requireString(source.module_id, "worker result.module_id");
+  const threadId = requireString(source.thread_id, "worker result.thread_id");
+  if (taskId !== task.id) fail(`worker result task_id mismatch: ${taskId}`);
+  if (logicalId !== task.logical_id) {
+    fail(`worker result logical_id mismatch: ${logicalId}`);
+  }
+  if (threadRole !== task.thread_role) {
+    fail(`worker result thread_role mismatch: ${threadRole}`);
+  }
+  if (moduleId !== task.module_id) {
+    fail(`worker result module_id mismatch: ${moduleId}`);
+  }
+  if (threadId !== taskState.thread_id) {
+    fail(`worker result thread_id mismatch: ${threadId}`);
+  }
+
+  const changedFiles = requireStringArray(
+    source.changed_files,
+    "worker result.changed_files",
+  );
+  ensureUnique(changedFiles, "worker result changed file");
+  const verification = requireStringArray(
+    source.verification,
+    "worker result.verification",
+    false,
+  );
+  const diffSelfCheck = requireString(
+    source.diff_self_check,
+    "worker result.diff_self_check",
+  );
+  if (
+    diffSelfCheck !== "pass" &&
+    diffSelfCheck !== "fail" &&
+    diffSelfCheck !== "scope_exception"
+  ) {
+    fail(`worker result.diff_self_check is invalid: ${diffSelfCheck}`);
+  }
+
+  let scopeRequest                      = null;
+  if (status === "needs_main_review") {
+    if (diffSelfCheck !== "scope_exception") {
+      fail("needs_main_review requires diff_self_check scope_exception");
+    }
+    scopeRequest = parseScopeRequest(
+      source.scope_request,
+      "worker result.scope_request",
+    );
+  } else {
+    if (source.scope_request !== null) {
+      fail(`${status} requires scope_request null`);
+    }
+    if (diffSelfCheck === "scope_exception") {
+      fail(`${status} cannot use diff_self_check scope_exception`);
+    }
+    if (status === "completed" && diffSelfCheck !== "pass") {
+      fail("completed requires diff_self_check pass");
+    }
+  }
+
+  const outOfScopeFiles = changedFiles.filter(
+    (changedFile) =>
+      !task.writable_paths.some((writablePath) =>
+        pathsOverlap(changedFile, writablePath),
+      ),
+  );
+  if (task.thread_role !== "work" && changedFiles.length > 0) {
+    fail(`${task.thread_role} result must have empty changed_files`);
+  }
+  if (status !== "needs_main_review" && outOfScopeFiles.length > 0) {
+    fail(
+      `worker result changed_files exceed writable_paths: ${outOfScopeFiles.join(", ")}`,
+    );
+  }
+  if (
+    status === "needs_main_review" &&
+    outOfScopeFiles.some(
+      (changedFile) =>
+        !scopeRequest?.paths.some((requestedPath) =>
+          pathsOverlap(changedFile, requestedPath),
+        ),
+    )
+  ) {
+    fail("worker result out-of-scope changed_files must be covered by scope_request.paths");
+  }
+
+  return {
+    contract: "WORKER_RESULT_V3",
+    status: status                      ,
+    task_id: taskId,
+    logical_id: logicalId,
+    thread_role: threadRole              ,
+    module_id: moduleId,
+    thread_id: threadId,
+    profile_evidence: requireString(
+      source.profile_evidence,
+      "worker result.profile_evidence",
+    ),
+    changed_files: changedFiles,
+    verification,
+    diff_self_check: diffSelfCheck                                     ,
+    scope_request: scopeRequest,
+    summary: requireString(source.summary, "worker result.summary"),
+  };
 }
 
 function validateGraph(plan      )                           {
@@ -950,6 +1169,23 @@ function statePathFor(planPath        )         {
   return join(dirname(planPath), "state.json");
 }
 
+function resultPathFor(planPath        , taskId        )         {
+  return join(dirname(planPath), "results", `${taskId}.json`);
+}
+
+function canonicalResultPath(
+  planPath        ,
+  taskId        ,
+  resultArgument        ,
+)         {
+  const expected = resolve(resultPathFor(planPath, taskId));
+  const actual = resolve(resultArgument);
+  if (actual !== expected) {
+    fail(`result path must equal the canonical path: ${expected}`);
+  }
+  return expected;
+}
+
 function canonicalStatePath(planPath        , stateArgument        )         {
   const expected = resolve(statePathFor(planPath));
   const actual = resolve(stateArgument);
@@ -981,10 +1217,23 @@ function parseState(value         , plan      )           {
     if (taskState.thread_id !== null && typeof taskState.thread_id !== "string") {
       fail(`state.tasks.${task.id}.thread_id is invalid`);
     }
-    parsedTasks[task.id] = {
+    const parsedTask            = {
       status: taskState.status              ,
       thread_id: taskState.thread_id                 ,
+      result: null,
     };
+    if (taskState.result !== undefined && taskState.result !== null) {
+      if (!TERMINAL_STATUSES.has(parsedTask.status                      )) {
+        fail(`state.tasks.${task.id}.result requires a terminal status`);
+      }
+      parsedTask.result = parseWorkerResult(
+        taskState.result,
+        task,
+        parsedTask,
+        parsedTask.status                      ,
+      );
+    }
+    parsedTasks[task.id] = parsedTask;
   }
 
   ensureUnique(Object.keys(tasks), "state task id");
@@ -1074,6 +1323,7 @@ function validateCommand(planArgument        )       {
           planPath,
         );
       }
+      mkdirSync(join(dirname(planPath), "results"), { recursive: true });
       writeJson(planPath, plan);
       if (state === null) {
         state = {
@@ -1082,7 +1332,7 @@ function validateCommand(planArgument        )       {
           tasks: Object.fromEntries(
             plan.tasks.map((task) => [
               task.id,
-              { status: "pending", thread_id: null },
+              { status: "pending", thread_id: null, result: null },
             ]),
           ),
         };
@@ -1154,6 +1404,8 @@ function nextCommand(planArgument        , stateArgument        )       {
         title: task.title,
         thread_role: task.thread_role,
         module_id: task.module_id,
+        result_path: resultPathFor(planPath, task.id),
+        expected_title: expectedTitle(task, "pending"),
       };
       if (route?.action === "resume") {
         return [{
@@ -1210,7 +1462,7 @@ function updateCommand(
   stateArgument        ,
   taskId        ,
   nextStatus        ,
-  threadId         ,
+  bindingArgument         ,
 )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalStatePath(planPath, stateArgument);
@@ -1234,7 +1486,7 @@ function updateCommand(
     }
 
     if (nextStatus === "running") {
-      const actualThreadId = requireString(threadId, "thread_id");
+      const actualThreadId = requireString(bindingArgument, "thread_id");
       const route = plan.dispatch?.routes[taskId];
       if (route?.action === "reuse") {
         const expectedThreadId = state.tasks[route.from_task]?.thread_id;
@@ -1262,6 +1514,20 @@ function updateCommand(
         }
       }
       current.thread_id = actualThreadId;
+      current.result = null;
+    } else {
+      const resultArgument = requireString(bindingArgument, "result_path");
+      const resultPath = canonicalResultPath(
+        planPath,
+        taskId,
+        resultArgument,
+      );
+      current.result = parseWorkerResult(
+        readJson(resultPath),
+        task,
+        current,
+        nextStatus                      ,
+      );
     }
     current.status = nextStatus              ;
     writeJson(statePath, state);
@@ -1269,6 +1535,8 @@ function updateCommand(
       task_id: taskId,
       status: current.status,
       thread_id: current.thread_id,
+      result_path: resultPathFor(planPath, taskId),
+      expected_title: expectedTitle(task, current.status),
     };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -1289,7 +1557,7 @@ function main(argv          )       {
     return;
   }
   fail(
-    "usage: thread-plan.mjs validate <plan.json> | next <plan.json> <state.json> | update <plan.json> <state.json> <task_id> <status> [thread_id]",
+    "usage: thread-plan.mjs validate <plan.json> | next <plan.json> <state.json> | update <plan.json> <state.json> <task_id> running <thread_id> | update <plan.json> <state.json> <task_id> <terminal_status> <result_path>",
   );
 }
 

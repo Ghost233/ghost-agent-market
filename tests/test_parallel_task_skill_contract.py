@@ -73,7 +73,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         ):
             contract = f"{skill}\n{templates}"
             self.assertIn("`module`", skill)
-            self.assertIn("不是 DAG 节点", skill)
+            self.assertIn("DAG 节点", skill)
+            self.assertIn("领域", skill)
             self.assertIn("`task` 是 DAG 节点", skill)
             self.assertIn("module_id", contract)
             self.assertIn(".ghost-agent-workflow/parallel_plan", skill)
@@ -87,7 +88,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("replacements", contract)
             self.assertIn("continue", contract)
             self.assertIn("handoff", contract)
-            self.assertIn("闭包审查", skill)
+            self.assertRegex(skill, r"闭包(审查|审计)")
 
     def test_both_coordinators_use_the_three_command_driver(self) -> None:
         for coordinator in (
@@ -107,8 +108,10 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("reuse_existing_thread", coordinator)
             self.assertIn("<logical_id> · <title>", coordinator)
             self.assertIn("[GA][<用途>][<状态>]", coordinator)
-            self.assertIn("闭包审查", coordinator)
-            self.assertIn("所有未完成任务", coordinator)
+            self.assertRegex(coordinator, r"闭包(审查|审计)")
+            self.assertIn("静止点", coordinator)
+            self.assertIn("result_path", coordinator)
+            self.assertIn("expected_title", coordinator)
             self.assertIn("$parallel-task-planner", coordinator)
 
     def test_parent_goal_authorization_covers_internal_replanning(self) -> None:
@@ -119,8 +122,9 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("用户授权以 `parent_goal` 为单位", planner)
             self.assertIn("受控基线", planner)
             self.assertIn("不要求用户确认", planner)
-            self.assertIn("拆成不可比任务", planner)
-            self.assertIn("共享前置任务", planner)
+            self.assertIn("不可比", planner)
+            self.assertIn("共享前置", planner)
+            self.assertIn("静止点", planner)
 
         for coordinator in (
             self.codex_skills["thread-coordination"],
@@ -130,9 +134,10 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             self.assertIn("不要求用户逐次批准", coordinator)
             self.assertIn("修正版可为 `parallel_safe` 或 `sequential_only`", coordinator)
             self.assertIn("视为受控基线", coordinator)
-            self.assertIn("所有未完成任务", coordinator)
+            self.assertIn("静止点", coordinator)
             self.assertIn("$parallel-task-planner", coordinator)
             self.assertIn("内部修订不能作为最终失败返回", coordinator)
+            self.assertIn("project_verification", coordinator)
 
         for skill, templates in (
             (
@@ -165,12 +170,26 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             ),
         ):
             contract = f"{planner}\n{templates}"
-            self.assertIn("`work` 表示正式实施", contract)
-            self.assertIn("`review` 表示只读审查", contract)
+            self.assertIn("`work`", contract)
+            self.assertIn("正式实施", contract)
+            self.assertIn("`review`", contract)
+            self.assertIn("只读", contract)
+            self.assertIn("`verify`", contract)
             self.assertIn('"thread_role": "work"', templates)
             self.assertIn('"thread_role": "review"', templates)
-            review = read_json_blocks(templates)[0]["tasks"][1]
+            self.assertIn('"thread_role": "verify"', templates)
+            review = next(
+                task
+                for task in read_json_blocks(templates)[0]["tasks"]
+                if task["thread_role"] == "review"
+            )
             self.assertEqual(review["writable_paths"], [])
+            verify = next(
+                task
+                for task in read_json_blocks(templates)[0]["tasks"]
+                if task["thread_role"] == "verify"
+            )
+            self.assertEqual(verify["writable_paths"], [])
 
         for coordinator in (
             self.codex_skills["thread-coordination"],
@@ -178,27 +197,29 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         ):
             self.assertIn("work -> [实施]", coordinator)
             self.assertIn("review -> [审查]", coordinator)
+            self.assertIn("verify -> [验证]", coordinator)
             for marker in (
                 "[GA]",
-                "[待命]",
                 "[执行]",
-                "[补修]",
                 "[完成]",
                 "[复核]",
                 "[阻塞]",
                 "[失败]",
             ):
                 self.assertIn(marker, coordinator)
+        self.assertIn("[待命]", self.codex_skills["thread-coordination"])
+        self.assertIn("[补修]", self.codex_skills["thread-coordination"])
 
         for worker in (
             self.codex_skills["thread-goal-worker"],
             self.claude_skills["thread-goal-worker"],
         ):
-            self.assertIn("`review` 是严格只读任务", worker)
+            self.assertIn("`review` 是严格只读", worker)
+            self.assertIn("`verify`", worker)
             self.assertIn("changed files 必须为 `[]`", worker)
-            self.assertIn("不得把当前审查任务自行升级为实施任务", worker)
+            self.assertIn("自行升级为实施任务", worker)
 
-        self.assertIn("[GA][实施|审查][状态]", self.all_metadata)
+        self.assertIn("[GA][实施|审查|验证][状态]", self.all_metadata)
 
     def test_templates_are_isolated_in_references(self) -> None:
         for root, skills, templates in (
@@ -231,7 +252,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
             first_paths = set(plan["tasks"][0]["writable_paths"])
             second_paths = set(plan["tasks"][1]["writable_paths"])
             self.assertTrue(first_paths.isdisjoint(second_paths))
-            self.assertEqual(
+            self.assertNotEqual(
                 plan["tasks"][0]["module_id"],
                 plan["tasks"][1]["module_id"],
             )
@@ -342,7 +363,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         self.assertIn("v3", self.all_metadata)
         self.assertIn("任务 DAG", self.all_metadata)
         self.assertNotIn("拓扑 batch", self.all_metadata)
-        self.assertIn("logical_id", self.all_metadata)
+        self.assertIn("verify", self.all_metadata)
+        self.assertIn("result_path", self.all_metadata)
         self.assertNotIn("等待绑定包", self.all_metadata)
 
     def test_plugin_versions_are_incremented(self) -> None:
@@ -352,8 +374,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         claude_manifest = json.loads(
             (CLAUDE / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
         )
-        self.assertTrue(codex_manifest["version"].startswith("0.6.9+codex."))
-        self.assertEqual(claude_manifest["version"], "0.3.1")
+        self.assertTrue(codex_manifest["version"].startswith("0.7.0+codex."))
+        self.assertEqual(claude_manifest["version"], "0.3.2")
 
 
 if __name__ == "__main__":

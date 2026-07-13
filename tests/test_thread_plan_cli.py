@@ -10,8 +10,14 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/thread-plan.mjs"
+SCRIPT = Path(
+    os.environ.get(
+        "THREAD_PLAN_SCRIPT",
+        ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/thread-plan.mjs",
+    )
+)
 FIXTURES = ROOT / "tests/fixtures/thread-plan"
+TERMINAL_STATUSES = {"completed", "blocked", "failed", "needs_main_review"}
 
 
 class ThreadPlanCliTests(unittest.TestCase):
@@ -48,11 +54,60 @@ class ThreadPlanCliTests(unittest.TestCase):
         task_id: str,
         status: str,
         thread_id: str | None = None,
+        result: dict | None = None,
+        result_path: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         args: list[object] = ["update", plan_path, state_path, task_id, status]
-        if thread_id is not None:
+        if status == "running" and thread_id is not None:
             args.append(thread_id)
+        elif status in TERMINAL_STATUSES:
+            result_path = result_path or plan_path.parent / "results" / f"{task_id}.json"
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            result_path.write_text(
+                json.dumps(
+                    result
+                    or self.worker_result(plan_path, state_path, task_id, status)
+                ),
+                encoding="utf-8",
+            )
+            args.append(result_path)
         return self.run_cli(*args)
+
+    def worker_result(
+        self,
+        plan_path: Path,
+        state_path: Path,
+        task_id: str,
+        status: str,
+    ) -> dict:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        task = next(task for task in plan["tasks"] if task["id"] == task_id)
+        needs_review = status == "needs_main_review"
+        return {
+            "contract": "WORKER_RESULT_V3",
+            "status": status,
+            "task_id": task_id,
+            "logical_id": task["logical_id"],
+            "thread_role": task["thread_role"],
+            "module_id": task["module_id"],
+            "thread_id": state["tasks"][task_id]["thread_id"],
+            "profile_evidence": "profile matched",
+            "changed_files": [],
+            "verification": ["verification recorded"],
+            "diff_self_check": "scope_exception" if needs_review else "pass",
+            "scope_request": {
+                "paths": ["src/repair/**"],
+                "reason": "verification requires a repair task",
+                "required_for_done_when": "the verification must pass",
+                "suggested_owner": task["module_id"],
+                "split_hints": [],
+                "overlap_hints": [],
+            }
+            if needs_review
+            else None,
+            "summary": f"task {status}",
+        }
 
     def test_validate_builds_routes_and_state(self) -> None:
         with self.workspace() as (plan_path, state_path):
@@ -66,7 +121,9 @@ class ThreadPlanCliTests(unittest.TestCase):
                 {"action": "reuse", "from_task": "T1"},
             )
             self.assertEqual(state["tasks"]["T1"]["status"], "pending")
+            self.assertIsNone(state["tasks"]["T1"]["result"])
             self.assertTrue(state["plan_digest"])
+            self.assertTrue((plan_path.parent / "results").is_dir())
 
     def test_next_returns_every_ready_task_without_limit(self) -> None:
         with self.workspace() as (plan_path, state_path):
@@ -86,6 +143,14 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertEqual(actions["T1"]["logical_id"], "state.extract-types")
             self.assertEqual(actions["T1"]["title"], "抽离页面状态类型")
             self.assertEqual(actions["T1"]["thread_role"], "work")
+            self.assertEqual(
+                actions["T1"]["expected_title"],
+                "[GA][实施][待命] state.extract-types · 抽离页面状态类型",
+            )
+            self.assertEqual(
+                actions["T1"]["result_path"],
+                str(plan_path.parent / "results" / "T1.json"),
+            )
             self.assertEqual(actions["T3"]["thread_role"], "work")
 
     def test_next_exposes_review_role_after_dependencies_complete(self) -> None:
@@ -147,10 +212,12 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertEqual(state["tasks"]["T1"], {
                 "status": "running",
                 "thread_id": "thread-1",
+                "result": None,
             })
             self.assertEqual(state["tasks"]["T3"], {
                 "status": "running",
                 "thread_id": "thread-3",
+                "result": None,
             })
             self.assertFalse(Path(f"{state_path}.lock").exists())
 
@@ -317,6 +384,7 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertEqual(state["tasks"]["T3"], {
                 "status": "running",
                 "thread_id": "thread-3",
+                "result": None,
             })
 
     def test_completed_predecessor_releases_reuse_action_immediately(self) -> None:
@@ -427,11 +495,84 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertEqual(roles["T1"], "work")
             self.assertEqual(roles["T4"], "review")
 
+    def test_verify_role_requires_an_empty_write_scope_and_exposes_titles(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "verify"
+            plan["tasks"][0]["writable_paths"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            self.validate(plan_path)
+            action = next(
+                action
+                for action in self.run_json("next", plan_path, state_path)["actions"]
+                if action["task_id"] == "T1"
+            )
+            self.assertEqual(action["thread_role"], "verify")
+            self.assertEqual(
+                action["expected_title"],
+                "[GA][验证][待命] state.extract-types · 抽离页面状态类型",
+            )
+
+            running = self.run_json(
+                "update", plan_path, state_path, "T1", "running", "thread-verify"
+            )
+            self.assertEqual(
+                running["expected_title"],
+                "[GA][验证][执行] state.extract-types · 抽离页面状态类型",
+            )
+            completed = self.update(plan_path, state_path, "T1", "completed")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(
+                json.loads(completed.stdout)["expected_title"],
+                "[GA][验证][完成] state.extract-types · 抽离页面状态类型",
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["tasks"]["T1"]["result"]["status"], "completed")
+
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "verify"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("verify thread must have empty writable_paths", result.stderr)
+            self.assertFalse(state_path.exists())
+
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "verify"
+            plan["tasks"][0]["writable_paths"] = []
+            plan["tasks"][0]["verification"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            result = self.run_cli("validate", plan_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("verification must not be empty", result.stderr)
+            self.assertFalse(state_path.exists())
+
     def test_route_reuse_requires_the_same_thread_role(self) -> None:
         with self.workspace() as (plan_path, _):
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             plan["tasks"][1]["thread_role"] = "review"
             plan["tasks"][1]["writable_paths"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            self.validate(plan_path)
+
+            normalized = json.loads(plan_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                normalized["dispatch"]["routes"]["T2"],
+                {"action": "create"},
+            )
+
+    def test_route_reuse_requires_the_same_module_boundary(self) -> None:
+        with self.workspace() as (plan_path, _):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][1]["module_id"] = "flow-review"
             plan_path.write_text(json.dumps(plan), encoding="utf-8")
 
             self.validate(plan_path)
@@ -488,6 +629,217 @@ class ThreadPlanCliTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("illegal status transition", result.stderr)
+
+    def test_terminal_update_requires_the_canonical_result_path(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+
+            missing = self.run_cli(
+                "update", plan_path, state_path, "T1", "completed"
+            )
+            outside = self.update(
+                plan_path,
+                state_path,
+                "T1",
+                "completed",
+                result_path=plan_path.parent / "outside.json",
+            )
+
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("result_path must be a non-empty string", missing.stderr)
+            self.assertNotEqual(outside.returncode, 0)
+            self.assertIn("result path must equal the canonical path", outside.stderr)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["tasks"]["T1"]["status"], "running")
+            self.assertIsNone(state["tasks"]["T1"]["result"])
+
+    def test_terminal_result_identity_must_match_the_running_binding(self) -> None:
+        mutations = (
+            ("status", "blocked", "status mismatch"),
+            ("task_id", "T9", "task_id mismatch"),
+            ("logical_id", "state.other", "logical_id mismatch"),
+            ("thread_role", "verify", "thread_role mismatch"),
+            ("module_id", "other", "module_id mismatch"),
+            ("thread_id", "thread-other", "thread_id mismatch"),
+        )
+        for field, value, error in mutations:
+            with self.subTest(field=field), self.workspace() as (plan_path, state_path):
+                self.validate(plan_path)
+                self.assertEqual(
+                    self.update(
+                        plan_path, state_path, "T1", "running", "thread-1"
+                    ).returncode,
+                    0,
+                )
+                result = self.worker_result(
+                    plan_path, state_path, "T1", "completed"
+                )
+                result[field] = value
+
+                update = self.update(
+                    plan_path,
+                    state_path,
+                    "T1",
+                    "completed",
+                    result=result,
+                )
+
+                self.assertNotEqual(update.returncode, 0)
+                self.assertIn(error, update.stderr)
+
+    def test_terminal_result_validates_changed_files_and_scope_exception(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+            result = self.worker_result(plan_path, state_path, "T1", "completed")
+            result["changed_files"] = ["outside/file.ts"]
+
+            update = self.update(
+                plan_path, state_path, "T1", "completed", result=result
+            )
+
+            self.assertNotEqual(update.returncode, 0)
+            self.assertIn("changed_files exceed writable_paths", update.stderr)
+
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["tasks"][0]["thread_role"] = "verify"
+            plan["tasks"][0]["writable_paths"] = []
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-verify"
+                ).returncode,
+                0,
+            )
+            result = self.worker_result(plan_path, state_path, "T1", "completed")
+            result["changed_files"] = ["src/generated.swift"]
+
+            update = self.update(
+                plan_path, state_path, "T1", "completed", result=result
+            )
+
+            self.assertNotEqual(update.returncode, 0)
+            self.assertIn("verify result must have empty changed_files", update.stderr)
+
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+            result = self.worker_result(
+                plan_path, state_path, "T1", "needs_main_review"
+            )
+            result["changed_files"] = ["src/repair/generated.ts"]
+
+            update = self.update(
+                plan_path,
+                state_path,
+                "T1",
+                "needs_main_review",
+                result=result,
+            )
+
+            self.assertEqual(update.returncode, 0, update.stderr)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["tasks"]["T1"]["result"]["scope_request"]["paths"],
+                ["src/repair/**"],
+            )
+
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+            result = self.worker_result(plan_path, state_path, "T1", "completed")
+            result["diff_self_check"] = "fail"
+
+            update = self.update(
+                plan_path, state_path, "T1", "completed", result=result
+            )
+
+            self.assertNotEqual(update.returncode, 0)
+            self.assertIn("completed requires diff_self_check pass", update.stderr)
+
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+            result = self.worker_result(
+                plan_path, state_path, "T1", "needs_main_review"
+            )
+            result["diff_self_check"] = "pass"
+
+            update = self.update(
+                plan_path,
+                state_path,
+                "T1",
+                "needs_main_review",
+                result=result,
+            )
+
+            self.assertNotEqual(update.returncode, 0)
+            self.assertIn("requires diff_self_check scope_exception", update.stderr)
+
+    def test_terminal_result_is_persisted_and_survives_revalidation(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            self.assertEqual(
+                self.update(
+                    plan_path, state_path, "T1", "running", "thread-1"
+                ).returncode,
+                0,
+            )
+            expected = self.worker_result(
+                plan_path, state_path, "T1", "completed"
+            )
+
+            completed = self.update(
+                plan_path, state_path, "T1", "completed", result=expected
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.validate(plan_path)
+
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["tasks"]["T1"]["result"], expected)
+
+    def test_legacy_state_without_result_remains_readable(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            self.validate(plan_path)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            for task_state in state["tasks"].values():
+                task_state.pop("result")
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            payload = self.run_json("next", plan_path, state_path)
+
+            self.assertEqual(
+                {action["task_id"] for action in payload["actions"]},
+                {"T1", "T3"},
+            )
 
     def test_reuse_requires_the_source_thread(self) -> None:
         with self.workspace() as (plan_path, state_path):

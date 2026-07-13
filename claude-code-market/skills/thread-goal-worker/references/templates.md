@@ -10,11 +10,12 @@
   "state_path": "<状态绝对路径>",
   "parent_goal": "<完整父目标>",
   "dispatch_key": "<plan_path>#<task_id>",
+  "result_path": "<plan_dir>/results/<task_id>.json",
   "task_id": "T1",
   "logical_id": "state.extract-types",
   "title": "抽离页面状态类型",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-domain",
   "task": "<单一可执行结果>",
   "depends_on": [],
   "writable_paths": ["<授权写入路径>"],
@@ -26,8 +27,7 @@
     "model": "<实际模型>",
     "reasoning_effort": "<实际强度>"
   },
-  "profile_evidence": "<模型配置证据>",
-  "assignment_evidence": "<创建或继承证据>",
+  "profile_evidence": "<模型配置与创建或继承证据>",
   "result_contract": "WORKER_RESULT_V3"
 }
 ```
@@ -42,13 +42,12 @@
   "status": "completed | blocked | failed",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-domain",
   "thread_id": "<绑定执行单元 id>",
-  "profile_evidence": "<模型配置核对结果>",
-  "assignment_evidence": "<分派归属核对结果>",
+  "profile_evidence": "<模型配置与分派归属核对结果>",
   "changed_files": ["<路径>"],
-  "verification": ["<命令及结果>"],
+  "verification": ["<命令、退出码、原始错误与日志路径>"],
   "diff_self_check": "pass | fail",
   "scope_request": null,
   "summary": "<结果或阻塞证据>"
@@ -63,11 +62,10 @@
   "status": "needs_main_review",
   "task_id": "T1",
   "logical_id": "state.extract-types",
-  "thread_role": "work | review",
-  "module_id": "implementation",
+  "thread_role": "work | review | verify",
+  "module_id": "state-domain",
   "thread_id": "<绑定执行单元 id>",
-  "profile_evidence": "<模型配置核对结果>",
-  "assignment_evidence": "<分派归属核对结果>",
+  "profile_evidence": "<模型配置与分派归属核对结果>",
   "changed_files": ["<已产生且可归因的路径>"],
   "verification": ["<已完成的验证及结果>"],
   "diff_self_check": "scope_exception",
@@ -80,5 +78,32 @@
     "overlap_hints": ["<已知交叉路径、契约或生成产物>"]
   },
   "summary": "<交给主会话的重规划证据>"
+}
+```
+
+## 结果持久化
+
+完成唯一终态结果后：
+
+1. 在 `result_path` 同目录写临时文件。
+2. 写入完整且合法的 `WORKER_RESULT_V3`，再原子替换 `result_path`。
+3. 在消息中原样返回同一 JSON，不添加第二份自然语言结果。
+
+协调会话执行终态 update 后，驱动器会把该 JSON 内嵌到 `state.tasks.<task_id>.result`。除 `work` 的授权业务文件外，三种角色都只允许额外写这一协调元数据文件；`review` 与 `verify` 的 `changed_files` 必须为 `[]`。
+
+## 聚焦补修输入
+
+收到以下差量时，只补齐列出的结果或证据，并重新原子写入同一 `result_path`；不得扩大业务写入范围。
+
+```json
+{
+  "contract": "WORKER_REPAIR_V3",
+  "task_id": "T1",
+  "logical_id": "state.extract-types",
+  "thread_id": "<绑定执行单元 id>",
+  "result_path": "<plan_dir>/results/T1.json",
+  "missing_or_invalid": ["<需要补齐的字段或证据>"],
+  "required_action": "<仅修复当前结果所需的动作>",
+  "return_contract": "WORKER_RESULT_V3"
 }
 ```

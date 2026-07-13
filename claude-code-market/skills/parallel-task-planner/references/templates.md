@@ -11,12 +11,28 @@
   "parent_goal": "<可验收的父目标>",
   "modules": [
     {
-      "id": "implementation",
+      "id": "state-domain",
       "worker_profile": {
         "model": "sonnet",
         "reasoning_effort": "max"
       },
-      "worker_context": "<该执行配置共享的最少上下文>"
+      "worker_context": "<页面状态领域的最少共享上下文>"
+    },
+    {
+      "id": "parser-domain",
+      "worker_profile": {
+        "model": "sonnet",
+        "reasoning_effort": "max"
+      },
+      "worker_context": "<解析器领域的最少共享上下文>"
+    },
+    {
+      "id": "build-verification",
+      "worker_profile": {
+        "model": "sonnet",
+        "reasoning_effort": "max"
+      },
+      "worker_context": "<工程构建与验证约束>"
     }
   ],
   "tasks": [
@@ -25,7 +41,7 @@
       "logical_id": "state.extract-types",
       "title": "抽离页面状态类型",
       "thread_role": "work",
-      "module_id": "implementation",
+      "module_id": "state-domain",
       "task": "在独立文件定义并导出页面状态类型",
       "depends_on": [],
       "writable_paths": ["src/state/types.ts"],
@@ -37,18 +53,30 @@
       "logical_id": "parser.review-boundaries",
       "title": "审查解析器边界行为",
       "thread_role": "review",
-      "module_id": "implementation",
+      "module_id": "parser-domain",
       "task": "只读审查既有解析器的空输入与非法输入行为",
       "depends_on": [],
       "writable_paths": [],
       "done_when": ["形成可核对的边界行为审查结论"],
-      "verification": ["读取并运行既有解析器边界测试，不修改文件"]
+      "verification": ["读取并运行既有解析器边界测试，不修改 tracked files"]
+    },
+    {
+      "id": "T3",
+      "logical_id": "state.verify-integration",
+      "title": "验证页面状态集成",
+      "thread_role": "verify",
+      "module_id": "build-verification",
+      "task": "执行页面状态相关编译和类型检查",
+      "depends_on": ["T1"],
+      "writable_paths": [],
+      "done_when": ["相关编译和类型检查通过，或完整报告原始失败证据"],
+      "verification": ["运行页面状态相关编译和类型检查，不修改 tracked files"]
     }
   ],
   "project_verification": ["<工程总验收>"],
   "safety": {
     "status": "parallel_safe",
-    "reasons": ["T1 与 T2 无依赖，且只读审查不与实施写域冲突，可以并行执行"]
+    "reasons": ["T1 与 T2 无依赖且写域不冲突；T3 仅真实依赖 T1"]
   }
 }
 ```
@@ -76,3 +104,5 @@
 ```
 
 `reviewed_task_ids` 与 `replacements` 必须完整覆盖全部未完成旧任务；`reuse` 只列通过复用约束的映射。
+
+修订前以 `state.tasks.<task_id>.result` 内嵌的完整 `WORKER_RESULT_V3` 为终态证据；同一静止点的失败与范围变化必须合并审计，不按单条结果分别创建 revision。

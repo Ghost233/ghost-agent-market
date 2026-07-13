@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 规划"
-  short_description: "生成并校验 Claude Code v3 任务 DAG 计划"
-  default_prompt: "使用 $parallel-task-planner 生成 v3 任务 DAG；默认使用 sonnet/max，为任务标注 work 或 review，并生成稳定的 logical_id 与 title。"
+  short_description: "按领域生成并修订 Claude Code v3 任务 DAG"
+  default_prompt: "使用 $parallel-task-planner 做闭包审计并生成 v3 任务 DAG；按领域定义 module，为任务标注 work、review 或 verify，并为同一静止点生成唯一修订。"
