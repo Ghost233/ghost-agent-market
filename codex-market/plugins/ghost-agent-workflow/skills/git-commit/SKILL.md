@@ -110,14 +110,18 @@ submodule 提交与主工程提交必须是不同提交。
 
 ## 执行提交
 
-Codex 沙盒阻止写入 Git index/refs 时，执行线程先重新读取 `git status --short` 和 `git diff --cached`，确认失败命令没有改变 index；随后只为同一条具体写命令和同一组显式路径使用 `sandbox_permissions: "require_escalated"`，并给出最小、具体的 justification。只读检查不提权，也不得把沙盒拒绝误报为“没有可提交改动”。
+所有 Git 写命令第一次执行时就必须主动提权，不得先在普通沙盒中试跑。只读检查不提权。白名单只减少重复审批，不能替代 `sandbox_permissions: "require_escalated"`。
+
+- 显式暂存使用 `rtk git add -- <paths>`，同时传入 `sandbox_permissions: "require_escalated"`、最小具体的 justification，以及精确前缀 `prefix_rule: ["rtk", "git", "add"]`。
+- 创建提交使用 `rtk git commit ...`，同时传入 `sandbox_permissions: "require_escalated"`、最小具体的 justification，以及精确前缀 `prefix_rule: ["rtk", "git", "commit"]`。
+- 不得申请 `["rtk", "git"]` 或更宽的规则。提权或前缀审批被拒绝时保留现场并报告，不得改用未提权命令反复试错。
 
 对每个批次依次执行：
 
-1. 使用显式路径 stage。
+1. 使用上述主动提权参数和显式路径 stage。
 2. 运行 `git diff --cached --stat` 和 `git diff --cached`，确认只包含该批次、没有敏感文件、没有遗漏或意外删除。
 3. 执行 `git diff --cached --check`。
-4. 创建提交。不得使用 `--no-verify` 绕过 hooks。
+4. 使用上述主动提权参数创建提交。不得使用 `--no-verify` 绕过 hooks。
 5. hook 或 commit 失败时保留现场并报告。只在当前授权范围内修复；需要扩大修改范围时停止。
 6. 提交后读取新 hash，并重新运行 `git status --short`；再决定是否继续下一批次。
 
