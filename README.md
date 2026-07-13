@@ -7,6 +7,8 @@
 - `parallel-task-planner`
 - `thread-coordination`
 - `thread-goal-worker`
+- `subagent-coordination`
+- `subagent-goal-worker`
 - `git-commit`
 
 上游子模块：
@@ -30,6 +32,8 @@ ghost-agent-market/
 │       ├── parallel-task-planner/
 │       ├── thread-coordination/
 │       ├── thread-goal-worker/
+│       ├── subagent-coordination/
+│       ├── subagent-goal-worker/
 │       └── git-commit/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
@@ -40,6 +44,8 @@ ghost-agent-market/
         │       ├── parallel-task-planner/
         │       ├── thread-coordination/
         │       ├── thread-goal-worker/
+        │       ├── subagent-coordination/
+        │       ├── subagent-goal-worker/
         │       └── git-commit/
         └── rtk-hook/
             ├── .codex-plugin/plugin.json
