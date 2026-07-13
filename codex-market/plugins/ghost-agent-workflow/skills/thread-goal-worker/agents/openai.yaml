@@ -1,4 +1,4 @@
 interface:
   display_name: "任务执行线程"
-  short_description: "按角色执行 Codex v3 任务并持久化结果"
-  default_prompt: "使用 $thread-goal-worker 完成唯一绑定任务；work 限域实施，review 只读审查，verify 只读验证，并把 WORKER_RESULT_V3 原子写入 result_path。"
+  short_description: "在固定 module+role 下执行 Codex v3 任务"
+  default_prompt: "使用 $thread-goal-worker 在固定 module+role 线程中按顺序承接 work、review 或 verify task；每次重置 task 局部权限和 result_path，不解析 Mermaid，并原子写入 WORKER_RESULT_V3。"

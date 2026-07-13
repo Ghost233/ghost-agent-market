@@ -1,5 +1,9 @@
 # 任务执行模板
 
+执行线程只消费 `plan.json`、`state.json` 和绑定包；面向用户展示的 Mermaid 不进入任何模板或结果契约。
+
+当前线程固定归属一个 `(parent_goal, module_id, thread_role)`，可以顺序承接该归属的多个 task。`dispatch_key` 只标识一次 task 分派，不是线程身份；每次新绑定都必须替换 task 局部目标、权限、结果路径和证据。
+
 ## 输入绑定包
 
 绑定包只包含当前任务，不得携带其他任务的写入权限。
@@ -82,3 +86,32 @@
   "summary": "<交给主线程的重规划证据>"
 }
 ```
+
+## 结果持久化
+
+完成唯一终态结果后：
+
+1. 在 `result_path` 同目录写临时文件。
+2. 写入完整且合法的 `WORKER_RESULT_V3`，再原子替换 `result_path`。
+3. 在消息中原样返回同一 JSON，不添加第二份自然语言结果。
+
+主线程执行终态 update 后，驱动器会把该 JSON 内嵌到 `state.tasks.<task_id>.result`。除 `work` 的授权业务文件外，三种角色都只允许额外写这一协调元数据文件；`review` 与 `verify` 的 `changed_files` 必须为 `[]`。
+
+## 聚焦补修输入
+
+收到以下差量时，只恢复当前 task，补齐列出的结果或证据，并重新原子写入同一 `result_path`；不得扩大业务写入范围。
+
+```json
+{
+  "contract": "WORKER_REPAIR_V3",
+  "task_id": "T1",
+  "logical_id": "state.extract-types",
+  "thread_id": "<绑定线程 id>",
+  "result_path": "<plan_dir>/results/T1.json",
+  "missing_or_invalid": ["<需要补齐的字段或证据>"],
+  "required_action": "<仅修复当前结果所需的动作>",
+  "return_contract": "WORKER_RESULT_V3"
+}
+```
+
+无法补齐成功证据时，仍须把原始原因写入身份正确、契约合法的 `failed` 结果；不得返回第二份非法或缺字段结果。

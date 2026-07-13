@@ -1,8 +1,10 @@
 # 协调模板
 
+执行单元归属固定为 `(parent_goal, module_id, thread_role)`。同一归属跨全部 revision 复用一个保留执行单元；`dispatch_key` 只标识当前 task 的分派与创建重试，不是执行单元身份。首次创建使用 module 的 profile；复用时继承已有执行单元的实际配置，并使用当前 task 的最新领域化 `worker_context`。
+
 ## 任务分派包
 
-只填入当前任务，不附带其他任务的写入权限。
+只填入当前任务，不附带其他任务的写入权限，也不附带或引用计划展示用的 Mermaid。执行绑定只以计划 JSON 和本包字段为准。
 
 ```json
 {
@@ -31,6 +33,8 @@
   "result_contract": "WORKER_RESULT_V3"
 }
 ```
+
+分派包中的 `task_id`、`logical_id`、权限和 `result_path` 都是 task 局部字段。复用执行单元承接下一 task 时必须全部替换；只有 `module_id + thread_role` 保持执行单元归属。
 
 ## WORKER_RESULT_V3 普通结果
 
@@ -127,6 +131,8 @@
   "return_contract": "WORKER_RESULT_V3"
 }
 ```
+
+无法补齐成功证据时，仍须返回身份正确、契约合法且保留原始原因的 `failed` 结果。若补修结果继续非法或执行单元不可达，协调器保留 `running/thread_id` 并返回 `dispatch_failed`，不得伪造终态或进入静止点修订。
 
 ## 协调结果
 

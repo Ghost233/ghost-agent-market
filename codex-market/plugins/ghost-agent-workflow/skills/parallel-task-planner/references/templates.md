@@ -1,5 +1,11 @@
 # 计划模板
 
+完整任务必须形成 v3 DAG。单节点和纯串行计划使用 `sequential_only`，存在至少两个不可比任务时使用 `parallel_safe`；两者都可以交给协调器执行。
+
+`module` 是稳定执行职责，`task` 只通过 `module_id` 选择职责。线程归属固定为 `(parent_goal, module_id, thread_role)`；同一归属跨全部 revision 必须复用最近的真实线程。`dispatch_key` 只标识一次 task 分派，不是线程身份。
+
+兼容旧历史时，同一最近 revision 若已有多个同归属真实线程，驱动器优先选择 DAG 中最后继的 task；旧图仍不可比时选择 `tasks` 数组中靠后的终态记录。其余旧线程保留但不再分派，也不得再创建第三条线程。
+
 ## 初始计划
 
 ```json
@@ -104,10 +110,21 @@
     "reviewed_task_ids": ["<每个未完成旧任务 id>"],
     "replacements": {
       "<未完成旧任务 id>": ["<当前承接任务 id>"]
-    },
+    }
+  }
+}
+```
+
+`reviewed_task_ids` 与 `replacements` 只完整覆盖全部未完成旧任务；已完成任务的改动仍参加闭包审计。它们只表达任务替代关系，与线程归属关系正交：即使一个失败 task 被不同 module 的诊断 task 替代，后续回到原 `module_id + thread_role` 时仍自动复用原线程。静止点收齐本 revision 的全部结果后只生成一个后继 revision。
+
+旧计划允许保留下列兼容字段，但新计划可以省略：
+
+```json
+{
+  "continuation": {
     "reuse": {
       "<当前任务 id>": {
-        "from_task": "<已终止旧任务 id>",
+        "from_task": "<兼容断言引用的旧任务 id>",
         "mode": "continue | handoff"
       }
     }
@@ -115,4 +132,31 @@
 }
 ```
 
-`reviewed_task_ids` 与 `replacements` 只完整覆盖全部未完成旧任务；已完成任务的改动仍参加闭包审计。静止点收齐本 revision 的全部结果后只生成一个后继 revision；`reuse` 只列通过复用约束的映射。
+`reuse` 仅是兼容性断言，不能决定路由。驱动器沿完整 continuation 历史自动查找最近的合法终态线程；字段缺失或为空都不能关闭复用，断言与自动结果不一致时校验失败。`completed`、`needs_main_review`、`blocked` 和 `failed` 只要具有真实线程 id 都可复用；相同 `logical_id` 自动为 `continue`，不同则为 `handoff`。
+
+## 校验后展示
+
+`validate` 成功后运行 `render`，每个 revision 只展示一次对应模式和 Mermaid。展示不是确认门禁，不写入 `plan.json`。
+
+`parallel_safe`：
+
+```text
+执行模式：并行 DAG（parallel_safe）
+当前计划已通过校验，将按照依赖关系并发执行。
+```
+
+`sequential_only`：
+
+```text
+执行模式：串行 DAG（sequential_only）
+当前计划已通过校验，将按依赖顺序自动执行全部任务，无需确认或介入。
+```
+
+`needs_user_review`：
+
+```text
+执行模式：等待复核 DAG（needs_user_review）
+当前计划已通过校验，但存在以下用户边界：<具体证据>。
+```
+
+紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block。输出首行的 `plan_digest=<digest> revision=<n> safety.status=<status>` 是当前会话的完整展示 marker；协调器仅在当前计划的完整 marker 或完整图缺失时补展示，不能只比较 revision 与 safety。前两种模式展示后立即交接执行；最后一种展示后暂停。

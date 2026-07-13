@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 协调"
-  short_description: "低噪协调 Codex 子线程完成 v3 任务 DAG"
-  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；按 [GA][实施|审查|验证][状态] 命名，持久化任务结果，并自动闭环失败与工程总验收。"
+  short_description: "复用 Codex 子线程完成 v3 任务 DAG"
+  default_prompt: "使用 $thread-coordination 一次性完成已校验的 parent_goal；按 module+role 跨 revision 复用 [GA][实施|审查|验证][状态] 子线程，不创建计划外诊断或审查线程，并立即推进所有不同归属的 ready task。"

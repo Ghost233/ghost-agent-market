@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 协调"
-  short_description: "自动闭环 Claude Code v3 任务 DAG"
-  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；按 [GA][实施|审查|验证][状态] 恢复和复用领域执行单元，把正式结果内嵌到 state，并自动闭环失败。"
+  short_description: "复用 Claude Code 执行单元完成 v3 DAG"
+  default_prompt: "使用 $thread-coordination 一次性完成 parent_goal；按 module+role 跨 revision 复用 [GA][实施|审查|验证][状态] 执行单元，不创建计划外诊断或审查执行单元，并立即推进所有不同归属的 ready task。"

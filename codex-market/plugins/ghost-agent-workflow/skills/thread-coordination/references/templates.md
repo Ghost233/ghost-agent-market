@@ -1,5 +1,9 @@
 # 协调模板
 
+执行模式提示和 Mermaid 只由规划器在每个 revision 校验成功后展示一次，不进入线程绑定包，也不作为依赖或结果证据。
+
+线程归属固定为 `(parent_goal, module_id, thread_role)`。同一归属跨全部 revision 复用一个保留线程；`dispatch_key` 只标识当前 task 的分派与创建重试，不是线程身份。首次创建使用 module 的 profile；复用时继承已有线程的实际配置，并使用当前 task 的最新领域化 `worker_context`。
+
 ## 创建预备线程
 
 ```text
@@ -44,6 +48,8 @@ create_thread(
 ```
 
 执行线程把完整结果原子写入唯一 `result_path`，并在聊天中返回语义相同的 JSON。终态更新把该路径传给 driver；校验通过后，完整结果保存为 `state.tasks.<task_id>.result`。
+
+绑定包中的 `task_id`、`logical_id`、权限和 `result_path` 都是 task 局部字段。复用线程承接下一 task 时必须全部替换；只有 `module_id + thread_role` 保持线程归属。
 
 ## WORKER_RESULT_V3 普通结果
 
@@ -91,6 +97,25 @@ create_thread(
   "summary": "<交给主线程的重规划证据>"
 }
 ```
+
+## 聚焦补修差量
+
+仅在首次结果字段缺失、验证不足或普通差异自检失败时发送一次，不重发完整绑定包。
+
+```json
+{
+  "contract": "WORKER_REPAIR_V3",
+  "task_id": "T1",
+  "logical_id": "state.extract-types",
+  "thread_id": "<绑定线程 id>",
+  "result_path": "<plan_dir>/results/T1.json",
+  "missing_or_invalid": ["<需要补齐的字段或证据>"],
+  "required_action": "<仅修复当前结果所需的动作>",
+  "return_contract": "WORKER_RESULT_V3"
+}
+```
+
+无法补齐成功证据时，仍须返回身份正确、契约合法且保留原始原因的 `failed` 结果。若补修结果继续非法或线程不可达，协调器保留 `running/thread_id` 并返回 `dispatch_failed`，不得伪造终态或进入静止点修订。
 
 ## 协调结果
 

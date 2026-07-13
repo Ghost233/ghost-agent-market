@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 规划"
-  short_description: "按领域生成并修订 Claude Code v3 任务 DAG"
-  default_prompt: "使用 $parallel-task-planner 做闭包审计并生成 v3 任务 DAG；按领域定义 module，为任务标注 work、review 或 verify，并为同一静止点生成唯一修订。"
+  short_description: "按稳定 module 生成 Claude Code v3 任务 DAG"
+  default_prompt: "使用 $parallel-task-planner 将完整目标按稳定领域 module 生成 v3 任务 DAG；task 只选择 module，同 module+role 跨 revision 复用执行单元，并按真实依赖校验、展示 Mermaid 和交接。"
