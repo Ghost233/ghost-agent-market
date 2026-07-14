@@ -1,4 +1,6 @@
 interface:
   display_name: "子代理任务执行"
   short_description: "在 Codex 子代理中执行范围受控的单个 v3 DAG 任务"
-  default_prompt: "使用 $subagent-goal-worker 执行当前绑定的单个 v3 DAG task；不再委派，不要求模型或思考强度，并原子写入结果。"
+  default_prompt: "使用 $subagent-goal-worker 处理协调器发送的完整单任务绑定包。"
+policy:
+  allow_implicit_invocation: false

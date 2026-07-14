@@ -1,4 +1,6 @@
 interface:
   display_name: "子代理 DAG 协调"
   short_description: "使用 Codex 子代理一次性执行已校验的 v3 任务 DAG"
-  default_prompt: "使用 $subagent-coordination 以子代理模式一次性完成已校验的 parent_goal，只在当前 parent_goal 内复用子代理；不创建子线程，不指定模型或思考强度。"
+  default_prompt: "使用 $subagent-coordination 执行已校验且已明确选择子代理模式的当前 DAG。"
+policy:
+  allow_implicit_invocation: false

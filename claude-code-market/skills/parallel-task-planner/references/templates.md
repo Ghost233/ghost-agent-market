@@ -1,6 +1,6 @@
 # 计划模板
 
-每个顶层任务创建新的 `parent_goal`。module 和执行归属只在该父目标内有效；计划不包含执行方式或路由，同一 JSON 可交给执行线程或子代理协调器。
+只有用户已收口当前任务说明、明确要求 DAG 或并行规划，并唯一选择执行线程或子代理模式后，才创建初始计划。任务只需有可识别的规划对象，不要求用户预先给出验收标准；规划器在计划中补充完成条件和验证方式。每个新的规划对象创建新的 `parent_goal`。module 和执行归属只在该父目标内有效；计划不包含执行方式或路由，同一 JSON 可交给执行线程或子代理协调器。
 
 ## 初始计划
 
@@ -10,7 +10,7 @@
   "plan_format_version": 3,
   "revision": 1,
   "execution_platform": "claude_code",
-  "parent_goal": "<可验收的完整目标>",
+  "parent_goal": "<用户已经说明完的当前任务目标>",
   "modules": [
     {
       "id": "state-contract",
@@ -111,25 +111,39 @@
 
 ## 校验后展示
 
+先明确回显用户在规划前已经唯一选择的执行方式：
+
+```text
+执行方式：执行线程
+```
+
+或：
+
+```text
+执行方式：子代理
+```
+
+不得在计划生成后才默认、猜测或代替用户选择。
+
 `parallel_safe`：
 
 ```text
-执行模式：并行 DAG（parallel_safe）
-当前计划已通过校验，将按照依赖关系并发执行。
+DAG 拓扑：可并行（parallel_safe）
+当前计划已通过校验，执行时将按照依赖关系推进全部 ready task。
 ```
 
 `sequential_only`：
 
 ```text
-执行模式：串行 DAG（sequential_only）
-当前计划已通过校验，将按依赖顺序自动执行全部任务，无需确认或介入。
+DAG 拓扑：仅串行（sequential_only）
+当前计划已通过校验，执行时将按依赖顺序推进；串行拓扑不会阻塞协调器。
 ```
 
 `needs_user_review`：
 
 ```text
-执行模式：等待复核 DAG（needs_user_review）
+DAG 拓扑：等待复核（needs_user_review）
 当前计划已通过校验，但存在以下用户边界：<具体证据>。
 ```
 
-紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block。前两种模式展示后立即执行；最后一种暂停。
+紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block。`parallel_safe` 和 `sequential_only` 只有在用户同时明确要求执行时才交给已选协调器；用户要求只规划时展示后停止。`needs_user_review` 暂停。同一 `parent_goal` 的后继 revision 继承已有执行授权和锁定模式。

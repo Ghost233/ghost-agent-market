@@ -1,19 +1,23 @@
 ---
 name: parallel-task-planner
-description: 当 Claude Code 主会话收到新的顶层完整任务，或需要在同一 parent_goal 内修订当前 v3 计划时使用；把任务按稳定 module 拆成可校验 DAG，并判断应并行、串行或暂停复核。
+description: 仅当用户已完成当前任务说明，明确要求对该任务进行 DAG 或并行规划，并且明确且唯一选择执行线程或子代理模式时使用；任务只需有可识别的规划对象，不要求用户预先给出验收标准。背景说明、尚未说完或准备继续补充的需求、普通实施、审查或讨论请求不得触发；同一 parent_goal 的后继 v3 计划修订除外。
 ---
 
 # 任务 DAG 规划
 
 ## 职责
 
-每次用户发起的顶层完整任务都是新的 `parent_goal`，必须先形成 v3 DAG。单节点、纯串行、并行和混合拓扑都合理，不得因为任务简单或只能串行而跳过规划。已绑定的 DAG task 只由当前执行方式对应的 goal worker 执行，不得再次拆成新的父目标。
+初次规划必须同时满足：当前上下文中有可识别的任务对象；用户已经收口这段任务说明并明确要求现在开始 DAG 或并行规划；用户明确且唯一选择执行线程或子代理模式。任务不必预先包含验收标准，规划器可以根据任务意图补充 task 级完成条件和父目标验证方式。
+
+不得因为任务复杂、适合并行或看起来已经完整而推断规划授权。背景介绍、半段需求、明确表示稍后继续补充的内容，以及普通实施、修复、审查、讨论请求都按普通流程处理，不生成 plan，也不追问执行方式。只有用户已经明确要求规划但规划对象或执行方式仍不明确时，才合并成一次简短询问；“都可以”“你决定”或未指定均不构成唯一选择。
+
+满足初次门禁后，每个新的规划对象形成新的 `parent_goal`。单节点、纯串行、并行和混合拓扑都合理，不得因为任务简单或只能串行而拒绝规划。已绑定的 DAG task 只由当前执行方式对应的 goal worker 执行，不得再次拆成新的父目标。
 
 `module` 是当前 `parent_goal` 内稳定的领域职责；`task` 是一次性 DAG 节点，只通过 `module_id` 选择负责人。执行归属为当前父目标内的 `(module_id, thread_role)`：首次派发创建执行单元，后续 task 和 revision 复用；不同 `parent_goal` 之间绝不复用。
 
 初始计划确定 module 后，其 `id`、`worker_profile` 和 `worker_context` 在当前父目标内固定。需要不同职责或执行配置时定义新 module，不修改已有 module。计划不包含执行单元路由；驱动器在 `next` 时按当前父目标内的 `(module_id, thread_role)` 归属计算 `action.thread_id`。
 
-本 skill 只规划，不创建执行单元、不修改业务文件。用户对顶层任务的执行请求就是整个 `parent_goal` 的授权；同一父目标的内部修订继承该授权。
+本 skill 只规划，不创建执行单元、不修改业务文件。规划授权不等于执行授权：只有用户同时明确要求执行时，初始计划展示后才交给已选协调器；用户要求只规划时展示后停止。同一 `parent_goal` 的后继 revision 继承已有规划授权、执行授权和已锁定的执行方式，不重复询问。
 
 ## 输出
 
@@ -33,13 +37,13 @@ Claude Code 默认 module 配置为 `sonnet/max`。用户可以为初始 module 
 
 - 用户明确选择执行线程模式时，交给 `$thread-coordination`，task 由 `$thread-goal-worker` 执行。
 - 用户明确选择子代理模式时，交给 `$subagent-coordination`，task 由 `$subagent-goal-worker` 执行。
-- 用户未指定时默认执行线程模式，不额外询问。
+- 用户未明确且唯一选择时不得生成初始 plan，也不得采用默认值或代为决定。
 
 执行开始后由 driver 锁定 `executor_mode`，同一 `parent_goal` 不得中途混用或切换。子代理模式仍使用相同 plan，但不消费 module 的 `worker_profile`。
 
 ## 规划流程
 
-1. 明确可验收的 `parent_goal`、当前工程状态和父目标总验证方式。
+1. 确认用户已收口当前任务说明，将可识别的规划对象归纳为 `parent_goal`，并根据任务意图补充父目标总验证方式；不得要求用户预先写好验收标准。
 2. 按稳定领域职责定义 module。不得使用 `implementation`、`review`、`verification`、`compile` 等阶段名，也不得为每个 task 复制近义 module。`worker_context` 只写领域边界和长期不变量。
 3. 按可独立验收的结果拆分 task。不得为制造并行度拆开真实串行职责，也不得合并本可独立验收的结果。每项都写明 `logical_id`、`title`、`thread_role`、`writable_paths`、`done_when` 和 `verification`。
 4. `work` 负责正式修改且 `writable_paths` 非空；`review` 只读审查；`verify` 只读执行 build、test 或 lint。后两者的 `writable_paths` 必须为 `[]`，不得产生 tracked diff。
@@ -74,8 +78,8 @@ node <plugin-root>/scripts/thread-plan.mjs render <absolute-plan.json>
 
 ## 交接
 
-- `parallel_safe`：展示后立即调用或恢复已选定的 coordination skill。
-- `sequential_only`：明确提示串行执行，展示后立即调用或恢复已选定的 coordination skill，不等待确认。
+- `parallel_safe`：展示后，只有已有明确执行授权时才调用或恢复已选定的 coordination skill；只规划时停止。
+- `sequential_only`：明确提示当前 DAG 将串行推进但不会因此阻塞；已有明确执行授权时调用或恢复已选定的 coordination skill，只规划时停止。
 - `needs_user_review`：展示具体用户边界后暂停。
 
-计划生成不代表父目标完成。
+同一 `parent_goal` 的内部 revision 沿用既有执行授权和锁定模式，可展示后自动继续。计划生成不代表已开始执行或父目标完成。

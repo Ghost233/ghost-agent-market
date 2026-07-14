@@ -1,19 +1,23 @@
 ---
 name: parallel-task-planner
-description: 当 Codex 主线程收到新的顶层完整任务，或需要在同一 parent_goal 内修订当前 v3 计划时使用；把任务按稳定 module 拆成可校验 DAG，并判断应并行、串行或暂停复核。
+description: 仅当用户已经说明完当前任务、明确要求对它进行 DAG 或并行规划，并且唯一选择子线程或子代理模式时，用于生成初始 v3 计划；也用于同一 parent_goal 的内部修订。任务只需有可识别的规划对象，不要求用户预先给出验收标准。背景说明、尚未说完或准备继续补充的需求，以及普通实施、修复、审查或讨论请求不得触发。
 ---
 
 # 任务 DAG 规划
 
 ## 职责
 
-每次用户发起的顶层完整任务都是新的 `parent_goal`，必须先形成 v3 DAG。单节点、纯串行、并行和混合拓扑都合理，不得因为任务简单或只能串行而跳过规划。已绑定的 DAG task 只由当前执行方式对应的 goal worker 执行，不得再次拆成新的父目标。
+初始规划必须同时满足：用户已完成当前任务说明、明确要求现在进行 DAG 或并行规划，并且明确且唯一选择子线程或子代理模式。用户在同一条消息末尾发出规划指令即可视为当前说明已收口；若用户表示尚未说完、稍后补充或当前只是在介绍背景，则不得规划。任务只需有可识别的规划对象，不要求用户预先写出验收标准，规划器负责从任务意图补全 task 级 `done_when` 和验证方式。
+
+任一初始门禁缺失时都不得创建 `plan.json`、运行 driver 或调用协调器。普通请求继续走普通流程，不为了使用本 skill 追问执行方式；只有用户已经明确要求 DAG 或并行规划时，才用一次简短问题补齐缺失的任务对象或唯一执行方式。`都可以`、`你决定` 或同时允许两种方式都不算唯一选择。
+
+满足门禁后为当前任务创建新的 `parent_goal`。单节点、纯串行、并行和混合拓扑都合理，不得因为任务简单或只能串行而跳过规划。已绑定的 DAG task 只由当前执行方式对应的 goal worker 执行，不得再次拆成新的父目标。
 
 `module` 是当前 `parent_goal` 内稳定的领域职责；`task` 是一次性 DAG 节点，只通过 `module_id` 选择负责人。执行归属为当前父目标内的 `(module_id, thread_role)`：首次派发创建执行单元，后续 task 和 revision 复用；不同 `parent_goal` 之间绝不复用。
 
 初始计划确定 module 后，其 `id`、`worker_profile` 和 `worker_context` 在当前父目标内固定。需要不同职责或执行配置时定义新 module，不修改已有 module。计划不包含线程路由；驱动器在 `next` 时按当前父目标内的 `(module_id, thread_role)` 归属计算 `action.thread_id`。
 
-本 skill 只规划，不创建线程、不修改业务文件。用户对顶层任务的执行请求就是整个 `parent_goal` 的授权；同一父目标的内部修订继承该授权。
+本 skill 只规划，不创建执行单元、不修改业务文件。用户明确要求只规划时，展示计划后停止；只有用户同时明确要求规划后执行，才把计划交给所选协调器。同一 `parent_goal` 的后继 revision 继承已经明确的授权和执行方式，不重新询问。
 
 ## 输出
 
@@ -33,13 +37,13 @@ Codex 默认 module 配置为 `gpt-5.6-terra/medium`。用户可以为初始 mod
 
 - 用户明确选择子线程模式时，交给 `$thread-coordination`，task 由 `$thread-goal-worker` 执行。
 - 用户明确选择子代理模式时，交给 `$subagent-coordination`，task 由 `$subagent-goal-worker` 执行。
-- 用户未指定时默认子线程模式，不额外询问。
+- 不设默认方式，不根据任务规模或可用工具代替用户选择。初始规划缺少唯一选择时不得生成计划。
 
-执行开始后由 driver 锁定 `executor_mode`，同一 `parent_goal` 不得中途混用或切换。子代理模式仍使用相同 plan，但不消费 module 的 `worker_profile`。
+执行开始后由 driver 锁定 `executor_mode`，同一 `parent_goal` 不得中途混用或切换。后继 revision 继承该锁；子代理模式仍使用相同 plan，但不消费 module 的 `worker_profile`。
 
 ## 规划流程
 
-1. 明确可验收的 `parent_goal`、当前工程状态和父目标总验证方式。
+1. 确认当前任务说明已收口且规划对象可识别，再提炼 `parent_goal`、当前工程状态和父目标总验证方式；不得要求用户先提供验收标准。
 2. 按稳定领域职责定义 module。不得使用 `implementation`、`review`、`verification`、`compile` 等阶段名，也不得为每个 task 复制近义 module。`worker_context` 只写领域边界和长期不变量。
 3. 按可独立验收的结果拆分 task。不得为制造并行度拆开真实串行职责，也不得合并本可独立验收的结果。每项都写明 `logical_id`、`title`、`thread_role`、`writable_paths`、`done_when` 和 `verification`。
 4. `work` 负责正式修改且 `writable_paths` 非空；`review` 只读审查；`verify` 只读执行 build、test 或 lint。后两者的 `writable_paths` 必须为 `[]`，不得产生 tracked diff。
@@ -59,7 +63,7 @@ Codex 默认 module 配置为 `gpt-5.6-terra/medium`。用户可以为初始 mod
 5. 完整保留前版全部 module 定义，可按需增加新 module。线程复用不写入计划，也不由 task id 或 `logical_id` 决定。
 6. 后继计划校验成功后，直接前版只保留为结果证据，不再执行；协调器从后继 revision 继续。
 
-内部拆分、依赖重接和同父目标修订不询问用户。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时，才使用 `needs_user_review`。
+内部拆分、依赖重接和同父目标修订沿用原执行方式与授权，不询问用户。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时，才使用 `needs_user_review`。
 
 ## 校验与展示
 
@@ -70,12 +74,14 @@ node <plugin-root>/scripts/thread-plan.mjs validate <absolute-plan.json>
 node <plugin-root>/scripts/thread-plan.mjs render <absolute-plan.json>
 ```
 
-`validate` 只校验计划和初始化 state，不生成线程路由。校验失败时保留原始错误并修正候选计划。`render` 成功后，按模板提示执行模式，并把标准输出原样放入 `mermaid` fenced code block。每个 revision 正常展示一次；Mermaid 不是机器输入。
+`validate` 只校验计划和初始化 state，不生成执行路由。校验失败时保留原始错误并修正候选计划。`render` 成功后，按模板提示 DAG 拓扑、用户选择的执行方式和是否执行，并把标准输出原样放入 `mermaid` fenced code block。每个 revision 正常展示一次；Mermaid 不是机器输入。
 
 ## 交接
 
-- `parallel_safe`：展示后立即调用或恢复已选定的 coordination skill。
-- `sequential_only`：明确提示串行执行，展示后立即调用或恢复已选定的 coordination skill，不等待确认。
+- `parallel_safe`：明确提示存在可并行节点；仅在用户已授权规划后执行时，调用或恢复已选定的 coordination skill。
+- `sequential_only`：明确提示当前是合理的串行 DAG，不会因此阻塞；仅在用户已授权规划后执行时，调用或恢复已选定的 coordination skill。
 - `needs_user_review`：展示具体用户边界后暂停。
+
+用户要求只规划时，无论 `parallel_safe` 还是 `sequential_only`，展示后都停止，不锁定 `executor_mode`，不调用协调器。
 
 计划生成不代表父目标完成。

@@ -1,6 +1,6 @@
 # 计划模板
 
-每个顶层任务创建新的 `parent_goal`。module 和执行归属只在该父目标内有效；计划不包含执行方式或路由，同一 JSON 可交给子线程或子代理协调器。
+每次满足初始规划门禁的任务创建新的 `parent_goal`。module 和执行归属只在该父目标内有效；计划不包含执行方式或路由，同一 JSON 可交给用户明确选择的子线程或子代理协调器。
 
 ## 初始计划
 
@@ -10,7 +10,7 @@
   "plan_format_version": 3,
   "revision": 1,
   "execution_platform": "codex",
-  "parent_goal": "<可验收的完整目标>",
+  "parent_goal": "<当前已收口的明确任务目标>",
   "modules": [
     {
       "id": "state-contract",
@@ -114,22 +114,29 @@
 `parallel_safe`：
 
 ```text
-执行模式：并行 DAG（parallel_safe）
-当前计划已通过校验，将按照依赖关系并发执行。
+DAG 拓扑：可并行（parallel_safe）
+当前计划已通过校验，存在可按依赖关系并发执行的任务。
 ```
 
 `sequential_only`：
 
 ```text
-执行模式：串行 DAG（sequential_only）
-当前计划已通过校验，将按依赖顺序自动执行全部任务，无需确认或介入。
+DAG 拓扑：串行（sequential_only）
+当前计划已通过校验，将按依赖顺序执行；串行拓扑不会阻塞协调器。
 ```
 
 `needs_user_review`：
 
 ```text
-执行模式：等待复核 DAG（needs_user_review）
+DAG 拓扑：等待复核（needs_user_review）
 当前计划已通过校验，但存在以下用户边界：<具体证据>。
 ```
 
-紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block。前两种模式展示后立即执行；最后一种暂停。
+紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block，再展示本次明确选择：
+
+```text
+执行方式：<子线程或子代理>
+请求范围：<只规划或规划后执行>
+```
+
+`只规划` 在展示后停止，不调用协调器。`规划后执行` 仅在 `parallel_safe` 或 `sequential_only` 时交给对应协调器；`needs_user_review` 暂停。

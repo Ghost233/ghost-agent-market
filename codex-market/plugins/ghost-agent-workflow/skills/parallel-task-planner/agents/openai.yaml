@@ -1,4 +1,4 @@
 interface:
   display_name: "任务 DAG 规划"
-  short_description: "为完整任务生成可校验并可选择执行方式的 v3 任务 DAG"
-  default_prompt: "使用 $parallel-task-planner 为完整任务生成并展示 v3 DAG，再按用户选择交给子线程或子代理协调器执行。"
+  short_description: "仅按用户明确指令和唯一执行方式规划当前已说明完的任务"
+  default_prompt: "使用 $parallel-task-planner 对我已说明完的当前任务做 DAG 规划；执行方式：<子线程或子代理>；<只规划或规划后执行>。"

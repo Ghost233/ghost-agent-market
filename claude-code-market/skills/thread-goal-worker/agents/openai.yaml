@@ -1,4 +1,6 @@
 interface:
   display_name: "执行线程任务"
   short_description: "在 Claude Code 执行单元中完成范围受控的单个 DAG 任务"
-  default_prompt: "使用 $thread-goal-worker 在执行线程模式下完成当前绑定的单个 v3 DAG task，并原子写入 WORKER_RESULT_V3。"
+  default_prompt: "使用 $thread-goal-worker 处理协调器发来的完整 v3 单任务分派包。"
+policy:
+  allow_implicit_invocation: false

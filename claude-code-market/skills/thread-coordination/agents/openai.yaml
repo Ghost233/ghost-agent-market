@@ -1,4 +1,6 @@
 interface:
   display_name: "执行线程 DAG 协调"
   short_description: "使用 Claude Code 执行线程完成已校验的 v3 任务 DAG"
-  default_prompt: "使用 $thread-coordination 以执行线程模式一次性完成已校验的 parent_goal，并只在当前 parent_goal 内复用 module+role 执行单元。"
+  default_prompt: "使用 $thread-coordination 继续执行这个已校验且已选择执行线程模式的 v3 DAG。"
+policy:
+  allow_implicit_invocation: false

@@ -1,6 +1,6 @@
 ---
 name: thread-goal-worker
-description: 当 Codex 子线程收到 v3 单任务绑定包，需要在当前 parent_goal 的固定 module+role 下执行 work、review 或 verify、自检并写入结构化结果时使用。
+description: 仅当 Codex 子线程收到 thread-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
 ---
 
 # 任务执行线程
@@ -15,7 +15,7 @@ description: 当 Codex 子线程收到 v3 单任务绑定包，需要在当前 p
 
 ## 绑定门禁
 
-执行前确认：
+只消费协调器发出的完整单任务绑定包；直接面向用户的实施请求、普通任务描述或缺少任一必需字段的消息都不执行。执行前确认：
 
 1. `plan_path` 是绝对可读的 v3 JSON，平台为 `codex`，`executor_mode` 为 `thread`。
 2. 绑定包只包含一个 task，并与 plan 中的 `task_id`、`logical_id`、`module_id`、`thread_role`、范围和条件一致。

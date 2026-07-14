@@ -109,8 +109,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
 
     def test_metadata_is_chinese_and_current(self) -> None:
         self.assertIn("任务 DAG", self.metadata)
-        self.assertIn("当前 parent_goal", self.metadata)
-        self.assertIn("WORKER_RESULT_V3", self.metadata)
+        self.assertIn("明确", self.metadata)
+        self.assertIn("完整单任务绑定包", self.metadata)
         self.assertNotIn("子代理", self.thread_metadata)
 
     def test_git_commit_contract_is_unchanged(self) -> None:
@@ -131,11 +131,12 @@ class CodexChildThreadContractTests(unittest.TestCase):
     def test_manifest_and_readme_describe_current_scope(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
         readme = read("README.md")
-        self.assertTrue(manifest["version"].startswith("0.7.4+codex."))
+        self.assertTrue(manifest["version"].startswith("0.7.5+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertIn("子代理", manifest["description"])
+        self.assertIn("不提供默认执行模式", manifest["description"])
         self.assertIn("新的顶层任务不会复用旧执行单元", readme)
-        self.assertIn("subagent-coordination", json.dumps(manifest, ensure_ascii=False))
+        self.assertNotIn("subagent-coordination", json.dumps(manifest, ensure_ascii=False))
 
 
 if __name__ == "__main__":
