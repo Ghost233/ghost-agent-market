@@ -70,26 +70,44 @@ class SubagentSkillContractTests(unittest.TestCase):
         self.assertIn("不要向 `Agent` 传 resume 参数", coordinator)
         self.assertIn("不得再次调用 `Agent`", worker)
 
-    def test_no_explicit_profile_is_required(self) -> None:
-        for platform in self.platforms:
-            combined = "\n".join(
-                (
-                    self.skill(platform, "subagent-coordination"),
-                    self.skill(platform, "subagent-goal-worker"),
-                    self.reference(platform, "subagent-coordination"),
-                    self.reference(platform, "subagent-goal-worker"),
-                    self.metadata(platform, "subagent-coordination"),
-                    self.metadata(platform, "subagent-goal-worker"),
-                )
+    def test_codex_subagents_require_terra_xhigh(self) -> None:
+        combined = "\n".join(
+            (
+                self.skill("codex", "subagent-coordination"),
+                self.skill("codex", "subagent-goal-worker"),
+                self.reference("codex", "subagent-coordination"),
+                self.reference("codex", "subagent-goal-worker"),
+                self.metadata("codex", "subagent-coordination"),
+                self.metadata("codex", "subagent-goal-worker"),
             )
-            self.assertNotIn("gpt-", combined.lower())
-            self.assertNotIn("sonnet", combined.lower())
-            self.assertNotIn("opus", combined.lower())
-            self.assertNotIn("model=", combined.lower())
-            self.assertNotIn("thinking=", combined.lower())
-            self.assertNotIn('"worker_profile":', combined)
-            self.assertIn("平台默认", combined)
-            self.assertIn("subagent-defaults", combined)
+        )
+        self.assertIn('agent_type: "worker"', combined)
+        self.assertIn('model: "gpt-5.6-terra"', combined)
+        self.assertIn('reasoning_effort: "xhigh"', combined)
+        self.assertIn('fork_turns: "none"', combined)
+        self.assertIn("spawn_agent:worker:gpt-5.6-terra/xhigh", combined)
+        self.assertIn("_terra_xhigh", combined)
+        self.assertNotIn("subagent-defaults", combined)
+
+    def test_claude_subagents_keep_platform_defaults(self) -> None:
+        combined = "\n".join(
+            (
+                self.skill("claude", "subagent-coordination"),
+                self.skill("claude", "subagent-goal-worker"),
+                self.reference("claude", "subagent-coordination"),
+                self.reference("claude", "subagent-goal-worker"),
+                self.metadata("claude", "subagent-coordination"),
+                self.metadata("claude", "subagent-goal-worker"),
+            )
+        )
+        self.assertNotIn("gpt-", combined.lower())
+        self.assertNotIn("sonnet", combined.lower())
+        self.assertNotIn("opus", combined.lower())
+        self.assertNotIn("model=", combined.lower())
+        self.assertNotIn("thinking=", combined.lower())
+        self.assertNotIn('"worker_profile":', combined)
+        self.assertIn("平台默认", combined)
+        self.assertIn("subagent-defaults", combined)
 
     def test_agent_target_uses_the_shared_thread_id_field(self) -> None:
         for platform in self.platforms:

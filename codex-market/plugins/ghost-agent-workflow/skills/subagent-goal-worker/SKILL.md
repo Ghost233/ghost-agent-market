@@ -1,6 +1,6 @@
 ---
 name: subagent-goal-worker
-description: 仅当 Codex 子代理收到 subagent-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
+description: 仅当固定使用 gpt-5.6-terra/xhigh 的 Codex 子代理收到 subagent-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
 ---
 
 # 子代理任务执行
@@ -11,7 +11,7 @@ description: 仅当 Codex 子代理收到 subagent-coordination 发出的完整 
 
 当前子代理直接完成绑定 task。不得调用 `spawn_agent`、`create_thread`、`fork_thread` 或其他委派能力，不修改计划，不暂存、提交或推送代码。绑定与结果格式以 [references/templates.md](references/templates.md) 为唯一规范；Mermaid 不是机器输入。
 
-本模式不要求、不读取也不核验模型、思考强度或 `worker_profile`。结果中的 `profile_evidence` 固定写 `subagent-defaults`，仅用于满足共享结果 schema。
+当前子代理必须由协调器通过 `spawn_agent` 的 `agent_type: "worker"`、`model: "gpt-5.6-terra"`、`reasoning_effort: "xhigh"` 和 `fork_turns: "none"` 创建。计划中的 `worker_profile` 仍只供子线程模式使用，本 skill 不读取该字段。结果中的 `profile_evidence` 固定写 `spawn_agent:worker:gpt-5.6-terra/xhigh`，不得写平台默认值或其他 profile。
 
 ## 绑定门禁
 
@@ -19,9 +19,9 @@ description: 仅当 Codex 子代理收到 subagent-coordination 发出的完整 
 
 1. `plan_path` 是绝对可读的 v3 JSON，state 的 `executor_mode` 为 `subagent` 且 `continued_by` 为 `null`。
 2. 绑定包只包含一个 task，并与 plan 中的 `task_id`、`logical_id`、`module_id`、`thread_role`、范围和条件一致。
-3. 绑定中的 `thread_id` 是协调器写入 state 的 canonical `agent_target`；该字段名不会把当前执行转换成子线程。
+3. 绑定中的 `thread_id` 是协调器写入 state 的 canonical `agent_target`，且名称以 `_terra_xhigh` 结尾；该字段名不会把当前执行转换成子线程。
 4. `result_path` 严格位于当前计划目录 `results/<task_id>.json`，`worker_context` 与 module 一致。
-5. 上一 task 已终止，当前没有其他活动 task；后继 revision 生效后不再接受前版新绑定。
+5. `runtime_profile` 精确等于 `worker`、`gpt-5.6-terra` 和 `xhigh`；上一 task 已终止，当前没有其他活动 task；后继 revision 生效后不再接受前版新绑定。
 
 失败时不修改业务文件，按模板写入并返回合法 `blocked` 结果。
 

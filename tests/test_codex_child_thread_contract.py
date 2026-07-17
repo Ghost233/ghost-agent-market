@@ -131,7 +131,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
     def test_manifest_and_readme_describe_current_scope(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
         readme = read("README.md")
-        self.assertTrue(manifest["version"].startswith("0.7.5+codex."))
+        self.assertTrue(manifest["version"].startswith("0.7.6+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertIn("子代理", manifest["description"])
         self.assertIn("不提供默认执行模式", manifest["description"])

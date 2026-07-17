@@ -301,7 +301,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
     def test_manifest_versions_are_incremented(self) -> None:
         codex = json.loads(read(CODEX / ".codex-plugin/plugin.json"))
         claude = json.loads(read(CLAUDE / ".claude-plugin/plugin.json"))
-        self.assertTrue(codex["version"].startswith("0.7.5+codex."))
+        self.assertTrue(codex["version"].startswith("0.7.6+codex."))
         self.assertEqual(claude["version"], "0.3.7")
 
     def test_codex_manifest_exposes_only_explicit_user_prompts(self) -> None:

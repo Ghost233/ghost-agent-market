@@ -12,11 +12,29 @@
   "dispatch_key": "<plan_path>#<task_id>",
   "owner": "<module_id>#<thread_role>",
   "worker_skill": "$subagent-goal-worker",
+  "runtime_profile": {
+    "agent_type": "worker",
+    "model": "gpt-5.6-terra",
+    "reasoning_effort": "xhigh"
+  },
   "required_action": "加载 worker skill，返回 READY；收到完整绑定包前不得执行任务或修改文件"
 }
 ```
 
-调用 `spawn_agent` 时使用 `fork_turns: "none"`，不附带执行配置参数。
+调用 `spawn_agent` 时固定传入：
+
+```json
+{
+  "agent_type": "worker",
+  "model": "gpt-5.6-terra",
+  "reasoning_effort": "xhigh",
+  "fork_turns": "none",
+  "task_name": "ga_<plan_token>_<module_token>_<role>_terra_xhigh",
+  "message": "<SUBAGENT_BOOTSTRAP_V1>"
+}
+```
+
+缺少任一 profile 参数时不得创建子代理。
 
 ## 协调结果
 
