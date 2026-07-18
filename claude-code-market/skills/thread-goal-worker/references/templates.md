@@ -37,7 +37,7 @@
 
 ## 普通结果
 
-根据实际情况填写 `status` 和证据；`completed` 时 `scope_request` 必须为 `null`。
+根据实际情况填写 `status` 和证据；`completed` 时 `scope_request` 必须为 `null`。`work` 以自身 verification 与差异自检默认闭环。`review` 的非阻断建议写入 `summary`，并使用 `completed`、`diff_self_check: pass` 和 `scope_request: null`，不得触发 revision。
 
 ```json
 {
@@ -57,7 +57,9 @@
 }
 ```
 
-## 写入范围变化
+## 写入范围变化或审查阻断缺陷
+
+只有 work 需要扩大写入范围，或 review 发现必须由后继 work 修复的阻断缺陷时使用 `needs_main_review`。review 的 `changed_files` 仍为 `[]`；其 `scope_request.paths` 填写后继 work 需要修复的精确路径，`diff_self_check: scope_exception` 是共享 driver 要求的重规划信号，不表示 review 写过业务文件。非阻断建议不得使用此结构。
 
 ```json
 {
@@ -73,8 +75,8 @@
   "verification": ["<已完成的验证及结果>"],
   "diff_self_check": "scope_exception",
   "scope_request": {
-    "paths": ["<需要增加或重新分配的路径>"],
-    "reason": "<为什么当前范围不足>",
+    "paths": ["<需要增加、重新分配或由后继 work 修复的精确路径>"],
+    "reason": "<为什么当前范围不足，或阻断缺陷为什么必须修复>",
     "required_for_done_when": "<关联的完成条件>",
     "suggested_owner": "<建议 module 或 logical_id>",
     "split_hints": ["<可独立验收的结果>"],

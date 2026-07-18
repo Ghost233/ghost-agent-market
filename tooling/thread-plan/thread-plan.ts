@@ -599,7 +599,7 @@ function pathsOverlap(left: string, right: string): boolean {
 }
 
 function expectedTitle(task: TaskDefinition, status: TaskStatus): string {
-  return `[GA][${ROLE_TITLE_LABELS[task.thread_role]}][${STATUS_TITLE_LABELS[status]}] ${task.logical_id} · ${task.title}`;
+  return `[GA][${ROLE_TITLE_LABELS[task.thread_role]}][${STATUS_TITLE_LABELS[status]}] ${task.title}`;
 }
 
 function parseScopeRequest(value: unknown, label: string): ScopeRequest {

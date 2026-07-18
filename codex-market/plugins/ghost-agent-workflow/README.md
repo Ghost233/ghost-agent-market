@@ -17,4 +17,6 @@
 
 `thread-goal-worker` 和 `subagent-goal-worker` 分别在对应执行方式下负责单个任务的目标、写入范围、验证和差异自检。协调器和 worker 只由经过授权的计划内部调用，不是独立的用户入口。Codex 子线程与子代理模式都固定使用 `gpt-5.6-sol/medium`。
 
-`git-commit` 使用固定的 `git_commit_worker:gpt-5.3-codex-spark/high` 提出只读提交建议；工具、系统或契约失败时创建一个 `gpt-5.6-luna/medium` 只读分析线程作为一次性 fallback，主线程复核后完成实际暂存和提交。
+实施 task 的定向验证与差异自检是默认完成闭环。独立 review 只覆盖高风险边界，非阻断建议随完成结果返回；verify 只运行尚未被 work 覆盖的集成或全量检查，并可与 review 并列执行。
+
+`git-commit` 必须先使用固定的 `git_commit_worker:gpt-5.3-codex-spark/high` 提出只读提交建议；`gpt-5.6-luna/medium` 只存在于内部异常分支，只有真实运行时错误明确证明该 Spark profile 当前不可创建或不可运行时才接管一次。契约错误、普通工具错误和合法 blocked 结果不会触发 fallback，实际暂存和提交仍由主线程复核后完成。

@@ -42,7 +42,7 @@
 
 ## 普通结果
 
-根据实际情况填写 `status` 和证据；`completed` 时 `scope_request` 必须为 `null`。
+根据实际情况填写 `status` 和证据；`completed` 时 `scope_request` 必须为 `null`。review 的非阻断建议写入 `summary`，保持 `completed` 和 `diff_self_check: pass`。
 
 ```json
 {
@@ -62,7 +62,9 @@
 }
 ```
 
-## 写入范围变化
+## 写入范围变化或阻断审查
+
+work 需要扩大写域，或 review 发现阻断缺陷时使用。review 必须保持 `changed_files: []`，并在 `scope_request.paths` 精确列出后继 work 需要修复的路径；`scope_exception` 表示只读 review 正在把修复职责交回规划器，不表示它修改了文件。非阻断建议不得使用此结果。
 
 ```json
 {

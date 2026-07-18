@@ -600,7 +600,7 @@ function pathsOverlap(left        , right        )          {
 }
 
 function expectedTitle(task                , status            )         {
-  return `[GA][${ROLE_TITLE_LABELS[task.thread_role]}][${STATUS_TITLE_LABELS[status]}] ${task.logical_id} · ${task.title}`;
+  return `[GA][${ROLE_TITLE_LABELS[task.thread_role]}][${STATUS_TITLE_LABELS[status]}] ${task.title}`;
 }
 
 function parseScopeRequest(value         , label        )               {

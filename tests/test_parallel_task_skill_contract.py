@@ -130,10 +130,93 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
     def test_planner_has_concrete_verification_closure_rule(self) -> None:
         for platform in self.platforms:
             planner = self.skill(platform, "parallel-task-planner")
-            self.assertIn("测试、门禁或配置如果需要修改", planner)
-            self.assertIn("某个 `work` task 的 `writable_paths`", planner)
-            self.assertIn("明确依赖且先完成的前置 task", planner)
+            self.assertRegex(planner, r"测试、门禁或配置(?:如果需要|如需)修改")
+            self.assertIn("`writable_paths`", planner)
+            self.assertIn("前置", planner)
+            self.assertIn("`work`", planner)
             self.assertIn("否则不得生成", planner)
+
+    def test_work_self_check_is_the_default_closure(self) -> None:
+        for platform in self.platforms:
+            planner = self.skill(platform, "parallel-task-planner")
+            workers = "\n".join(
+                self.skill(platform, name)
+                for name in ("thread-goal-worker", "subagent-goal-worker")
+            )
+
+            self.assertIn("默认闭环", planner)
+            self.assertIn("重复自检", planner)
+            self.assertIn("风险触发", planner)
+            self.assertRegex(
+                planner,
+                r"(?s)(?:不得.{0,40}重复自检|重复自检.{0,40}不得)",
+            )
+            self.assertRegex(
+                planner,
+                r"(?:不得按|不是|并非)每个 `?work`?",
+            )
+            self.assertIn("自检", workers)
+            self.assertIn("done_when", workers)
+            self.assertIn("diff_self_check", workers)
+
+    def test_review_findings_have_blocking_severity(self) -> None:
+        for platform in self.platforms:
+            for name in ("thread-goal-worker", "subagent-goal-worker"):
+                worker = self.skill(platform, name)
+                self.assertIn("非阻断建议", worker)
+                self.assertIn("阻断缺陷", worker)
+                self.assertRegex(
+                    worker,
+                    r"(?s)非阻断建议.{0,160}`completed`.{0,160}(?:不触发|不得触发).{0,40}revision",
+                )
+                self.assertRegex(
+                    worker,
+                    r"(?s)阻断缺陷.{0,120}`needs_main_review`",
+                )
+
+    def test_verify_is_incremental_and_parallel_with_review(self) -> None:
+        for platform in self.platforms:
+            planner = self.skill(platform, "parallel-task-planner")
+            self.assertIn("`work`", planner)
+            self.assertIn("`verification`", planner)
+            self.assertIn("并列", planner)
+            self.assertIn("互不依赖", planner)
+            self.assertRegex(
+                planner,
+                r"(?s)`verify`.{0,240}(?:不得重复|不重复).{0,80}work verification",
+            )
+            self.assertIn("`review`", planner)
+            self.assertIn("`verify`", planner)
+            self.assertIn("并列节点", planner)
+
+    def test_coordinators_do_not_invent_review_or_revision(self) -> None:
+        for platform in self.platforms:
+            for name in ("thread-coordination", "subagent-coordination"):
+                coordinator = self.skill(platform, name)
+                self.assertIn("补造", coordinator)
+                self.assertIn("review", coordinator)
+                self.assertIn("非阻断建议", coordinator)
+                self.assertRegex(
+                    coordinator,
+                    r"(?s)非阻断建议.{0,160}(?:不触发|不得触发).{0,40}revision",
+                )
+
+    def test_shared_workspace_self_check_is_attributed_per_task(self) -> None:
+        for platform in self.platforms:
+            for coordinator_name, worker_name in (
+                ("thread-coordination", "thread-goal-worker"),
+                ("subagent-coordination", "subagent-goal-worker"),
+            ):
+                contract = "\n".join(
+                    (
+                        self.skill(platform, coordinator_name),
+                        self.skill(platform, worker_name),
+                    )
+                )
+                self.assertIn("共享工作区", contract)
+                self.assertIn("按当前 task 归因", contract)
+                for field in ("writable_paths", "changed_files", "result_path"):
+                    self.assertIn(field, contract)
 
     def test_all_dag_topologies_are_executable(self) -> None:
         for platform in self.platforms:
@@ -301,8 +384,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
     def test_manifest_versions_are_incremented(self) -> None:
         codex = json.loads(read(CODEX / ".codex-plugin/plugin.json"))
         claude = json.loads(read(CLAUDE / ".claude-plugin/plugin.json"))
-        self.assertTrue(codex["version"].startswith("0.8.2+codex."))
-        self.assertEqual(claude["version"], "0.3.7")
+        self.assertTrue(codex["version"].startswith("0.8.4+codex."))
+        self.assertEqual(claude["version"], "0.3.8")
 
     def test_codex_manifest_exposes_only_explicit_user_prompts(self) -> None:
         manifest = json.loads(read(CODEX / ".codex-plugin/plugin.json"))
@@ -318,7 +401,8 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         self.assertIn("$git-commit", prompts[1])
         self.assertIn("git_commit_worker", prompts[1])
         self.assertIn("gpt-5.3-codex-spark/high", prompts[1])
-        self.assertIn("gpt-5.6-luna/medium", prompts[1])
+        self.assertNotIn("gpt-5.6-luna", prompts[1])
+        self.assertNotIn("fallback", prompts[1])
         self.assertIn("主线程", prompts[1])
 
         hidden_entries = (

@@ -6,8 +6,10 @@ sandbox_mode = "read-only"
 
 developer_instructions = """
 你只负责分析当前 checkout，不执行任何 Git 写操作。
-允许使用 pwd、git status、git diff、git diff --cached、git submodule status、rg 和 sed。
+遵守仓库中的 AGENTS.md；仓库要求 RTK 时，通过 rtk 运行 shell 命令。
+允许使用 pwd、git rev-parse、git status、git diff、git diff --cached、git submodule status、git config、git ls-files、rg 和 sed 等只读检查。
 禁止修改文件、stage、commit、push、pull、merge、rebase、reset、checkout、switch、stash 或创建 worktree。
-返回分析范围、changed files、风险、submodule 状态、敏感文件、建议提交批次和中文 Conventional Commit 信息。
-结果必须包含：agent_name=git_commit_worker、model=gpt-5.3-codex-spark、model_reasoning_effort=high。
+最终只返回一个 GIT_COMMIT_ANALYSIS_V1 JSON 对象，不使用 Markdown 代码围栏。对象必须包含 contract、status、profile_evidence、repository、identity、observed_status、submodule_order、batches、sensitive_or_unknown 和 warnings。
+profile_evidence 必须精确等于 git_commit_worker:gpt-5.3-codex-spark/high，不得包含 Luna 或多个 profile。每个 batch 必须包含 repository、中文 Conventional Commit message、显式 paths 和 reason。
+无法安全给出提交建议时返回合法 status=blocked 和具体 warnings；不要用自由文本替代契约。
 """

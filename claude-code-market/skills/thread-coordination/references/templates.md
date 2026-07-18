@@ -15,8 +15,10 @@ expected_title；dispatch_key；task_id；module_id；thread_role；状态：待
 ## 名称
 
 ```text
-[GA][<实施|审查|验证>][<待命|执行|补修|完成|复核|阻塞|失败>] <logical_id> · <title>
+[GA][<实施|审查|验证>][<待命|执行|补修|完成|复核|阻塞|失败>] <中文任务名>
 ```
+
+中文任务名只取 task 的 `title`。`logical_id`、`module_id`、`dispatch_key` 等内部技术标识不得出现在面向用户的标题中。
 
 ## 协调结果
 

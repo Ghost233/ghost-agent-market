@@ -48,7 +48,7 @@
       "depends_on": [],
       "writable_paths": ["src/state/types.ts"],
       "done_when": ["独立文件导出完整页面状态类型"],
-      "verification": ["运行状态类型相关检查"]
+      "verification": ["运行状态类型定向检查并核对当前 task 差异"]
     },
     {
       "id": "T2",
@@ -60,31 +60,19 @@
       "depends_on": [],
       "writable_paths": ["src/parser/runtime.ts", "tests/parser-boundaries.test.ts"],
       "done_when": ["解析器边界行为与测试保持一致"],
-      "verification": ["运行解析器边界测试"]
+      "verification": ["运行解析器边界定向测试并核对当前 task 差异"]
     },
     {
       "id": "T3",
-      "logical_id": "parser.review-boundaries",
-      "title": "审查解析器边界行为",
-      "thread_role": "review",
-      "module_id": "parser-runtime",
-      "task": "只读审查解析器调整后的边界行为",
-      "depends_on": ["T2"],
-      "writable_paths": [],
-      "done_when": ["形成无待修复项的可定位审查结论"],
-      "verification": ["核对解析器差异与边界测试证据"]
-    },
-    {
-      "id": "T4",
       "logical_id": "build.verify-integration",
       "title": "验证状态与解析器集成",
       "thread_role": "verify",
       "module_id": "build-integration",
       "task": "执行状态与解析器集成构建",
-      "depends_on": ["T1", "T3"],
+      "depends_on": ["T1", "T2"],
       "writable_paths": [],
       "done_when": ["构建和集成测试通过且 tracked diff 未变化"],
-      "verification": ["运行项目构建与集成测试并记录命令、退出状态和日志"]
+      "verification": ["运行未被两个 work 定向验证覆盖的集成构建与测试，并记录命令、退出状态和日志"]
     }
   ],
   "project_verification": ["确认全部 task 完成且父目标证据覆盖完整"],
@@ -94,6 +82,43 @@
   }
 }
 ```
+
+这是低风险默认示例：两个 `work` 通过各自 verification 与差异自检默认闭环，计划不为重复自检生成 `review`；`verify` 只补充非重复的集成检查。
+
+## 高风险审查片段
+
+只有出现明确风险边界时才加入聚合 `review`。例如状态与解析器共同改变外部数据契约时，可在 modules 中增加 `public-contract`，并让审查与集成验证成为互不依赖的并列节点：
+
+```json
+{
+  "modules": [
+    {
+      "id": "public-contract",
+      "worker_profile": {
+        "model": "sonnet",
+        "reasoning_effort": "max"
+      },
+      "worker_context": "负责状态与解析器共享的外部数据契约边界"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T4",
+      "logical_id": "contract.review-boundary",
+      "title": "审查外部数据契约",
+      "thread_role": "review",
+      "module_id": "public-contract",
+      "task": "只读审查两个 work 共同影响的外部数据契约风险边界",
+      "depends_on": ["T1", "T2"],
+      "writable_paths": [],
+      "done_when": ["记录阻断缺陷与非阻断建议；无阻断缺陷时完成"],
+      "verification": ["核对受审边界、依赖 task 结果和对应差异证据"]
+    }
+  ]
+}
+```
+
+该片段只展示需要追加到低风险示例的 module 与 task，不是第二份完整计划。新增 `T4` review 与原有 `T3` verify 都直接依赖相关 work，彼此不建立依赖；同一风险边界只聚合一次 review，不按每个 work 重复创建。
 
 ## 修正版
 

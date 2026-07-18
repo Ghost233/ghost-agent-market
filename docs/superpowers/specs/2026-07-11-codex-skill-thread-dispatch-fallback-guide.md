@@ -1,5 +1,7 @@
 # Codex Skill 独立执行线程与启动回退设计指南
 
+> 历史设计，已被当前 `git-commit` skill 取代。当前实现必须先使用 `git_commit_worker:gpt-5.3-codex-spark/high`；只有运行时错误明确证明该 Spark profile 不可创建或不可运行时，才允许一次 `gpt-5.6-luna/medium` fallback。本文其余执行线程、回退强度和回传流程不得作为当前实现依据。
+
 ## 1. 文档目的
 
 本文总结 `git-commit` skill 从主任务直接执行、内部委派尝试，演进到“用户可见执行任务 + 启动确认 + 单次模型回退”的原因与最终方案。

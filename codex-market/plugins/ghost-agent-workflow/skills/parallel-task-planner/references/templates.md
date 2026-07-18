@@ -64,36 +64,61 @@
     },
     {
       "id": "T3",
-      "logical_id": "parser.review-boundaries",
-      "title": "审查解析器边界行为",
-      "thread_role": "review",
-      "module_id": "parser-runtime",
-      "task": "只读审查解析器调整后的边界行为",
-      "depends_on": ["T2"],
-      "writable_paths": [],
-      "done_when": ["形成无待修复项的可定位审查结论"],
-      "verification": ["核对解析器差异与边界测试证据"]
-    },
-    {
-      "id": "T4",
       "logical_id": "build.verify-integration",
       "title": "验证状态与解析器集成",
       "thread_role": "verify",
       "module_id": "build-integration",
       "task": "执行状态与解析器集成构建",
-      "depends_on": ["T1", "T3"],
+      "depends_on": ["T1", "T2"],
       "writable_paths": [],
       "done_when": ["构建和集成测试通过且 tracked diff 未变化"],
-      "verification": ["运行项目构建与集成测试并记录命令、退出状态和日志"]
+      "verification": ["运行尚未被 T1、T2 覆盖的项目构建与集成测试，记录命令、退出状态和日志"]
     }
   ],
-  "project_verification": ["确认全部 task 完成且父目标证据覆盖完整"],
+  "project_verification": ["汇总 T1、T2 的默认闭环与 T3 的集成验证证据"],
   "safety": {
     "status": "parallel_safe",
     "reasons": ["T1 与 T2 无依赖且职责和写域不冲突"]
   }
 }
 ```
+
+上述低风险示例不创建独立 `review`：T1、T2 各自用 task verification 和 `diff_self_check` 默认闭环，T3 只补充未覆盖的集成检查。
+
+## 可选高风险审查
+
+仅在跨 module 契约、安全或权限边界、迁移、并发语义、缺乏可执行验证，或用户明确要求时增加。把同一风险边界聚合为一个 `review`，例如在上例中追加：
+
+```json
+{
+  "modules": [
+    {
+      "id": "contract-risk",
+      "worker_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "medium"
+      },
+      "worker_context": "负责状态与解析器之间的跨模块契约风险"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T4",
+      "logical_id": "contract.review-state-parser",
+      "title": "审查状态与解析器契约",
+      "thread_role": "review",
+      "module_id": "contract-risk",
+      "task": "只读审查状态类型与解析器边界之间的跨模块契约",
+      "depends_on": ["T1", "T2"],
+      "writable_paths": [],
+      "done_when": ["形成可定位的阻断缺陷结论或非阻断建议"],
+      "verification": ["核对跨模块契约差异及已有测试证据"]
+    }
+  ]
+}
+```
+
+T3 与 T4 都直接依赖 T1、T2，是并列节点且互不依赖；不得为两个 work 分别复制 review，也不得让 T3 重复 T1、T2 已执行的命令。
 
 ## 修正版
 

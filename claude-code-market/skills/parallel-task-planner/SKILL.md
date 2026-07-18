@@ -45,19 +45,20 @@ Claude Code 默认 module 配置为 `sonnet/max`。用户可以为初始 module 
 
 1. 确认用户已收口当前任务说明，将可识别的规划对象归纳为 `parent_goal`，并根据任务意图补充父目标总验证方式；不得要求用户预先写好验收标准。
 2. 按稳定领域职责定义 module。不得使用 `implementation`、`review`、`verification`、`compile` 等阶段名，也不得为每个 task 复制近义 module。`worker_context` 只写领域边界和长期不变量。
-3. 按可独立验收的结果拆分 task。不得为制造并行度拆开真实串行职责，也不得合并本可独立验收的结果。每项都写明 `logical_id`、`title`、`thread_role`、`writable_paths`、`done_when` 和 `verification`。
-4. `work` 负责正式修改且 `writable_paths` 非空；`review` 只读审查；`verify` 只读执行 build、test 或 lint。后两者的 `writable_paths` 必须为 `[]`，不得产生 tracked diff。
-5. 检查任务闭包：task 引用的测试、门禁或配置如果需要修改，必须位于某个 `work` task 的 `writable_paths`，并由当前 task 自己负责，或由它明确依赖且先完成的前置 task 负责。否则不得生成依赖该检查的 `review` 或 `verify` task。
-6. 用 `depends_on` 表达真实依赖。同一 revision 中相同 `module_id + thread_role` 的 task 必须在 DAG 中可比；不同归属且写域、共享契约、生成产物和运行环境不冲突的 ready task 保持不可比并立即并行。
-7. `project_verification` 只汇总父目标覆盖和 task 证据。需要实际运行的正式检查必须成为 `verify` task。
-8. 至少两个不可比 task 时使用 `parallel_safe`；单节点或纯串行图使用 `sequential_only`；只有真实用户边界使用 `needs_user_review`。前两者都可执行，不能为了通过门禁伪造并行任务。
+3. 按可独立验收的结果拆分 task。不得为制造并行度拆开真实串行职责，也不得合并本可独立验收的结果。每项都写明 `logical_id`、中文用户可见 `title`、`thread_role`、`writable_paths`、`done_when` 和 `verification`；`logical_id` 与 `module_id` 只作内部标识。
+4. `work` 负责正式修改且 `writable_paths` 非空，必须完成当前 task 的定向验证与差异自检，并以此默认闭环。不得为重复自检生成独立 `review`。
+5. `review` 只在跨 module 契约、安全边界、数据迁移、并发语义、破坏性行为或 work 无法自证的关键语义等风险触发条件下创建；它按风险边界聚合，不是每个 `work` 各建一个。`verify` 只承担 work 定向验证未覆盖的集成、全量 build、test 或 lint，不得重复 work verification，以保证验证不重复。两者都只读，`writable_paths` 必须为 `[]`，不得产生 tracked diff。
+6. 检查任务闭包：task 引用的测试、门禁或配置如果需要修改，必须位于某个 `work` task 的 `writable_paths`，并由当前 task 自己负责，或由它明确依赖且先完成的前置 task 负责。否则不得生成依赖该检查的 `review` 或 `verify` task。
+7. 用 `depends_on` 表达真实依赖。同一 revision 中相同 `module_id + thread_role` 的 task 必须在 DAG 中可比；不同归属且写域、共享契约、生成产物和运行环境不冲突的 ready task 保持不可比并立即并行。同时需要 `review` 与 `verify` 时，默认让二者直接依赖相关 work，成为互不依赖的并列节点；只有真实的数据或产物依赖才允许串行化。
+8. `project_verification` 只汇总父目标覆盖和 task 证据。需要实际运行且未被 work verification 覆盖的正式检查才生成 `verify` task；不得把缺少独立审查当作计划缺口，也不得补造 `review`。
+9. 至少两个不可比 task 时使用 `parallel_safe`；单节点或纯串行图使用 `sequential_only`；只有真实用户边界使用 `needs_user_review`。前两者都可执行，不能为了通过门禁伪造并行任务。
 
 ## 当前任务内修订
 
 只有当前 plan 没有 `running` task 时才修订：
 
 1. 读取直接前版 plan、state、完整 task result 和当前差异。
-2. 一次聚合当前静止点的全部范围变化、审查结论、验证失败和总验收缺口。
+2. 一次聚合当前静止点的全部范围变化、审查阻断缺陷、验证失败和总验收缺口；`review` 的非阻断建议随 `completed` 保留为证据，不触发 revision。
 3. 已完成 task 不重跑；把尚未闭环的事实重新整理为一个后继 DAG。
 4. 新计划只用 `continuation.previous_plan_path` 指向直接前版；保持同一 `parent_goal`，`revision` 增加 1。
 5. 完整保留前版全部 module 定义，可按需增加新 module。执行单元复用不写入计划，也不由 task id 或 `logical_id` 决定。

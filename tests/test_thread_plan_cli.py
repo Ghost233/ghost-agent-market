@@ -247,8 +247,30 @@ class ThreadPlanCliTests(unittest.TestCase):
             self.assertEqual(action["thread_role"], "work")
             self.assertEqual(
                 action["expected_title"],
-                "[GA][实施][待命] state.extract-types · 抽离页面状态类型",
+                "[GA][实施][待命] 抽离页面状态类型",
             )
+            self.assertNotIn(action["logical_id"], action["expected_title"])
+
+    def test_single_work_dag_requires_no_review_or_verify_task(self) -> None:
+        with self.workspace() as (plan_path, state_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            work = deepcopy(plan["tasks"][0])
+            plan["modules"] = [
+                next(item for item in plan["modules"] if item["id"] == work["module_id"])
+            ]
+            plan["tasks"] = [work]
+            plan["safety"] = {"status": "sequential_only", "reasons": ["single work task"]}
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            self.validate(plan_path)
+            ready = self.run_json("next", plan_path, state_path)
+            self.assertEqual([item["task_id"] for item in ready["actions"]], ["T1"])
+            self.assertEqual([item["thread_role"] for item in ready["actions"]], ["work"])
+
+            self.complete(plan_path, state_path, "T1", "thread-work")
+            finished = self.run_json("next", plan_path, state_path)
+            self.assertEqual(finished["actions"], [])
+            self.assertEqual(finished["summary"]["completed"], 1)
 
     def test_same_owner_is_reused_dynamically(self) -> None:
         with self.workspace() as (plan_path, state_path):

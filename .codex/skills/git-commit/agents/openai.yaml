@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "先由 Spark 子代理分析，必要时 Luna 线程回退"
-  default_prompt: "使用 $git-commit，先以固定的 git_commit_worker（gpt-5.3-codex-spark/high）只读分析当前 checkout；仅在工具、系统或契约失败时创建一个 gpt-5.6-luna/medium 只读分析线程作为 fallback，再由主线程复核并使用显式路径完成中文提交。"
+  short_description: "Spark 只读分析，主线程分批提交"
+  default_prompt: "使用 $git-commit，必须先以固定的 git_commit_worker（gpt-5.3-codex-spark/high）只读分析当前 checkout，再由主线程复核、按职责拆分批次并使用显式路径完成中文 Git 提交。"

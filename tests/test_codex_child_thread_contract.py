@@ -6,6 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
+GIT_COMMIT_WORKER = ROOT / ".codex/agents/git-commit-worker.toml"
 AGENTS = ROOT / "AGENTS.md"
 
 
@@ -29,6 +30,8 @@ class CodexChildThreadContractTests(unittest.TestCase):
             "skills/thread-goal-worker/references/templates.md"
         )
         cls.git_commit = read("skills/git-commit/SKILL.md")
+        cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
+        cls.git_commit_worker = GIT_COMMIT_WORKER.read_text(encoding="utf-8")
         cls.metadata = "\n".join(
             read(path)
             for path in (
@@ -64,7 +67,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
             "list_projects",
             "list_threads",
             "create_thread",
-            "read_thread",
+            "wait_threads",
             "send_message_to_thread",
             "set_thread_title",
         ):
@@ -139,21 +142,51 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
         self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
         self.assertIn("必须以一次真实 `spawn_agent` 调用结果为准", self.git_commit)
+        self.assertIn("第 6 步的完整 `GIT_COMMIT_ANALYSIS_V1` 字段契约", self.git_commit)
+        self.assertIn("不得假设子代理能读取本 skill", self.git_commit)
+        self.assertIn("followup_task", self.git_commit)
+        self.assertIn("同一个 `git_commit_worker`", self.git_commit)
+        self.assertIn("一次纯格式修复请求", self.git_commit)
         self.assertIn("git_commit_worker:gpt-5.3-codex-spark/high", combined)
         self.assertIn('model: "gpt-5.6-luna"', self.git_commit)
         self.assertIn('thinking: "medium"', self.git_commit)
+        self.assertIn("不是并行分析、第二意见或一般错误兜底", self.git_commit)
+        self.assertIn("Spark profile 当前不可创建或不可运行", self.git_commit)
+        self.assertIn("契约缺失或格式错误", self.git_commit)
+        self.assertIn("都不得触发 fallback", self.git_commit)
+        self.assertIn('"profile_evidence": "<本次实际采用的唯一 profile>"', self.git_commit)
+        self.assertIn("不得使用 `|`、不得同时报告两个 profile", self.git_commit)
+        self.assertNotIn("只有主分析发生工具、系统或契约失败", self.git_commit)
+        self.assertNotIn(
+            '"profile_evidence": "git_commit_worker:gpt-5.3-codex-spark/high |',
+            self.git_commit,
+        )
+        self.assertNotIn("gpt-5.6-luna", self.git_commit_metadata)
+        self.assertNotIn("fallback", self.git_commit_metadata)
         self.assertIn("`spawn_agent` 当前不支持 `gpt-5.6-luna`", self.git_commit)
         self.assertIn("create_thread:gpt-5.6-luna/medium fallback", self.git_commit)
         self.assertIn("list_projects", self.git_commit)
         self.assertIn("create_thread", self.git_commit)
         self.assertIn("set_thread_title", self.git_commit)
         self.assertIn("read_thread(includeOutputs: true)", self.git_commit)
-        self.assertIn("主分析返回合法 `status: \"blocked\"`", self.git_commit)
+        self.assertIn("包括返回合法 `status: \"blocked\"` 的情况", self.git_commit)
         self.assertIn("不得修改文件、继续委派或再次 fallback", self.git_commit)
         self.assertIn('prefix_rule: ["rtk", "git", "add"]', self.git_commit)
         self.assertIn('prefix_rule: ["rtk", "git", "commit"]', self.git_commit)
         self.assertNotIn("GIT_COMMIT_EXECUTOR=1", combined)
         self.assertNotIn("send_message_to_thread", combined)
+
+    def test_git_commit_worker_returns_primary_contract(self) -> None:
+        self.assertIn('model = "gpt-5.3-codex-spark"', self.git_commit_worker)
+        self.assertIn('model_reasoning_effort = "high"', self.git_commit_worker)
+        self.assertIn("GIT_COMMIT_ANALYSIS_V1 JSON 对象", self.git_commit_worker)
+        self.assertIn("git config", self.git_commit_worker)
+        self.assertIn("通过 rtk 运行 shell 命令", self.git_commit_worker)
+        self.assertIn(
+            "profile_evidence 必须精确等于 git_commit_worker:gpt-5.3-codex-spark/high",
+            self.git_commit_worker,
+        )
+        self.assertNotIn("gpt-5.6-luna", self.git_commit_worker)
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -173,7 +206,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
     def test_manifest_and_readme_describe_current_scope(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
         readme = read("README.md")
-        self.assertTrue(manifest["version"].startswith("0.8.2+codex."))
+        self.assertTrue(manifest["version"].startswith("0.8.4+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertIn("子代理", manifest["description"])
         self.assertIn("不提供默认执行模式", manifest["description"])
