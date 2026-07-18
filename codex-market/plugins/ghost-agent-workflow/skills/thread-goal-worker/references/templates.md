@@ -19,6 +19,7 @@
   "task_id": "T1",
   "logical_id": "state.extract-types",
   "title": "抽离页面状态类型",
+  "display_name": "[GA][<实施|审查|验证>][执行] <中文任务名>",
   "thread_role": "work | review | verify",
   "module_id": "state-contract",
   "task": "<单一可执行结果>",
@@ -29,10 +30,10 @@
   "worker_context": "<模块共享上下文>",
   "thread_id": "<真实线程 id>",
   "worker_profile": {
-    "model": "<实际模型>",
-    "reasoning_effort": "<实际强度>"
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium"
   },
-  "profile_evidence": "<创建或继承证据>",
+  "profile_evidence": "create_thread:gpt-5.6-sol/medium",
   "result_contract": "WORKER_RESULT_V3"
 }
 ```
@@ -52,7 +53,7 @@
   "thread_role": "work | review | verify",
   "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
-  "profile_evidence": "<模型配置核对结果>",
+  "profile_evidence": "create_thread:gpt-5.6-sol/medium",
   "changed_files": ["<work 的业务路径；review/verify 填 []>"],
   "verification": ["<命令及结果>"],
   "diff_self_check": "pass | fail",
@@ -72,7 +73,7 @@
   "thread_role": "work | review | verify",
   "module_id": "state-contract",
   "thread_id": "<绑定线程 id>",
-  "profile_evidence": "<模型配置核对结果>",
+  "profile_evidence": "create_thread:gpt-5.6-sol/medium",
   "changed_files": ["<work 已产生且可归因的路径；review/verify 填 []>"],
   "verification": ["<已完成的验证及结果>"],
   "diff_self_check": "scope_exception",

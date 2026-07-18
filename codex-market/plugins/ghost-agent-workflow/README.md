@@ -15,4 +15,6 @@
 
 用户明确选择后，可以使用 `thread-coordination` 的可见子线程模式，或 `subagent-coordination` 的子代理模式。两者消费同一份计划，并只在本次父目标内复用相同 module+role 的执行单元；新的顶层任务不会复用旧执行单元。
 
-`thread-goal-worker` 和 `subagent-goal-worker` 分别在对应执行方式下负责单个任务的目标、写入范围、验证和差异自检。协调器和 worker 只由经过授权的计划内部调用，不是独立的用户入口。Codex 子代理模式固定使用 `gpt-5.6-terra/xhigh`。
+`thread-goal-worker` 和 `subagent-goal-worker` 分别在对应执行方式下负责单个任务的目标、写入范围、验证和差异自检。协调器和 worker 只由经过授权的计划内部调用，不是独立的用户入口。Codex 子线程与子代理模式都固定使用 `gpt-5.6-sol/medium`。
+
+`git-commit` 使用固定的 `git_commit_worker:gpt-5.3-codex-spark/high` 提出只读提交建议；工具、系统或契约失败时创建一个 `gpt-5.6-luna/medium` 只读分析线程作为一次性 fallback，主线程复核后完成实际暂存和提交。

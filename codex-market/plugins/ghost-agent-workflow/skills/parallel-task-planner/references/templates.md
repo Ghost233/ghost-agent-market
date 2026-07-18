@@ -15,7 +15,7 @@
     {
       "id": "state-contract",
       "worker_profile": {
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning_effort": "medium"
       },
       "worker_context": "负责状态契约及其长期不变量"
@@ -23,7 +23,7 @@
     {
       "id": "parser-runtime",
       "worker_profile": {
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning_effort": "medium"
       },
       "worker_context": "负责解析器运行时行为与边界"
@@ -31,7 +31,7 @@
     {
       "id": "build-integration",
       "worker_profile": {
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning_effort": "medium"
       },
       "worker_context": "负责工程构建和集成验证"

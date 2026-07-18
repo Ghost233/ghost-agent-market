@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "由独立线程健康检查后创建中文提交"
-  default_prompt: "使用 $git-commit，在同一项目 local 环境创建一个 gpt-5.3-codex-spark/high 执行线程，把调度线程 ID 交给它；最多查询三轮，第一轮创建后立即读取，不等待，状态尚不明确时第二、第三轮才各等待 10 秒。首次发现安全可确认的 systemError 时立即 fallback 到 gpt-5.6-luna/xhigh。执行线程对 rtk git add 和 rtk git commit 从第一次调用起主动使用 require_escalated 与各自精确 prefix_rule；不使用宽泛 Git 白名单、worktree、push 或自动归档。"
+  short_description: "先由 Spark 子代理分析，必要时 Luna 线程回退"
+  default_prompt: "使用 $git-commit，先以固定的 git_commit_worker（gpt-5.3-codex-spark/high）只读分析当前 checkout；仅在工具、系统或契约失败时创建一个 gpt-5.6-luna/medium 只读分析线程作为 fallback，再由主线程复核并使用显式路径完成中文提交。"

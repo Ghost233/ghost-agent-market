@@ -263,12 +263,12 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         claude = self.reference("claude", "parallel-task-planner")
         codex_coordinator = self.skill("codex", "thread-coordination")
         claude_coordinator = self.skill("claude", "thread-coordination")
-        self.assertIn('"model": "gpt-5.6-terra"', codex)
+        self.assertIn('"model": "gpt-5.6-sol"', codex)
         self.assertIn('"reasoning_effort": "medium"', codex)
         self.assertIn('"model": "sonnet"', claude)
         self.assertIn('"reasoning_effort": "max"', claude)
-        self.assertIn("`gpt-5.6-sol/xhigh` 主线程", codex_coordinator)
-        self.assertIn("`gpt-5.6-terra/medium`", codex_coordinator)
+        self.assertIn("`gpt-5.6-sol/medium`", codex_coordinator)
+        self.assertNotIn("gpt-5.6-terra", codex_coordinator)
         self.assertIn("`opus/max` 主会话", claude_coordinator)
         self.assertIn("`sonnet/max`", claude_coordinator)
 
@@ -301,7 +301,7 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
     def test_manifest_versions_are_incremented(self) -> None:
         codex = json.loads(read(CODEX / ".codex-plugin/plugin.json"))
         claude = json.loads(read(CLAUDE / ".claude-plugin/plugin.json"))
-        self.assertTrue(codex["version"].startswith("0.7.6+codex."))
+        self.assertTrue(codex["version"].startswith("0.8.2+codex."))
         self.assertEqual(claude["version"], "0.3.7")
 
     def test_codex_manifest_exposes_only_explicit_user_prompts(self) -> None:
@@ -316,6 +316,10 @@ class ParallelTaskSkillContractTests(unittest.TestCase):
         self.assertIn("必须二选一", prompts[0])
         self.assertIn("不要推断或默认", prompts[0])
         self.assertIn("$git-commit", prompts[1])
+        self.assertIn("git_commit_worker", prompts[1])
+        self.assertIn("gpt-5.3-codex-spark/high", prompts[1])
+        self.assertIn("gpt-5.6-luna/medium", prompts[1])
+        self.assertIn("主线程", prompts[1])
 
         hidden_entries = (
             "$thread-coordination",

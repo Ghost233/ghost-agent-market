@@ -29,7 +29,9 @@ description: 仅当用户已经说明完当前任务、明确要求对它进行 
 
 写入前读取 [references/templates.md](references/templates.md)。计划文件只写 JSON；执行模式和 Mermaid 只在对话中展示。
 
-Codex 默认 module 配置为 `gpt-5.6-terra/medium`。用户可以为初始 module 指定完整 `model` 与 `reasoning_effort`；不猜测别名，不自动降级。
+Codex module 配置固定为 `gpt-5.6-sol/medium`，用于子线程创建和绑定校验；不得省略、覆盖、猜测别名或自动降级。子代理模式不消费该字段，但使用相同的固定运行 profile。
+
+每个 task 的 `title` 必须是能直接说明工作的简洁中文名称，至少包含一个中文汉字，不得只写英文、路径、编号或内部标识。`task_id`、`logical_id`、`module_id` 和子代理 canonical target 只作机器标识，不得代替面向用户的任务名称。
 
 ## 执行方式
 

@@ -11,11 +11,11 @@
   "contract": "SUBAGENT_BOOTSTRAP_V1",
   "dispatch_key": "<plan_path>#<task_id>",
   "owner": "<module_id>#<thread_role>",
+  "display_name": "[GA][<实施|审查|验证>][待命] <中文任务名>",
   "worker_skill": "$subagent-goal-worker",
   "runtime_profile": {
-    "agent_type": "worker",
-    "model": "gpt-5.6-terra",
-    "reasoning_effort": "xhigh"
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium"
   },
   "required_action": "加载 worker skill，返回 READY；收到完整绑定包前不得执行任务或修改文件"
 }
@@ -25,16 +25,17 @@
 
 ```json
 {
-  "agent_type": "worker",
-  "model": "gpt-5.6-terra",
-  "reasoning_effort": "xhigh",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
   "fork_turns": "none",
-  "task_name": "ga_<plan_token>_<module_token>_<role>_terra_xhigh",
+  "task_name": "ga_<plan_token>_<module_token>_<role>_sol_medium",
   "message": "<SUBAGENT_BOOTSTRAP_V1>"
 }
 ```
 
-缺少任一 profile 参数时不得创建子代理。
+直接调用的 `spawn_agent` schema 暴露 `agent_type` 时，在上述调用中附加 `"agent_type": "worker"`；未暴露时保持原调用，不得因此阻塞。缺少 `model`、`reasoning_effort` 或 `fork_turns` 时不得创建子代理。必须以真实调用结果判断成功或失败，不得通过 `functions.exec`、`ALL_TOOLS` 或工具搜索做预判。
+
+`task_name` 是工具要求的内部标识；协调过程和用户报告只显示 `display_name`。`<中文任务名>` 必须至少包含一个中文汉字。
 
 ## 协调结果
 

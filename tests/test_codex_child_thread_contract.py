@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
+LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
 AGENTS = ROOT / "AGENTS.md"
 
 
@@ -51,10 +52,11 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("execution_platform", contract)
         self.assertIn('"execution_platform": "codex"', contract)
         self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
-        self.assertIn("gpt-5.6-terra/medium", self.planner)
+        self.assertIn("gpt-5.6-sol/medium", self.planner)
         self.assertIn("新的 `parent_goal`", self.planner)
         self.assertIn("不同 `parent_goal` 之间绝不复用", self.planner)
         self.assertNotIn('"dispatch"', self.planner_templates)
+        self.assertIn("至少包含一个中文汉字", self.planner)
 
     def test_coordinator_uses_codex_thread_tools(self) -> None:
         contract = f"{self.coordinator}\n{self.coordinator_templates}"
@@ -73,6 +75,18 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("thread-plan.mjs mode", contract)
         self.assertIn("<state_path> thread", contract)
         self.assertIn("普通错误文本不能当作 JSON 解析", contract)
+        self.assertIn("model=gpt-5.6-sol", contract)
+        self.assertIn("thinking=medium", contract)
+        self.assertIn("create_thread:gpt-5.6-sol/medium", contract)
+
+    def test_thread_skills_require_sol_medium(self) -> None:
+        combined = "\n".join(
+            (self.coordinator, self.coordinator_templates, self.worker, self.worker_templates)
+        )
+        self.assertIn("gpt-5.6-sol/medium", combined)
+        self.assertIn('"model": "gpt-5.6-sol"', combined)
+        self.assertIn('"reasoning_effort": "medium"', combined)
+        self.assertNotIn("gpt-5.6-terra", combined)
 
     def test_thread_reuse_is_limited_to_current_parent_goal(self) -> None:
         contract = f"{self.planner}\n{self.coordinator}\n{self.worker}"
@@ -90,6 +104,9 @@ class CodexChildThreadContractTests(unittest.TestCase):
             self.assertIn(label, self.coordinator)
         self.assertIn("不自动归档", self.coordinator)
         self.assertNotIn("set_thread_archived", self.coordinator)
+        self.assertIn("<中文任务名>", self.coordinator)
+        self.assertNotIn("<logical_id> · <title>", self.coordinator)
+        self.assertIn('"display_name":', self.worker_templates)
 
     def test_worker_contract_is_scoped_and_atomic(self) -> None:
         contract = f"{self.worker}\n{self.worker_templates}"
@@ -113,15 +130,40 @@ class CodexChildThreadContractTests(unittest.TestCase):
         self.assertIn("完整单任务绑定包", self.metadata)
         self.assertNotIn("子代理", self.thread_metadata)
 
-    def test_git_commit_contract_is_unchanged(self) -> None:
+    def test_git_commit_uses_readonly_worker_then_main_thread_commits(self) -> None:
         combined = f"{self.git_commit}\n{self.metadata}"
-        self.assertIn("gpt-5.3-codex-spark", combined)
-        self.assertIn("thinking: high", self.git_commit)
-        self.assertIn("GIT_COMMIT_EXECUTOR=1", self.git_commit)
-        self.assertIn("不得传入 `reasoning.summary`", self.git_commit)
-        self.assertIn("gpt-5.6-luna/xhigh fallback", self.git_commit)
-        self.assertIn("当前线程就是唯一执行线程", self.git_commit)
-        self.assertIn("不得调用 `create_thread`", self.git_commit)
+        self.assertIn('agent_type: "git_commit_worker"', combined)
+        self.assertIn('fork_turns: "none"', self.git_commit)
+        self.assertIn("GIT_COMMIT_ANALYSIS_V1", self.git_commit)
+        self.assertIn("wait_agent", self.git_commit)
+        self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
+        self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
+        self.assertIn("必须以一次真实 `spawn_agent` 调用结果为准", self.git_commit)
+        self.assertIn("git_commit_worker:gpt-5.3-codex-spark/high", combined)
+        self.assertIn('model: "gpt-5.6-luna"', self.git_commit)
+        self.assertIn('thinking: "medium"', self.git_commit)
+        self.assertIn("`spawn_agent` 当前不支持 `gpt-5.6-luna`", self.git_commit)
+        self.assertIn("create_thread:gpt-5.6-luna/medium fallback", self.git_commit)
+        self.assertIn("list_projects", self.git_commit)
+        self.assertIn("create_thread", self.git_commit)
+        self.assertIn("set_thread_title", self.git_commit)
+        self.assertIn("read_thread(includeOutputs: true)", self.git_commit)
+        self.assertIn("主分析返回合法 `status: \"blocked\"`", self.git_commit)
+        self.assertIn("不得修改文件、继续委派或再次 fallback", self.git_commit)
+        self.assertIn('prefix_rule: ["rtk", "git", "add"]', self.git_commit)
+        self.assertIn('prefix_rule: ["rtk", "git", "commit"]', self.git_commit)
+        self.assertNotIn("GIT_COMMIT_EXECUTOR=1", combined)
+        self.assertNotIn("send_message_to_thread", combined)
+
+    def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
+        self.assertEqual(
+            (LOCAL_GIT_COMMIT / "SKILL.md").read_text(encoding="utf-8"),
+            self.git_commit,
+        )
+        self.assertEqual(
+            (LOCAL_GIT_COMMIT / "agents/openai.yaml").read_text(encoding="utf-8"),
+            read("skills/git-commit/agents/openai.yaml"),
+        )
 
     def test_agents_requires_decimal_version_increment(self) -> None:
         instructions = AGENTS.read_text(encoding="utf-8")
@@ -131,7 +173,7 @@ class CodexChildThreadContractTests(unittest.TestCase):
     def test_manifest_and_readme_describe_current_scope(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
         readme = read("README.md")
-        self.assertTrue(manifest["version"].startswith("0.7.6+codex."))
+        self.assertTrue(manifest["version"].startswith("0.8.2+codex."))
         self.assertIn("子线程", manifest["description"])
         self.assertIn("子代理", manifest["description"])
         self.assertIn("不提供默认执行模式", manifest["description"])

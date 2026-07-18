@@ -1,6 +1,6 @@
 ---
 name: thread-goal-worker
-description: 仅当 Codex 子线程收到 thread-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
+description: 仅当固定使用 gpt-5.6-sol/medium 的 Codex 子线程收到 thread-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
 ---
 
 # 任务执行线程
@@ -13,15 +13,18 @@ description: 仅当 Codex 子线程收到 thread-coordination 发出的完整 v3
 
 不修改计划，不扩大权限，不暂存、提交或推送代码。绑定和结果格式以 [references/templates.md](references/templates.md) 为唯一规范。Mermaid 不是机器输入。
 
+当前子线程必须由协调器通过 `create_thread` 的 `model: gpt-5.6-sol` 和 `thinking: medium` 创建。绑定中的 `worker_profile` 必须精确匹配，`profile_evidence` 固定写 `create_thread:gpt-5.6-sol/medium`，不得写平台默认值或其他 profile。
+
 ## 绑定门禁
 
 只消费协调器发出的完整单任务绑定包；直接面向用户的实施请求、普通任务描述或缺少任一必需字段的消息都不执行。执行前确认：
 
 1. `plan_path` 是绝对可读的 v3 JSON，平台为 `codex`，`executor_mode` 为 `thread`。
 2. 绑定包只包含一个 task，并与 plan 中的 `task_id`、`logical_id`、`module_id`、`thread_role`、范围和条件一致。
-3. 实际 `thread_id` 与绑定一致，`result_path` 严格位于当前计划目录 `results/<task_id>.json`。
-4. module 的 `worker_profile` 和 `worker_context` 与当前父目标初始定义一致。
-5. 上一 task 已终止，当前没有其他活动 task。
+3. `title` 至少包含一个中文汉字并能直接说明当前工作，`display_name` 精确等于 `[GA][<用途>][执行] <中文任务名>`；英文内部标识不能代替任务名称。
+4. 实际 `thread_id` 与绑定一致，`result_path` 严格位于当前计划目录 `results/<task_id>.json`。
+5. module 的 `worker_profile` 精确等于 `gpt-5.6-sol/medium`，绑定的 `profile_evidence` 等于 `create_thread:gpt-5.6-sol/medium`，且 `worker_context` 与当前父目标初始定义一致。
+6. 上一 task 已终止，当前没有其他活动 task。
 
 失败时不修改业务文件，按模板写入并返回合法 `blocked` 结果。
 

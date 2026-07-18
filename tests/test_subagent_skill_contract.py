@@ -70,7 +70,7 @@ class SubagentSkillContractTests(unittest.TestCase):
         self.assertIn("不要向 `Agent` 传 resume 参数", coordinator)
         self.assertIn("不得再次调用 `Agent`", worker)
 
-    def test_codex_subagents_require_terra_xhigh(self) -> None:
+    def test_codex_subagents_require_sol_medium(self) -> None:
         combined = "\n".join(
             (
                 self.skill("codex", "subagent-coordination"),
@@ -82,12 +82,33 @@ class SubagentSkillContractTests(unittest.TestCase):
             )
         )
         self.assertIn('agent_type: "worker"', combined)
-        self.assertIn('model: "gpt-5.6-terra"', combined)
-        self.assertIn('reasoning_effort: "xhigh"', combined)
+        self.assertIn('model: "gpt-5.6-sol"', combined)
+        self.assertIn('reasoning_effort: "medium"', combined)
         self.assertIn('fork_turns: "none"', combined)
-        self.assertIn("spawn_agent:worker:gpt-5.6-terra/xhigh", combined)
-        self.assertIn("_terra_xhigh", combined)
+        self.assertIn("spawn_agent:gpt-5.6-sol/medium", combined)
+        self.assertNotIn("spawn_agent:worker:gpt-5.6-sol/medium", combined)
+        self.assertIn("可选角色参数不属于运行 profile", combined)
+        self.assertIn("必须以真实调用结果判断成功或失败", combined)
+        self.assertIn("不得通过 `functions.exec`、`ALL_TOOLS`", combined)
+        self.assertIn("_sol_medium", combined)
+        self.assertNotIn("gpt-5.6-terra", combined)
         self.assertNotIn("subagent-defaults", combined)
+
+    def test_codex_subagents_use_chinese_display_names(self) -> None:
+        combined = "\n".join(
+            (
+                self.skill("codex", "parallel-task-planner"),
+                self.skill("codex", "subagent-coordination"),
+                self.skill("codex", "subagent-goal-worker"),
+                self.reference("codex", "subagent-coordination"),
+                self.reference("codex", "subagent-goal-worker"),
+            )
+        )
+        self.assertIn("至少包含一个中文汉字", combined)
+        self.assertIn('"display_name":', combined)
+        self.assertIn("中文任务名", combined)
+        self.assertIn("内部技术标识", combined)
+        self.assertIn("不得展示英文内部 agent 名称", combined)
 
     def test_claude_subagents_keep_platform_defaults(self) -> None:
         combined = "\n".join(
