@@ -1,6 +1,0 @@
-interface:
-  display_name: "子线程 Goal Worker"
-  short_description: "内部执行一个 fenced TASK_BINDING_V4 attempt。"
-
-policy:
-  allow_implicit_invocation: true

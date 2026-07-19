@@ -1,6 +1,6 @@
 # Codex Goal Contract
 
-仅在创建或校验 Codex 本地 Goal 时读取本文件。`goal.json`、`goal-state.json`、`coverage.json`、`plan.json` 与 `state.json` 必须位于同一目录。
+仅在 `subagent-coordination` 创建或校验 Codex 本地 Goal 时读取本文件。`goal.json`、`goal-state.json`、`coverage.json`、`plan.json` 与 `state.json` 必须位于同一目录。
 
 ## GOAL_CONTRACT_V1
 

@@ -1,6 +1,0 @@
-interface:
-  display_name: "执行线程 DAG 协调"
-  short_description: "内部恢复 reservation 并按 Owner affinity 推进线程 DAG。"
-
-policy:
-  allow_implicit_invocation: true

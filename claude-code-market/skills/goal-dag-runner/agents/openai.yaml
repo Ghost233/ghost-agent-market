@@ -1,7 +1,0 @@
-interface:
-  display_name: "Goal DAG Runner"
-  short_description: "在 Claude Code 以本地 fallback 持续执行带覆盖率的 Owner DAG。"
-  default_prompt: "/ghost-agent-workflow:goal-dag-runner 执行 <开发文档路径>"
-
-policy:
-  allow_implicit_invocation: false

@@ -1205,8 +1205,8 @@ function parseGoal(value         , verifySourceDigest = true)               {
   }
 
   const execution = requireRecord(source.execution, "goal execution");
-  if (execution.mode !== "thread" && execution.mode !== "subagent") {
-    fail("goal execution.mode must equal thread or subagent");
+  if (execution.mode !== "subagent") {
+    fail("goal execution.mode must equal subagent");
   }
   if (execution.reuse_policy !== "owner_affinity") {
     fail("goal execution.reuse_policy must equal owner_affinity");
@@ -1745,7 +1745,7 @@ function continuationPayloadFor(goalPath        )                         {
   if (EXPECTED_PLATFORM === "codex") return {};
   return {
     continuation_prompt:
-      `/ghost-agent-workflow:goal-dag-runner 继续 \`${resolve(goalPath)}\`。`,
+      `/ghost-agent-workflow:subagent-coordination 继续 \`${resolve(goalPath)}\`。`,
   };
 }
 

@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-workflow",
       "source": "./",
-      "description": "Document coverage and v4 Owner/task DAG execution with a local fallback lifecycle for Claude Code.",
-      "version": "0.4.1",
+      "description": "Subagent-only document coverage and v4 Owner/task DAG execution with a local fallback lifecycle for Claude Code.",
+      "version": "0.4.3",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -20,7 +20,7 @@
       "homepage": "https://github.com/Ghost233/ghost-agent-market",
       "license": "MIT",
       "keywords": [
-        "goal-dag-runner",
+        "subagent-coordination",
         "task-dag",
         "agent-skills",
         "claude-code"

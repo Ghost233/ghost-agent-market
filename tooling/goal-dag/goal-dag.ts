@@ -14,7 +14,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 type ExecutionPlatform = "codex" | "claude_code";
-type ExecutorMode = "thread" | "subagent";
+type ExecutorMode = "subagent";
 type TaskRole = "work" | "review" | "verify";
 type CoverageEffect = "implementation" | "verification" | "audit";
 type SafetyStatus = "parallel_safe" | "sequential_only" | "needs_user_review";
@@ -1204,8 +1204,8 @@ function parseGoal(value: unknown, verifySourceDigest = true): GoalContract {
   }
 
   const execution = requireRecord(source.execution, "goal execution");
-  if (execution.mode !== "thread" && execution.mode !== "subagent") {
-    fail("goal execution.mode must equal thread or subagent");
+  if (execution.mode !== "subagent") {
+    fail("goal execution.mode must equal subagent");
   }
   if (execution.reuse_policy !== "owner_affinity") {
     fail("goal execution.reuse_policy must equal owner_affinity");
@@ -1744,7 +1744,7 @@ function continuationPayloadFor(goalPath: string): Record<string, string> {
   if (EXPECTED_PLATFORM === "codex") return {};
   return {
     continuation_prompt:
-      `/ghost-agent-workflow:goal-dag-runner 继续 \`${resolve(goalPath)}\`。`,
+      `/ghost-agent-workflow:subagent-coordination 继续 \`${resolve(goalPath)}\`。`,
   };
 }
 

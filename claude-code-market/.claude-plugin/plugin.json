@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "description": "面向 Claude Code local_fallback 生命周期的文档 coverage、v4 Owner/task DAG、短续跑恢复、可替换执行单元协调与智能 Git 提交技能。",
-  "version": "0.4.1",
+  "description": "面向 Claude Code local_fallback 生命周期的 subagent-only 文档 coverage、v4 Owner/task DAG、短续跑恢复与智能 Git 提交技能。",
+  "version": "0.4.3",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -10,7 +10,7 @@
   "repository": "https://github.com/Ghost233/ghost-agent-market",
   "license": "MIT",
   "keywords": [
-    "goal-dag-runner",
+    "subagent-coordination",
     "parallel-task-planner",
     "task-dag",
     "parallel-planning",

@@ -10,7 +10,7 @@ user-invocable: false
 
 只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源；当前 Agent 的会话记忆和复用只是性能优化。
 
-不得创建 Agent、线程或继续委派。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
+不得创建或委派其他执行单元。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
 
 Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置；Codex 固定 profile。这是有意的平台差异。每次接收 binding 时读取 [references/templates.md](references/templates.md)。
 

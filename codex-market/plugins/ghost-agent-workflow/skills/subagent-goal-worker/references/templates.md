@@ -8,7 +8,7 @@
 {
   "contract": "TASK_BINDING_V4",
   "goal_id": "runtime-owner-reuse",
-  "goal_objective": "每轮使用 $goal-dag-runner 完整执行计划",
+  "goal_objective": "每轮使用 $subagent-coordination 完整执行计划",
   "plan_path": "/absolute/goal/plan.json",
   "state_path": "/absolute/goal/state.json",
   "executor_mode": "subagent",

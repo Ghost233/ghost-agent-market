@@ -1,6 +1,6 @@
 ---
 name: parallel-task-planner
-description: 仅供 goal-dag-runner 内部使用：在已验证的 GOAL_CONTRACT_V1 下读取计划源文件，创建 PLAN_COVERAGE_V1 与 DAG_PLAN_V4，或为同一 active Goal 创建覆盖率/失败/源修订所需的 DAG_DELTA_V1。普通用户规划请求、未收口需求、文档审阅和已绑定 worker task 不得触发。
+description: 仅供 subagent-coordination 内部使用：在已验证的 GOAL_CONTRACT_V1 下读取计划源文件，创建 PLAN_COVERAGE_V1 与 DAG_PLAN_V4，或为同一 active Goal 创建覆盖率、失败或源修订所需的 DAG_DELTA_V1。普通用户规划请求、未收口需求、文档审阅和已绑定 worker task 不得触发。
 ---
 
 # 计划覆盖率与 v4 DAG
@@ -9,7 +9,7 @@ description: 仅供 goal-dag-runner 内部使用：在已验证的 GOAL_CONTRACT
 
 只生成结构化 coverage、Owner/task 拓扑和局部 delta。不要创建执行单元、选择 Agent、生成完整 worker prompt、复制整篇 source 或把 Mermaid 写入契约。
 
-本 skill 是 Codex runner 自动调用的内部能力，不是公开入口。Codex plan 的 Owner profile 固定为 `gpt-5.6-sol/medium`；Claude Code 因平台模型选择机制不同而使用 `null`。这是有意的平台差异。
+本 skill 是 Codex `subagent-coordination` 自动调用的内部能力，不是公开入口。Codex plan 的 Owner profile 固定为 `gpt-5.6-sol/medium`；Claude Code 因平台模型选择机制不同而使用 `null`。这是有意的平台差异。
 
 写入任何产物前读取 [references/templates.md](references/templates.md)。
 
@@ -48,7 +48,7 @@ node <plugin-root>/scripts/goal-dag.mjs render <absolute-plan.json>
 1. 读取当前 goal、coverage、plan/state、受影响 result、Owner Capsule 与直接依赖 result refs。
 2. 使用当前 plan SHA-256 作为 `base_plan_digest`，revision 增加 1；通过 `coverage_update.required_plan_items` 提交完整新覆盖集合。
 3. 普通失败通过 `repairs` 把失败 task 指向新增 replacement；新增 task 仍须有非空 `plan_item_ids`。
-4. source revision 变化时只在 runner 已 drain active reservations 并由 `goal-refresh` 原子刷新 goal/source blocks/绑定后重新读取 source。对每个旧 revision 的 live task 在 `source_dispositions` 中显式选择 `carry_forward` 或 `invalidate`；当前 `source-coverage-audit` 与 `diff-scope-audit` 都必须 invalidate 并由新 audit 替换。
+4. source revision 变化时只在 coordinator 已 drain active reservations 并由 `goal-refresh` 原子刷新 goal/source blocks/绑定后重新读取 source。对每个旧 revision 的 live task 在 `source_dispositions` 中显式选择 `carry_forward` 或 `invalidate`；当前 `source-coverage-audit` 与 `diff-scope-audit` 都必须 invalidate 并由新 audit 替换。
 5. 为每个 invalidated task 新增 superseding task，并把所有依赖它的未完成后继一并 invalidate 或改为依赖 replacement。已接受的旧 revision result 只能在明确 carry-forward 后继续作为证据；runtime 会从 Capsule 当前视图移除 invalidated task 的完成、result/evidence refs 和 checkpoint，planner 不得手改 Capsule。
 6. source 删除 requirement 时，从新 coverage 移除对应 plan item，并 invalidate 仍引用它的每个 live task；旧 item 只能留在 superseded 历史 task 中。任何 carry-forward live task 继续引用已删除 item 都是非法 delta。
 7. 不等待无关 running Owner；delta 只触及受影响闭包。不得全量替换 active plan 或手改 state。
@@ -58,4 +58,4 @@ node <plugin-root>/scripts/goal-dag.mjs render <absolute-plan.json>
 node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <delta.json>
 ```
 
-只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 runner 请求用户决定。
+只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 coordinator 请求用户决定。

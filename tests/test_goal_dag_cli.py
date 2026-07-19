@@ -366,12 +366,22 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertNotIn("continuation_prompt", status)
 
         with self.workspace("claude_code") as (_, goal_path, plan_path):
-            expected = f"/ghost-agent-workflow:goal-dag-runner 继续 `{goal_path}`。"
+            expected = f"/ghost-agent-workflow:subagent-coordination 继续 `{goal_path}`。"
             payload = self.run_json("goal-validate", goal_path, script=CLAUDE_SCRIPT)
             self.assertEqual(payload["continuation_prompt"], expected)
             state_path = self.initialize(goal_path, plan_path, script=CLAUDE_SCRIPT)
             status = self.run_json("status", plan_path, state_path, script=CLAUDE_SCRIPT)
             self.assertEqual(status["continuation_prompt"], expected)
+
+    def test_non_subagent_execution_mode_is_rejected(self) -> None:
+        for platform, script in (("codex", CODEX_SCRIPT), ("claude_code", CLAUDE_SCRIPT)):
+            with self.workspace(platform) as (_, goal_path, _):
+                goal = json.loads(goal_path.read_text(encoding="utf-8"))
+                goal["execution"]["mode"] = "unsupported"
+                goal_path.write_text(json.dumps(goal), encoding="utf-8")
+                rejected = self.run_cli("goal-validate", goal_path, script=script)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn("execution.mode must equal subagent", rejected.stderr)
 
     def test_v3_plan_is_rejected_without_compatibility_path(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
