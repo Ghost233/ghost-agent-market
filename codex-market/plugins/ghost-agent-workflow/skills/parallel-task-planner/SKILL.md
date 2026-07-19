@@ -1,91 +1,61 @@
 ---
 name: parallel-task-planner
-description: 仅当用户已经说明完当前任务、明确要求对它进行 DAG 或并行规划，并且唯一选择子线程或子代理模式时，用于生成初始 v3 计划；也用于同一 parent_goal 的内部修订。任务只需有可识别的规划对象，不要求用户预先给出验收标准。背景说明、尚未说完或准备继续补充的需求，以及普通实施、修复、审查或讨论请求不得触发。
+description: 仅供 goal-dag-runner 内部使用：在已验证的 GOAL_CONTRACT_V1 下读取计划源文件，创建 PLAN_COVERAGE_V1 与 DAG_PLAN_V4，或为同一 active Goal 创建覆盖率/失败/源修订所需的 DAG_DELTA_V1。普通用户规划请求、未收口需求、文档审阅和已绑定 worker task 不得触发。
 ---
 
-# 任务 DAG 规划
+# 计划覆盖率与 v4 DAG
 
-## 职责
+## 边界
 
-初始规划必须同时满足：用户已完成当前任务说明、明确要求现在进行 DAG 或并行规划，并且明确且唯一选择子线程或子代理模式。用户在同一条消息末尾发出规划指令即可视为当前说明已收口；若用户表示尚未说完、稍后补充或当前只是在介绍背景，则不得规划。任务只需有可识别的规划对象，不要求用户预先写出验收标准，规划器负责从任务意图补全 task 级 `done_when` 和验证方式。
+只生成结构化 coverage、Owner/task 拓扑和局部 delta。不要创建执行单元、选择 Agent、生成完整 worker prompt、复制整篇 source 或把 Mermaid 写入契约。
 
-任一初始门禁缺失时都不得创建 `plan.json`、运行 driver 或调用协调器。普通请求继续走普通流程，不为了使用本 skill 追问执行方式；只有用户已经明确要求 DAG 或并行规划时，才用一次简短问题补齐缺失的任务对象或唯一执行方式。`都可以`、`你决定` 或同时允许两种方式都不算唯一选择。
+本 skill 是 Codex runner 自动调用的内部能力，不是公开入口。Codex plan 的 Owner profile 固定为 `gpt-5.6-sol/medium`；Claude Code 因平台模型选择机制不同而使用 `null`。这是有意的平台差异。
 
-满足门禁后为当前任务创建新的 `parent_goal`。单节点、纯串行、并行和混合拓扑都合理，不得因为任务简单或只能串行而跳过规划。已绑定的 DAG task 只由当前执行方式对应的 goal worker 执行，不得再次拆成新的父目标。
+写入任何产物前读取 [references/templates.md](references/templates.md)。
 
-`module` 是当前 `parent_goal` 内稳定的领域职责；`task` 是一次性 DAG 节点，只通过 `module_id` 选择负责人。执行归属为当前父目标内的 `(module_id, thread_role)`：首次派发创建执行单元，后续 task 和 revision 复用；不同 `parent_goal` 之间绝不复用。
+## 先建立覆盖率
 
-初始计划确定 module 后，其 `id`、`worker_profile` 和 `worker_context` 在当前父目标内固定。需要不同职责或执行配置时定义新 module，不修改已有 module。计划不包含线程路由；驱动器在 `next` 时按当前父目标内的 `(module_id, thread_role)` 归属计算 `action.thread_id`。
+1. 读取 `goal.json`，再亲自读取 `goal.source.path` 指向的计划文件；不能只根据 Goal 摘要规划。同时读取 `goal-state.source_blocks.ref` 指向的 runtime `SOURCE_BLOCKS_V1` 并校验其 digest/revision。
+2. 把 source 拆为稳定、原子、可验收的 required plan items。每个 item 都必须有非空 `source_refs`，只引用当前 source block id；并声明非空 `required_effects`，值只能是 `implementation` 或 `verification`。
+3. 先形成 `PLAN_COVERAGE_V1.required_plan_items`，再按 `(plan_item_id, required_effect)` 设计 Owner 和 task。写入 plan 后，把 coverage 的 plan path/digest/revision 绑定到该 plan。
+4. 在 `DAG_PLAN_V4.plan_source` 原样记录 source path/digest/revision，并写入绝对 `coverage_path`。
+5. 要求每个 task 的 `plan_item_ids` 为非空数组并声明一个 `coverage_effect`：work 必须为 `implementation`；review/verify 可为 `verification` 或 `audit`，不能为 implementation。初始 DAG 必须覆盖每个 required effect pair，而不只是出现一次 item id。
 
-本 skill 只规划，不创建执行单元、不修改业务文件。用户明确要求只规划时，展示计划后停止；只有用户同时明确要求规划后执行，才把计划交给所选协调器。同一 `parent_goal` 的后继 revision 继承已经明确的授权和执行方式，不重新询问。
+coverage 是完成判定的一部分，不是说明文档。DAG 无 ready/running task 而 required effect pair 仍 pending 时，生成追加 `DAG_DELTA_V1`；不得 finalize。
 
-## 输出
+## Owner 与 task
 
-在项目中创建：
-
-```text
-.ghost-agent-workflow/parallel_plan/<plan_id>/plan.json
-```
-
-写入前读取 [references/templates.md](references/templates.md)。计划文件只写 JSON；执行模式和 Mermaid 只在对话中展示。
-
-Codex module 配置固定为 `gpt-5.6-sol/medium`，用于子线程创建和绑定校验；不得省略、覆盖、猜测别名或自动降级。子代理模式不消费该字段，但使用相同的固定运行 profile。
-
-每个 task 的 `title` 必须是能直接说明工作的简洁中文名称，至少包含一个中文汉字，不得只写英文、路径、编号或内部标识。`task_id`、`logical_id`、`module_id` 和子代理 canonical target 只作机器标识，不得代替面向用户的任务名称。
-
-## 执行方式
-
-同一份 plan 可以选择两种执行方式，选择不写入 plan：
-
-- 用户明确选择子线程模式时，交给 `$thread-coordination`，task 由 `$thread-goal-worker` 执行。
-- 用户明确选择子代理模式时，交给 `$subagent-coordination`，task 由 `$subagent-goal-worker` 执行。
-- 不设默认方式，不根据任务规模或可用工具代替用户选择。初始规划缺少唯一选择时不得生成计划。
-
-执行开始后由 driver 锁定 `executor_mode`，同一 `parent_goal` 不得中途混用或切换。后继 revision 继承该锁；子代理模式仍使用相同 plan，但不消费 module 的 `worker_profile`。
-
-## 规划流程
-
-1. 确认当前任务说明已收口且规划对象可识别，再提炼 `parent_goal`、当前工程状态和父目标总验证方式；不得要求用户先提供验收标准。
-2. 按稳定领域职责定义 module。不得使用 `implementation`、`review`、`verification`、`compile` 等阶段名，也不得为每个 task 复制近义 module。`worker_context` 只写领域边界和长期不变量。
-3. 按可独立验收的结果拆分 task。不得为制造并行度拆开真实串行职责，也不得合并本可独立验收的结果。每项都写明 `logical_id`、`title`、`thread_role`、`writable_paths`、`done_when` 和 `verification`。
-4. 把 `work` 的 task verification 与 `diff_self_check` 作为默认闭环。`work` 负责正式修改且 `writable_paths` 非空；能够由它自检的结果不得再生成重复自检的 `review`。
-5. 独立 `review` 只由风险触发：跨 module 契约、安全或权限边界、迁移、并发语义、缺乏可执行验证，或用户明确要求。每个风险边界最多聚合一个 `review`，不得按每个 `work` 复制。非阻断建议允许 `completed`；只有阻断缺陷使用 `needs_main_review`。
-6. `verify` 只覆盖前置 `work` 尚未执行的集成、全量 build、test 或 lint，不得重复 work verification。`review` 与 `verify` 同时需要时，默认都直接依赖相关 `work`，作为并列节点且互不依赖；只有真实数据依赖才允许串行。
-7. `review` 和 `verify` 的 `writable_paths` 必须为 `[]`，不得产生 tracked diff。检查任务闭包：引用的测试、门禁或配置如需修改，必须由当前或明确的前置 `work` 覆盖，否则不得生成依赖它的只读 task。
-8. 用 `depends_on` 表达真实依赖。同一 revision 中相同 `module_id + thread_role` 的 task 必须在 DAG 中可比；不同归属且写域、共享契约、生成产物和运行环境不冲突的 ready task 保持不可比并立即并行。
-9. `project_verification` 只汇总父目标覆盖、work 默认闭环和已有的风险审查或集成验证证据，不得临时补造 `review` 或 `verify`。
-10. 至少两个不可比 task 时使用 `parallel_safe`；单节点或纯串行图使用 `sequential_only`；只有真实用户边界使用 `needs_user_review`。前两者都可执行，不能为了通过门禁伪造并行任务。
-
-## 当前任务内修订
-
-只有当前 plan 没有 `running` task 时才修订：
-
-1. 读取直接前版 plan、state、完整 task result 和当前差异。
-2. 一次聚合当前静止点的全部范围变化、审查结论、验证失败和总验收缺口。
-3. 已完成 task 不重跑；把尚未闭环的事实重新整理为一个后继 DAG。
-4. 新计划只用 `continuation.previous_plan_path` 指向直接前版；保持同一 `parent_goal`，`revision` 增加 1。
-5. 完整保留前版全部 module 定义，可按需增加新 module。线程复用不写入计划，也不由 task id 或 `logical_id` 决定。
-6. 后继计划校验成功后，直接前版只保留为结果证据，不再执行；协调器从后继 revision 继续。
-
-内部拆分、依赖重接和同父目标修订沿用原执行方式与授权，不询问用户。只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时，才使用 `needs_user_review`。
-
-## 校验与展示
-
-定位当前插件根目录并运行：
+- 用稳定 `owner_id` 表示 Goal 生命周期内的领域责任，不表示永久 Agent。
+- 把共享代码边界、长期不变量和连续决策放入同一 Owner；work、review、verify 使用不同 Owner。
+- 一个 Owner 可连续承担多个 task，但同一时刻只运行一个。Agent 复用只是性能优化，Owner Capsule 才是持久真相源。
+- 每个 task 只产生一个可验收结果。`work.writable_paths` 必须包含于 Owner 写域；review/verify 写域为空。
+- `depends_on` 只表达数据依赖；写域或运行资源冲突写入 `resource_locks`。
+- 为每个 `verification_id` 保留 Goal gate 的完整 description；覆盖 Goal gate 时同时写 `satisfies_goal_gates`。
+- 固定 `source-coverage-audit` 只能交给独立 `verify` task，且 `coverage_effect: audit`。它必须是每个 work task 的祖先，在业务修改前逐项分类全部 `SOURCE_BLOCKS_V1` block；artifact 由 runtime 根据 classification proposal 与当前 coverage 生成。
+- 固定 `diff-scope-audit` 只能交给独立 `review` 或 `verify` task，且 `coverage_effect: audit`。它必须在 work 结果之后运行 `diff-audit`，由 runtime 扫描初始 baseline、当前真实工作区和 accepted work results 生成非空 artifact；不能复用实施 worker 的自报 diff。
+- 低风险 work 自验闭环。只为跨边界、安全、迁移、并发语义或显式要求增加独立 review。
+- 有无冲突并行节点时使用 `parallel_safe`；否则用 `sequential_only`。未授权破坏性或外部副作用使用 `needs_user_review`。
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs validate <absolute-plan.json>
-node <plugin-root>/scripts/thread-plan.mjs render <absolute-plan.json>
+node <plugin-root>/scripts/goal-dag.mjs validate <absolute-plan.json>
+node <plugin-root>/scripts/goal-dag.mjs render <absolute-plan.json>
 ```
 
-`validate` 只校验计划和初始化 state，不生成执行路由。校验失败时保留原始错误并修正候选计划。`render` 成功后，按模板提示 DAG 拓扑、用户选择的执行方式和是否执行，并把标准输出原样放入 `mermaid` fenced code block。每个 revision 正常展示一次；Mermaid 不是机器输入。
+## 局部修订与 source fencing
 
-## 交接
+失败、范围变化、coverage pending 或 source revision 变化时只生成 `DAG_DELTA_V1`：
 
-- `parallel_safe`：明确提示存在可并行节点；仅在用户已授权规划后执行时，调用或恢复已选定的 coordination skill。
-- `sequential_only`：明确提示当前是合理的串行 DAG，不会因此阻塞；仅在用户已授权规划后执行时，调用或恢复已选定的 coordination skill。
-- `needs_user_review`：展示具体用户边界后暂停。
+1. 读取当前 goal、coverage、plan/state、受影响 result、Owner Capsule 与直接依赖 result refs。
+2. 使用当前 plan SHA-256 作为 `base_plan_digest`，revision 增加 1；通过 `coverage_update.required_plan_items` 提交完整新覆盖集合。
+3. 普通失败通过 `repairs` 把失败 task 指向新增 replacement；新增 task 仍须有非空 `plan_item_ids`。
+4. source revision 变化时只在 runner 已 drain active reservations 并由 `goal-refresh` 原子刷新 goal/source blocks/绑定后重新读取 source。对每个旧 revision 的 live task 在 `source_dispositions` 中显式选择 `carry_forward` 或 `invalidate`；当前 `source-coverage-audit` 与 `diff-scope-audit` 都必须 invalidate 并由新 audit 替换。
+5. 为每个 invalidated task 新增 superseding task，并把所有依赖它的未完成后继一并 invalidate 或改为依赖 replacement。已接受的旧 revision result 只能在明确 carry-forward 后继续作为证据；runtime 会从 Capsule 当前视图移除 invalidated task 的完成、result/evidence refs 和 checkpoint，planner 不得手改 Capsule。
+6. source 删除 requirement 时，从新 coverage 移除对应 plan item，并 invalidate 仍引用它的每个 live task；旧 item 只能留在 superseded 历史 task 中。任何 carry-forward live task 继续引用已删除 item 都是非法 delta。
+7. 不等待无关 running Owner；delta 只触及受影响闭包。不得全量替换 active plan 或手改 state。
+8. 运行 `apply-delta`；校验失败时修正 delta。
 
-用户要求只规划时，无论 `parallel_safe` 还是 `sequential_only`，展示后都停止，不锁定 `executor_mode`，不调用协调器。
+```text
+node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <delta.json>
+```
 
-计划生成不代表父目标完成。
+只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 runner 请求用户决定。

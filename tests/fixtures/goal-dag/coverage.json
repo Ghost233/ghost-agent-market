@@ -1,0 +1,35 @@
+{
+  "contract": "PLAN_COVERAGE_V1",
+  "source_path": "__DOC_PATH__",
+  "source_digest": "__DOC_DIGEST__",
+  "source_revision": 1,
+  "plan_path": "__PLAN_PATH__",
+  "plan_digest": "__PLAN_DIGEST__",
+  "plan_revision": 1,
+  "required_plan_items": [
+    {
+      "id": "PI-state-types",
+      "description": "抽离页面状态类型",
+      "source_refs": ["__SOURCE_BLOCK_1__"],
+      "required_effects": ["implementation"]
+    },
+    {
+      "id": "PI-page-reads",
+      "description": "迁移页面状态读取",
+      "source_refs": ["__SOURCE_BLOCK_2__"],
+      "required_effects": ["implementation"]
+    },
+    {
+      "id": "PI-fixtures",
+      "description": "更新状态测试夹具",
+      "source_refs": ["__SOURCE_BLOCK_2__"],
+      "required_effects": ["implementation"]
+    },
+    {
+      "id": "PI-integration",
+      "description": "完成页面集成验证",
+      "source_refs": ["__SOURCE_BLOCK_2__"],
+      "required_effects": ["verification"]
+    }
+  ]
+}

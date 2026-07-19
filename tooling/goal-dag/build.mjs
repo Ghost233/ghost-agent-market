@@ -3,22 +3,21 @@ import { stripTypeScriptTypes } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const sourcePath = resolve(root, "tooling/thread-plan/thread-plan.ts");
+const sourcePath = resolve(root, "tooling/goal-dag/goal-dag.ts");
 const targets = [
   {
-    path: resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/thread-plan.mjs"),
+    path: resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"),
     executionPlatform: "codex",
   },
   {
-    path: resolve(root, "claude-code-market/scripts/thread-plan.mjs"),
+    path: resolve(root, "claude-code-market/scripts/goal-dag.mjs"),
     executionPlatform: "claude_code",
   },
 ];
 const source = readFileSync(sourcePath, "utf8");
 const outputTemplate = [
-  "// Generated from tooling/thread-plan/thread-plan.ts. Do not edit directly.",
+  "// Generated from tooling/goal-dag/goal-dag.ts. Do not edit directly.",
   stripTypeScriptTypes(source, { mode: "strip" }).replace(/[ \t]+$/gm, ""),
 ].join("\n");
 

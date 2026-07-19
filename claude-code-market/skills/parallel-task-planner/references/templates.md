@@ -1,174 +1,198 @@
-# 计划模板
+# Claude Code Coverage、Plan 与 Delta 模板
 
-只有用户已收口当前任务说明、明确要求 DAG 或并行规划，并唯一选择执行线程或子代理模式后，才创建初始计划。任务只需有可识别的规划对象，不要求用户预先给出验收标准；规划器在计划中补充完成条件和验证方式。每个新的规划对象创建新的 `parent_goal`。module 和执行归属只在该父目标内有效；计划不包含执行方式或路由，同一 JSON 可交给执行线程或子代理协调器。
+## PLAN_COVERAGE_V1
 
-## 初始计划
-
-```json
-{
-  "planner": "parallel-task-planner",
-  "plan_format_version": 3,
-  "revision": 1,
-  "execution_platform": "claude_code",
-  "parent_goal": "<用户已经说明完的当前任务目标>",
-  "modules": [
-    {
-      "id": "state-contract",
-      "worker_profile": {
-        "model": "sonnet",
-        "reasoning_effort": "max"
-      },
-      "worker_context": "负责状态契约及其长期不变量"
-    },
-    {
-      "id": "parser-runtime",
-      "worker_profile": {
-        "model": "sonnet",
-        "reasoning_effort": "max"
-      },
-      "worker_context": "负责解析器运行时行为与边界"
-    },
-    {
-      "id": "build-integration",
-      "worker_profile": {
-        "model": "sonnet",
-        "reasoning_effort": "max"
-      },
-      "worker_context": "负责工程构建和集成验证"
-    }
-  ],
-  "tasks": [
-    {
-      "id": "T1",
-      "logical_id": "state.extract-types",
-      "title": "抽离页面状态类型",
-      "thread_role": "work",
-      "module_id": "state-contract",
-      "task": "在独立文件定义并导出页面状态类型",
-      "depends_on": [],
-      "writable_paths": ["src/state/types.ts"],
-      "done_when": ["独立文件导出完整页面状态类型"],
-      "verification": ["运行状态类型定向检查并核对当前 task 差异"]
-    },
-    {
-      "id": "T2",
-      "logical_id": "parser.align-boundaries",
-      "title": "调整解析器边界行为",
-      "thread_role": "work",
-      "module_id": "parser-runtime",
-      "task": "调整解析器的空输入与非法输入行为",
-      "depends_on": [],
-      "writable_paths": ["src/parser/runtime.ts", "tests/parser-boundaries.test.ts"],
-      "done_when": ["解析器边界行为与测试保持一致"],
-      "verification": ["运行解析器边界定向测试并核对当前 task 差异"]
-    },
-    {
-      "id": "T3",
-      "logical_id": "build.verify-integration",
-      "title": "验证状态与解析器集成",
-      "thread_role": "verify",
-      "module_id": "build-integration",
-      "task": "执行状态与解析器集成构建",
-      "depends_on": ["T1", "T2"],
-      "writable_paths": [],
-      "done_when": ["构建和集成测试通过且 tracked diff 未变化"],
-      "verification": ["运行未被两个 work 定向验证覆盖的集成构建与测试，并记录命令、退出状态和日志"]
-    }
-  ],
-  "project_verification": ["确认全部 task 完成且父目标证据覆盖完整"],
-  "safety": {
-    "status": "parallel_safe",
-    "reasons": ["T1 与 T2 无依赖且职责和写域不冲突"]
-  }
-}
-```
-
-这是低风险默认示例：两个 `work` 通过各自 verification 与差异自检默认闭环，计划不为重复自检生成 `review`；`verify` 只补充非重复的集成检查。
-
-## 高风险审查片段
-
-只有出现明确风险边界时才加入聚合 `review`。例如状态与解析器共同改变外部数据契约时，可在 modules 中增加 `public-contract`，并让审查与集成验证成为互不依赖的并列节点：
+先读取 runtime 生成并由 `goal-state.source_blocks` 绑定的 `SOURCE_BLOCKS_V1`。每个计划项都要引用至少一个当前 block，并声明完成它真正需要的 effect：
 
 ```json
 {
-  "modules": [
+  "contract": "PLAN_COVERAGE_V1",
+  "source_path": "/absolute/path/to/plan.md",
+  "source_digest": "<plan.md sha256>",
+  "source_revision": 1,
+  "plan_path": "/absolute/goal/plan.json",
+  "plan_digest": "<plan.json sha256>",
+  "plan_revision": 1,
+  "required_plan_items": [
     {
-      "id": "public-contract",
-      "worker_profile": {
-        "model": "sonnet",
-        "reasoning_effort": "max"
-      },
-      "worker_context": "负责状态与解析器共享的外部数据契约边界"
-    }
-  ],
-  "tasks": [
+      "id": "PI-owner-state",
+      "description": "实现并验证 Owner affinity、generation fencing 与 Capsule checkpoint",
+      "source_refs": ["L12-0123456789ab", "L13-abcdef012345"],
+      "required_effects": ["implementation", "verification"]
+    },
     {
-      "id": "T4",
-      "logical_id": "contract.review-boundary",
-      "title": "审查外部数据契约",
-      "thread_role": "review",
-      "module_id": "public-contract",
-      "task": "只读审查两个 work 共同影响的外部数据契约风险边界",
-      "depends_on": ["T1", "T2"],
-      "writable_paths": [],
-      "done_when": ["记录阻断缺陷与非阻断建议；无阻断缺陷时完成"],
-      "verification": ["核对受审边界、依赖 task 结果和对应差异证据"]
+      "id": "PI-workflow-proof",
+      "description": "以完整 smoke 证明覆盖率、证据和完成顺序",
+      "source_refs": ["L28-fedcba987654"],
+      "required_effects": ["verification"]
     }
   ]
 }
 ```
 
-该片段只展示需要追加到低风险示例的 module 与 task，不是第二份完整计划。新增 `T4` review 与原有 `T3` verify 都直接依赖相关 work，彼此不建立依赖；同一风险边界只聚合一次 review，不按每个 work 重复创建。
+`source_refs` 只能引用当前 `SOURCE_BLOCKS_V1.blocks[].id`。`required_effects` 只能包含 `implementation`、`verification`；`audit` 是 gate task 的 effect，不是 coverage requirement。coverage 按 `(item, effect)` 计数，不能用一个 implementation task 冒充 verification。
 
-## 修正版
-
-修正版仍是完整计划，只额外加入：
+## DAG_PLAN_V4
 
 ```json
 {
-  "continuation": {
-    "previous_plan_path": "<同一 parent_goal 的直接前版 plan.json 绝对路径>"
+  "contract": "DAG_PLAN_V4",
+  "planner": "parallel-task-planner",
+  "plan_format_version": 4,
+  "revision": 1,
+  "execution_platform": "claude_code",
+  "goal_contract_path": "/absolute/goal/goal.json",
+  "goal_digest": "<goal.json sha256>",
+  "goal_id": "runtime-owner-reuse",
+  "plan_source": {"path": "/absolute/path/to/plan.md", "digest": "<plan.md sha256>", "revision": 1},
+  "coverage_path": "/absolute/goal/coverage.json",
+  "owners": [
+    {
+      "id": "source-audit", "role": "verify",
+      "responsibility": "在业务修改前独立证明 source blocks 没有遗漏",
+      "writable_paths": [],
+      "worker_context": "分类全部 SOURCE_BLOCKS_V1，并让 runtime 校验 coverage effects",
+      "runtime_profile": null, "reuse_policy": "owner_affinity"
+    },
+    {
+      "id": "runtime-core", "role": "work",
+      "responsibility": "负责任务状态机与并发不变量",
+      "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+      "worker_context": "保持 reservation、attempt、source revision 与 Capsule 更新原子",
+      "runtime_profile": null, "reuse_policy": "owner_affinity"
+    },
+    {
+      "id": "runtime-verification", "role": "verify",
+      "responsibility": "负责只读 smoke 与最终真实工作区审计",
+      "writable_paths": [],
+      "worker_context": "验证 required effects，并调用 runtime 生成审计 artifact",
+      "runtime_profile": null, "reuse_policy": "owner_affinity"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T0", "logical_id": "source.coverage-audit", "title": "审计源计划覆盖",
+      "role": "verify", "owner_id": "source-audit",
+      "task": "分类全部 source blocks，并运行 source-audit 生成 artifact",
+      "depends_on": [], "writable_paths": [], "resource_locks": ["source-coverage-audit"],
+      "done_when": ["每个 source block 已映射或有明确 non-requirement 理由"],
+      "verification_ids": ["source-coverage-audit"], "satisfies_goal_gates": ["source-coverage-audit"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
+      "priority": 30, "estimated_cost": 1
+    },
+    {
+      "id": "T1", "logical_id": "runtime.owner-state", "title": "实现 Owner 状态机",
+      "role": "work", "owner_id": "runtime-core",
+      "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
+      "depends_on": ["T0"],
+      "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+      "resource_locks": ["goal-dag-runtime"], "done_when": ["Owner 可复用也可安全换 Agent"],
+      "verification_ids": ["runtime-unit"], "satisfies_goal_gates": ["runtime-unit"],
+      "plan_item_ids": ["PI-owner-state"], "coverage_effect": "implementation",
+      "priority": 20, "estimated_cost": 5
+    },
+    {
+      "id": "T2", "logical_id": "runtime.verify-flow", "title": "验证 Goal 执行流程",
+      "role": "verify", "owner_id": "runtime-verification", "task": "只读运行完整 Goal DAG smoke",
+      "depends_on": ["T1"], "writable_paths": [], "resource_locks": ["goal-dag-smoke"],
+      "done_when": ["计划项 required effects 为 100% 且完成顺序正确"],
+      "verification_ids": ["workflow-smoke"], "satisfies_goal_gates": ["workflow-smoke"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "verification",
+      "priority": 20, "estimated_cost": 2
+    },
+    {
+      "id": "T3", "logical_id": "runtime.diff-scope-audit", "title": "审计真实工作区差异",
+      "role": "verify", "owner_id": "runtime-verification",
+      "task": "运行 diff-audit，核对 baseline、真实工作区与 accepted work results",
+      "depends_on": ["T2"], "writable_paths": [], "resource_locks": ["diff-scope-audit"],
+      "done_when": ["runtime 生成的 DIFF_SCOPE_AUDIT_V1 通过"],
+      "verification_ids": ["diff-scope-audit"], "satisfies_goal_gates": ["diff-scope-audit"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
+      "priority": 10, "estimated_cost": 1
+    }
+  ],
+  "safety": {
+    "status": "sequential_only",
+    "reasons": ["source audit 必须先于 work，最终 audit 必须晚于 accepted work results"]
   }
 }
 ```
 
-`revision` 只增加 1。完整保留前版全部 module 定义，可按需增加新 module；未闭环工作直接写成新 DAG task。计划中不写执行单元路由或任务替代映射。
+Claude Code 每个 Owner 的 `runtime_profile` 必须为 `null`，由平台选择实际模型。每个 work task 必须依赖当前 `source-coverage-audit`；所有 task 都必须有非空 `plan_item_ids` 和合法 `coverage_effect`。
 
-## 校验后展示
+## DAG_DELTA_V1：source revision 刷新
 
-先明确回显用户在规划前已经唯一选择的执行方式：
+只有 `goal-refresh` 已完成原子刷新并令 state 进入 `goal_refresh_pending` 后，才生成 source delta：
 
-```text
-执行方式：执行线程
+```json
+{
+  "contract": "DAG_DELTA_V1",
+  "base_plan_digest": "<当前 plan.json sha256>",
+  "revision": 2,
+  "coverage_update": {
+    "required_plan_items": [
+      {
+        "id": "PI-owner-state",
+        "description": "实现并验证 Owner affinity、generation fencing 与 Capsule checkpoint",
+        "source_refs": ["L14-111111111111"],
+        "required_effects": ["implementation", "verification"]
+      },
+      {
+        "id": "PI-workflow-proof",
+        "description": "以完整 smoke 证明覆盖率、证据和完成顺序",
+        "source_refs": ["L31-222222222222"],
+        "required_effects": ["verification"]
+      }
+    ]
+  },
+  "source_dispositions": [
+    {"task_id": "T0", "action": "invalidate", "replacement_task_id": "T4"},
+    {"task_id": "T1", "action": "invalidate", "replacement_task_id": "T5"},
+    {"task_id": "T2", "action": "invalidate", "replacement_task_id": "T6"},
+    {"task_id": "T3", "action": "invalidate", "replacement_task_id": "T7"}
+  ],
+  "add_owners": [],
+  "add_tasks": [
+    {
+      "id": "T4", "logical_id": "source.coverage-audit-r2", "title": "重审源计划覆盖",
+      "role": "verify", "owner_id": "source-audit", "task": "分类 revision 2 的全部 source blocks",
+      "depends_on": [], "writable_paths": [], "resource_locks": ["source-coverage-audit"],
+      "done_when": ["revision 2 的 source blocks 无遗漏"],
+      "verification_ids": ["source-coverage-audit"], "satisfies_goal_gates": ["source-coverage-audit"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
+      "priority": 40, "estimated_cost": 1
+    },
+    {
+      "id": "T5", "logical_id": "runtime.owner-state-r2", "title": "更新 Owner 状态机",
+      "role": "work", "owner_id": "runtime-core", "task": "按 revision 2 更新实现",
+      "depends_on": ["T4"], "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+      "resource_locks": ["goal-dag-runtime"], "done_when": ["实现符合 revision 2"],
+      "verification_ids": ["runtime-unit"], "satisfies_goal_gates": ["runtime-unit"],
+      "plan_item_ids": ["PI-owner-state"], "coverage_effect": "implementation",
+      "priority": 30, "estimated_cost": 3
+    },
+    {
+      "id": "T6", "logical_id": "runtime.verify-flow-r2", "title": "复验 Goal 执行流程",
+      "role": "verify", "owner_id": "runtime-verification", "task": "验证 revision 2",
+      "depends_on": ["T5"], "writable_paths": [], "resource_locks": ["goal-dag-smoke"],
+      "done_when": ["revision 2 required effects 全部完成"],
+      "verification_ids": ["workflow-smoke"], "satisfies_goal_gates": ["workflow-smoke"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "verification",
+      "priority": 20, "estimated_cost": 2
+    },
+    {
+      "id": "T7", "logical_id": "runtime.diff-scope-audit-r2", "title": "复审真实工作区差异",
+      "role": "verify", "owner_id": "runtime-verification", "task": "运行 revision 2 diff-audit",
+      "depends_on": ["T6"], "writable_paths": [], "resource_locks": ["diff-scope-audit"],
+      "done_when": ["revision 2 DIFF_SCOPE_AUDIT_V1 通过"],
+      "verification_ids": ["diff-scope-audit"], "satisfies_goal_gates": ["diff-scope-audit"],
+      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
+      "priority": 10, "estimated_cost": 1
+    }
+  ],
+  "repairs": [],
+  "safety": {"status": "sequential_only", "reasons": ["revision 2 重新执行 source audit、work、verify 与 diff audit"]}
+}
 ```
 
-或：
-
-```text
-执行方式：子代理
-```
-
-不得在计划生成后才默认、猜测或代替用户选择。
-
-`parallel_safe`：
-
-```text
-DAG 拓扑：可并行（parallel_safe）
-当前计划已通过校验，执行时将按照依赖关系推进全部 ready task。
-```
-
-`sequential_only`：
-
-```text
-DAG 拓扑：仅串行（sequential_only）
-当前计划已通过校验，执行时将按依赖顺序推进；串行拓扑不会阻塞协调器。
-```
-
-`needs_user_review`：
-
-```text
-DAG 拓扑：等待复核（needs_user_review）
-当前计划已通过校验，但存在以下用户边界：<具体证据>。
-```
-
-紧接提示把 `render` 的标准输出原样放入 `mermaid` fenced code block。`parallel_safe` 和 `sequential_only` 只有在用户同时明确要求执行时才交给已选协调器；用户要求只规划时展示后停止。`needs_user_review` 暂停。同一 `parent_goal` 的后继 revision 继承已有执行授权和锁定模式。
+source refresh delta 必须 disposition 每个 live task，且旧 `source-coverage-audit`、`diff-scope-audit` 都必须 invalidate。`apply-delta` 会原子清除 invalidated task 在 Capsule 当前视图中的 completed/result/evidence/checkpoint 引用。非 source refresh 的 repair/coverage delta 必须逐字段原样保留当前 `required_plan_items`（包括 `source_refs` 与 `required_effects`）。

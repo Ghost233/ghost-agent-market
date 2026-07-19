@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "description": "面向 Claude Code 的显式 v3 任务 DAG 规划、执行线程或子代理协调，以及智能 Git 提交技能。仅在用户完成当前任务说明、明确要求 DAG 或并行规划并唯一选择执行方式时规划；不提供默认执行模式。",
-  "version": "0.3.8",
+  "description": "面向 Claude Code local_fallback 生命周期的文档 coverage、v4 Owner/task DAG、短续跑恢复、可替换执行单元协调与智能 Git 提交技能。",
+  "version": "0.4.1",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -10,6 +10,7 @@
   "repository": "https://github.com/Ghost233/ghost-agent-market",
   "license": "MIT",
   "keywords": [
+    "goal-dag-runner",
     "parallel-task-planner",
     "task-dag",
     "parallel-planning",

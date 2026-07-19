@@ -1,0 +1,7 @@
+interface:
+  display_name: "Goal DAG Runner"
+  short_description: "在 Codex 原生 Goal 内持续执行带覆盖率的 Owner DAG。"
+  default_prompt: "/goal 每轮使用 $goal-dag-runner，以子代理 DAG 完整执行 `./plan.md`，直到计划项覆盖率 100% 且所有验收通过。"
+
+policy:
+  allow_implicit_invocation: false

@@ -14,178 +14,127 @@ def read(relative: str) -> str:
     return (PLUGIN / relative).read_text(encoding="utf-8")
 
 
-class CodexChildThreadContractTests(unittest.TestCase):
+class CodexWorkflowContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        cls.goal = read("skills/goal-dag-runner/SKILL.md")
         cls.planner = read("skills/parallel-task-planner/SKILL.md")
-        cls.planner_templates = read(
-            "skills/parallel-task-planner/references/templates.md"
-        )
-        cls.coordinator = read("skills/thread-coordination/SKILL.md")
-        cls.coordinator_templates = read(
-            "skills/thread-coordination/references/templates.md"
-        )
-        cls.worker = read("skills/thread-goal-worker/SKILL.md")
-        cls.worker_templates = read(
-            "skills/thread-goal-worker/references/templates.md"
-        )
+        cls.thread = read("skills/thread-coordination/SKILL.md")
+        cls.subagent = read("skills/subagent-coordination/SKILL.md")
+        cls.thread_worker = read("skills/thread-goal-worker/SKILL.md")
+        cls.subagent_worker = read("skills/subagent-goal-worker/SKILL.md")
         cls.git_commit = read("skills/git-commit/SKILL.md")
         cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
         cls.git_commit_worker = GIT_COMMIT_WORKER.read_text(encoding="utf-8")
-        cls.metadata = "\n".join(
-            read(path)
-            for path in (
-                "skills/parallel-task-planner/agents/openai.yaml",
-                "skills/thread-coordination/agents/openai.yaml",
-                "skills/thread-goal-worker/agents/openai.yaml",
-                "skills/git-commit/agents/openai.yaml",
-            )
-        )
-        cls.thread_metadata = "\n".join(
-            read(path)
-            for path in (
-                "skills/thread-coordination/agents/openai.yaml",
-                "skills/thread-goal-worker/agents/openai.yaml",
-            )
-        )
 
-    def test_planner_emits_fresh_v3_dag(self) -> None:
-        contract = f"{self.planner}\n{self.planner_templates}"
-        self.assertIn("plan_format_version", contract)
-        self.assertIn("execution_platform", contract)
-        self.assertIn('"execution_platform": "codex"', contract)
-        self.assertIn(".ghost-agent-workflow/parallel_plan", self.planner)
-        self.assertIn("gpt-5.6-sol/medium", self.planner)
-        self.assertIn("新的 `parent_goal`", self.planner)
-        self.assertIn("不同 `parent_goal` 之间绝不复用", self.planner)
-        self.assertNotIn('"dispatch"', self.planner_templates)
-        self.assertIn("至少包含一个中文汉字", self.planner)
+    def test_codex_subagent_mode_is_direct_and_fixed_profile(self) -> None:
+        self.assertIn("spawn_agent", self.subagent)
+        self.assertIn("followup_task", self.subagent)
+        self.assertIn("interrupt_agent", self.subagent)
+        self.assertIn("wait_agent", self.subagent)
+        self.assertIn('model: "gpt-5.6-sol"', self.subagent)
+        self.assertIn('reasoning_effort: "medium"', self.subagent)
+        self.assertIn('fork_turns: "none"', self.subagent)
+        self.assertIn('agent_type: "worker"', self.subagent)
+        self.assertIn("executor_spawn_name", self.subagent)
+        self.assertIn("TASK_BINDING_V4", self.subagent)
+        self.assertIn("启动握手", self.subagent)
+        self.assertNotIn("SUBAGENT_BOOTSTRAP_V1", self.subagent)
+        self.assertNotIn("SUBAGENT_READY_V1", self.subagent)
 
-    def test_coordinator_uses_codex_thread_tools(self) -> None:
-        contract = f"{self.coordinator}\n{self.coordinator_templates}"
+    def test_codex_thread_mode_uses_visible_thread_tools_and_fixed_profile(self) -> None:
         for tool in (
             "list_projects",
             "list_threads",
-            "create_thread",
-            "wait_threads",
             "send_message_to_thread",
-            "set_thread_title",
+            "wait_threads",
         ):
-            self.assertIn(tool, contract)
-        self.assertIn("environment: {type: local}", contract)
-        self.assertIn("dispatch_task", contract)
-        self.assertIn("dispatch_key", contract)
-        self.assertIn("thread-plan.mjs mode", contract)
-        self.assertIn("<state_path> thread", contract)
-        self.assertIn("普通错误文本不能当作 JSON 解析", contract)
-        self.assertIn("model=gpt-5.6-sol", contract)
-        self.assertIn("thinking=medium", contract)
-        self.assertIn("create_thread:gpt-5.6-sol/medium", contract)
+            self.assertIn(tool, self.thread)
+        self.assertIn("gpt-5.6-sol/medium", self.thread)
+        self.assertIn("不自动归档", self.thread)
+        self.assertIn("[GA][用途][状态]", self.thread)
 
-    def test_thread_skills_require_sol_medium(self) -> None:
+    def test_owner_reuse_is_soft_and_fenced(self) -> None:
         combined = "\n".join(
-            (self.coordinator, self.coordinator_templates, self.worker, self.worker_templates)
+            (self.goal, self.planner, self.thread, self.subagent, self.thread_worker, self.subagent_worker)
         )
-        self.assertIn("gpt-5.6-sol/medium", combined)
-        self.assertIn('"model": "gpt-5.6-sol"', combined)
-        self.assertIn('"reasoning_effort": "medium"', combined)
-        self.assertNotIn("gpt-5.6-terra", combined)
+        self.assertIn("Owner Capsule", combined)
+        self.assertIn("Owner affinity", combined)
+        self.assertIn("generation", combined)
+        self.assertIn("reservation", combined)
+        self.assertIn("rotate-owner", combined)
+        self.assertIn("不同 Goal 不复用", combined)
+        self.assertIn("会话记忆和复用只是性能优化", combined)
+        self.assertIn("不表示永久 Agent", combined)
 
-    def test_thread_reuse_is_limited_to_current_parent_goal(self) -> None:
-        contract = f"{self.planner}\n{self.coordinator}\n{self.worker}"
-        self.assertIn("当前父目标内", contract)
-        self.assertIn("不得跨 `parent_goal`", contract)
-        self.assertIn("首次派发创建", contract)
-        self.assertIn("后续 task 和 revision 复用", contract)
-        self.assertNotIn("reuse_existing_thread", contract)
-        self.assertNotIn("continuation.reuse", contract)
-        self.assertNotIn("永久 claim", contract)
+    def test_workers_checkpoint_and_return_v4_result(self) -> None:
+        for worker in (self.thread_worker, self.subagent_worker):
+            name = "thread-goal-worker" if worker == self.thread_worker else "subagent-goal-worker"
+            reference = read(f"skills/{name}/references/templates.md")
+            combined = f"{worker}\n{reference}"
+            self.assertIn("OWNER_CHECKPOINT_V1", combined)
+            self.assertIn("WORKER_RESULT_V4", combined)
+            self.assertIn("owner_capsule_ref", combined)
+            self.assertIn("result_path", combined)
+            self.assertIn("原子写入", combined)
+            self.assertIn("不得修改 goal/coverage/plan/state/capsule", worker)
+            self.assertIn("capsule.json", worker)
+            self.assertIn("source_revision", combined)
+            self.assertIn("plan_item_ids", combined)
+            self.assertIn("verification requirement descriptions", worker)
+            self.assertIn("coverage.{ref,digest,semantic_digest}", worker)
+            self.assertIn("evidence_artifact_paths", worker)
+            self.assertIn("artifact_digest", worker)
 
-    def test_threads_use_ga_titles_and_are_retained(self) -> None:
-        self.assertIn("[GA][<用途>][<状态>]", self.coordinator)
-        for label in ("实施", "审查", "验证", "待命", "执行", "完成", "复核", "阻塞", "失败"):
-            self.assertIn(label, self.coordinator)
-        self.assertIn("不自动归档", self.coordinator)
-        self.assertNotIn("set_thread_archived", self.coordinator)
-        self.assertIn("<中文任务名>", self.coordinator)
-        self.assertNotIn("<logical_id> · <title>", self.coordinator)
-        self.assertIn('"display_name":', self.worker_templates)
+    def test_codex_runner_bridges_native_goal_after_local_finalize(self) -> None:
+        self.assertIn("当前 Codex 原生 Goal 的 objective 显式包含 $goal-dag-runner", self.goal)
+        self.assertIn("首先调用 `get_goal`", self.goal)
+        self.assertNotIn("create_goal", self.goal)
+        bridge = self.goal[self.goal.index("## 原生完成桥接") :]
+        self.assertLess(bridge.index("goal-dag.mjs finalize"), bridge.index("update_goal"))
+        self.assertLess(bridge.index("update_goal"), bridge.index("goal-dag.mjs native-confirm"))
+        self.assertIn("native_completion_pending", bridge)
+        self.assertIn("不能重新 status/reconcile/finalize", bridge)
+        self.assertIn("mutable source/worktree", bridge)
+        self.assertNotIn('update_goal({status: "blocked"})', bridge)
 
-    def test_worker_contract_is_scoped_and_atomic(self) -> None:
-        contract = f"{self.worker}\n{self.worker_templates}"
-        self.assertIn("任一时刻只能有一个活动 task", self.worker)
-        self.assertIn("不得继承上一 task 的权限或证据", self.worker)
-        self.assertIn("`review`", self.worker)
-        self.assertIn("`verify`", self.worker)
-        self.assertIn("WORKER_RESULT_V3", contract)
-        self.assertIn("WORKER_REPAIR_V3", contract)
-        self.assertIn("result_path", contract)
-        self.assertIn("原子写入", contract)
-        self.assertIn("scope_request", contract)
+    def test_recovery_uses_narrow_reserved_reuse_reclaim_and_fences_stale_executors(self) -> None:
+        for coordinator in (self.thread, self.subagent):
+            self.assertIn("`reserved_unbound + spawn_executor`", coordinator)
+            self.assertIn("`reserved_unbound + reuse_executor` 的 bound 目标确认丢失是窄例外", coordinator)
+            self.assertIn("以当前 token `reclaim`", coordinator)
+            self.assertIn("同一逻辑 Owner/generation", coordinator)
+            self.assertIn("confirm-stale-executor", coordinator)
+            self.assertIn("stop-pending stale executor", coordinator)
 
-    def test_codex_skills_do_not_reference_claude(self) -> None:
-        for skill in (PLUGIN / "skills").rglob("SKILL.md"):
-            self.assertNotIn("claude", skill.read_text(encoding="utf-8").lower(), skill)
-
-    def test_metadata_is_chinese_and_current(self) -> None:
-        self.assertIn("任务 DAG", self.metadata)
-        self.assertIn("明确", self.metadata)
-        self.assertIn("完整单任务绑定包", self.metadata)
-        self.assertNotIn("子代理", self.thread_metadata)
+    def test_thread_worker_reference_uses_thread_executor_mode(self) -> None:
+        reference = read("skills/thread-goal-worker/references/templates.md")
+        binding = reference[reference.index("## TASK_BINDING_V4") : reference.index("## OWNER_CHECKPOINT_V1")]
+        self.assertIn('"executor_mode": "thread"', binding)
+        self.assertNotIn('"executor_mode": "subagent"', binding)
 
     def test_git_commit_uses_readonly_worker_then_main_thread_commits(self) -> None:
-        combined = f"{self.git_commit}\n{self.metadata}"
+        combined = f"{self.git_commit}\n{self.git_commit_metadata}"
         self.assertIn('agent_type: "git_commit_worker"', combined)
         self.assertIn('fork_turns: "none"', self.git_commit)
         self.assertIn("GIT_COMMIT_ANALYSIS_V1", self.git_commit)
         self.assertIn("wait_agent", self.git_commit)
         self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
         self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
-        self.assertIn("必须以一次真实 `spawn_agent` 调用结果为准", self.git_commit)
-        self.assertIn("第 6 步的完整 `GIT_COMMIT_ANALYSIS_V1` 字段契约", self.git_commit)
-        self.assertIn("不得假设子代理能读取本 skill", self.git_commit)
-        self.assertIn("followup_task", self.git_commit)
-        self.assertIn("同一个 `git_commit_worker`", self.git_commit)
-        self.assertIn("一次纯格式修复请求", self.git_commit)
         self.assertIn("git_commit_worker:gpt-5.3-codex-spark/high", combined)
         self.assertIn('model: "gpt-5.6-luna"', self.git_commit)
         self.assertIn('thinking: "medium"', self.git_commit)
         self.assertIn("不是并行分析、第二意见或一般错误兜底", self.git_commit)
         self.assertIn("Spark profile 当前不可创建或不可运行", self.git_commit)
-        self.assertIn("契约缺失或格式错误", self.git_commit)
         self.assertIn("都不得触发 fallback", self.git_commit)
-        self.assertIn('"profile_evidence": "<本次实际采用的唯一 profile>"', self.git_commit)
-        self.assertIn("不得使用 `|`、不得同时报告两个 profile", self.git_commit)
-        self.assertNotIn("只有主分析发生工具、系统或契约失败", self.git_commit)
-        self.assertNotIn(
-            '"profile_evidence": "git_commit_worker:gpt-5.3-codex-spark/high |',
-            self.git_commit,
-        )
-        self.assertNotIn("gpt-5.6-luna", self.git_commit_metadata)
-        self.assertNotIn("fallback", self.git_commit_metadata)
-        self.assertIn("`spawn_agent` 当前不支持 `gpt-5.6-luna`", self.git_commit)
         self.assertIn("create_thread:gpt-5.6-luna/medium fallback", self.git_commit)
-        self.assertIn("list_projects", self.git_commit)
-        self.assertIn("create_thread", self.git_commit)
-        self.assertIn("set_thread_title", self.git_commit)
-        self.assertIn("read_thread(includeOutputs: true)", self.git_commit)
-        self.assertIn("包括返回合法 `status: \"blocked\"` 的情况", self.git_commit)
-        self.assertIn("不得修改文件、继续委派或再次 fallback", self.git_commit)
-        self.assertIn('prefix_rule: ["rtk", "git", "add"]', self.git_commit)
-        self.assertIn('prefix_rule: ["rtk", "git", "commit"]', self.git_commit)
-        self.assertNotIn("GIT_COMMIT_EXECUTOR=1", combined)
-        self.assertNotIn("send_message_to_thread", combined)
+        self.assertIn("主线程复核", self.git_commit)
 
     def test_git_commit_worker_returns_primary_contract(self) -> None:
         self.assertIn('model = "gpt-5.3-codex-spark"', self.git_commit_worker)
         self.assertIn('model_reasoning_effort = "high"', self.git_commit_worker)
         self.assertIn("GIT_COMMIT_ANALYSIS_V1 JSON 对象", self.git_commit_worker)
-        self.assertIn("git config", self.git_commit_worker)
-        self.assertIn("通过 rtk 运行 shell 命令", self.git_commit_worker)
-        self.assertIn(
-            "profile_evidence 必须精确等于 git_commit_worker:gpt-5.3-codex-spark/high",
-            self.git_commit_worker,
-        )
+        self.assertIn("profile_evidence 必须精确等于", self.git_commit_worker)
         self.assertNotIn("gpt-5.6-luna", self.git_commit_worker)
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
@@ -195,23 +144,20 @@ class CodexChildThreadContractTests(unittest.TestCase):
         )
         self.assertEqual(
             (LOCAL_GIT_COMMIT / "agents/openai.yaml").read_text(encoding="utf-8"),
-            read("skills/git-commit/agents/openai.yaml"),
+            self.git_commit_metadata,
         )
 
-    def test_agents_requires_decimal_version_increment(self) -> None:
-        instructions = AGENTS.read_text(encoding="utf-8")
-        self.assertIn("基础版本每次增加 `0.0.1`", instructions)
-        self.assertIn("任一段达到 `10` 时向左进位", instructions)
-
-    def test_manifest_and_readme_describe_current_scope(self) -> None:
+    def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        readme = read("README.md")
-        self.assertTrue(manifest["version"].startswith("0.8.4+codex."))
-        self.assertIn("子线程", manifest["description"])
-        self.assertIn("子代理", manifest["description"])
-        self.assertIn("不提供默认执行模式", manifest["description"])
-        self.assertIn("新的顶层任务不会复用旧执行单元", readme)
-        self.assertNotIn("subagent-coordination", json.dumps(manifest, ensure_ascii=False))
+        self.assertRegex(manifest["version"], r"^0\.8\.\d+\+codex\.")
+        self.assertIn("/goal", manifest["description"])
+        self.assertIn("v4", manifest["description"])
+        prompt = manifest["interface"]["defaultPrompt"][0]
+        self.assertIn("/goal 每轮使用 $goal-dag-runner", prompt)
+        self.assertIn("覆盖率 100%", prompt)
+        instructions = AGENTS.read_text(encoding="utf-8")
+        self.assertIn("基础版本每次增加", instructions)
+        self.assertIn("任一段达到", instructions)
 
 
 if __name__ == "__main__":

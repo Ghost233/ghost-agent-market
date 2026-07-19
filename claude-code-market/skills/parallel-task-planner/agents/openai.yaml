@@ -1,4 +1,6 @@
 interface:
-  display_name: "任务 DAG 规划"
-  short_description: "仅按用户明确指令和唯一执行方式规划当前已说明完的任务"
-  default_prompt: "使用 $parallel-task-planner 对我已说明完的当前任务做 DAG 规划；执行方式：<执行线程或子代理>；<只规划或规划后执行>。"
+  display_name: "计划覆盖率与 v4 DAG"
+  short_description: "内部生成 PLAN_COVERAGE_V1、Owner/task DAG 与局部修订。"
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,168 @@
+{
+  "contract": "DAG_PLAN_V4",
+  "planner": "parallel-task-planner",
+  "plan_format_version": 4,
+  "revision": 1,
+  "execution_platform": "codex",
+  "goal_contract_path": "__GOAL_PATH__",
+  "goal_digest": "__GOAL_DIGEST__",
+  "goal_id": "refactor-page-state",
+  "plan_source": {
+    "path": "__DOC_PATH__",
+    "digest": "__DOC_DIGEST__",
+    "revision": 1
+  },
+  "coverage_path": "__COVERAGE_PATH__",
+  "owners": [
+    {
+      "id": "state-domain",
+      "role": "work",
+      "responsibility": "负责状态契约和页面读取逻辑",
+      "writable_paths": ["src/state/**", "src/page/**"],
+      "worker_context": "保持状态类型与页面读取接口一致",
+      "runtime_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "medium"
+      },
+      "reuse_policy": "owner_affinity"
+    },
+    {
+      "id": "state-fixtures",
+      "role": "work",
+      "responsibility": "负责独立状态夹具",
+      "writable_paths": ["tests/fixtures/**"],
+      "worker_context": "保持夹具形状与状态契约一致",
+      "runtime_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "medium"
+      },
+      "reuse_policy": "owner_affinity"
+    },
+    {
+      "id": "flow-verification",
+      "role": "verify",
+      "responsibility": "负责只读页面集成验证",
+      "writable_paths": [],
+      "worker_context": "只运行尚未被实施任务覆盖的集成检查",
+      "runtime_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "medium"
+      },
+      "reuse_policy": "owner_affinity"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T0",
+      "logical_id": "coverage.audit-source",
+      "title": "审计计划源覆盖映射",
+      "role": "verify",
+      "owner_id": "flow-verification",
+      "task": "逐块审计计划源与覆盖项映射",
+      "depends_on": [],
+      "writable_paths": [],
+      "resource_locks": ["source-coverage"],
+      "done_when": ["每个非空源块均被完整分类"],
+      "verification_ids": ["source-coverage-audit"],
+      "satisfies_goal_gates": ["source-coverage-audit"],
+      "plan_item_ids": ["PI-state-types", "PI-page-reads", "PI-fixtures", "PI-integration"],
+      "coverage_effect": "audit",
+      "priority": 20,
+      "estimated_cost": 1
+    },
+    {
+      "id": "T1",
+      "logical_id": "state.extract-types",
+      "title": "抽离页面状态类型",
+      "role": "work",
+      "owner_id": "state-domain",
+      "task": "抽离并导出页面状态类型",
+      "depends_on": ["T0"],
+      "writable_paths": ["src/state/**"],
+      "resource_locks": ["state-contract"],
+      "done_when": ["状态类型从页面组件中抽离"],
+      "verification_ids": ["state-unit"],
+      "satisfies_goal_gates": ["state-unit"],
+      "plan_item_ids": ["PI-state-types"],
+      "coverage_effect": "implementation",
+      "priority": 10,
+      "estimated_cost": 3
+    },
+    {
+      "id": "T2",
+      "logical_id": "state.migrate-reads",
+      "title": "迁移页面状态读取",
+      "role": "work",
+      "owner_id": "state-domain",
+      "task": "迁移页面对新状态类型的读取",
+      "depends_on": ["T1"],
+      "writable_paths": ["src/page/**"],
+      "resource_locks": ["page-state"],
+      "done_when": ["页面使用抽离后的状态类型"],
+      "verification_ids": ["page-unit"],
+      "satisfies_goal_gates": [],
+      "plan_item_ids": ["PI-page-reads"],
+      "coverage_effect": "implementation",
+      "priority": 8,
+      "estimated_cost": 3
+    },
+    {
+      "id": "T3",
+      "logical_id": "state.update-fixtures",
+      "title": "更新独立状态夹具",
+      "role": "work",
+      "owner_id": "state-fixtures",
+      "task": "更新独立状态测试夹具",
+      "depends_on": ["T0"],
+      "writable_paths": ["tests/fixtures/**"],
+      "resource_locks": ["state-fixtures"],
+      "done_when": ["夹具采用新的状态形状"],
+      "verification_ids": ["fixture-test"],
+      "satisfies_goal_gates": ["fixture-test"],
+      "plan_item_ids": ["PI-fixtures"],
+      "coverage_effect": "implementation",
+      "priority": 6,
+      "estimated_cost": 2
+    },
+    {
+      "id": "T4",
+      "logical_id": "state.verify-flow",
+      "title": "验证页面集成流程",
+      "role": "verify",
+      "owner_id": "flow-verification",
+      "task": "只读运行页面集成 smoke",
+      "depends_on": ["T2", "T3"],
+      "writable_paths": [],
+      "resource_locks": ["integration-runtime"],
+      "done_when": ["页面集成 smoke 通过且没有 tracked diff"],
+      "verification_ids": ["integration-smoke"],
+      "satisfies_goal_gates": ["integration-smoke"],
+      "plan_item_ids": ["PI-integration"],
+      "coverage_effect": "verification",
+      "priority": 10,
+      "estimated_cost": 2
+    },
+    {
+      "id": "T9",
+      "logical_id": "scope.audit-final-diff",
+      "title": "审计最终工作树差异",
+      "role": "verify",
+      "owner_id": "flow-verification",
+      "task": "由运行时扫描并审计最终工作树差异",
+      "depends_on": ["T4"],
+      "writable_paths": [],
+      "resource_locks": ["diff-scope"],
+      "done_when": ["最终工作树差异全部映射到已接受实施结果"],
+      "verification_ids": ["diff-scope-audit"],
+      "satisfies_goal_gates": ["diff-scope-audit"],
+      "plan_item_ids": ["PI-integration"],
+      "coverage_effect": "audit",
+      "priority": 10,
+      "estimated_cost": 1
+    }
+  ],
+  "safety": {
+    "status": "parallel_safe",
+    "reasons": ["状态契约与测试夹具拥有不同 Owner 和写域"]
+  }
+}

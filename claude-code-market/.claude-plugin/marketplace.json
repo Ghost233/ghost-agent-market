@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ghost-agent-market",
+  "description": "Ghost Agent Workflow plugins for Claude Code",
+  "owner": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "ghost-agent-workflow",
+      "source": "./",
+      "description": "Document coverage and v4 Owner/task DAG execution with a local fallback lifecycle for Claude Code.",
+      "version": "0.4.1",
+      "author": {
+        "name": "Ghost233",
+        "email": "only.yesc@gmail.com"
+      },
+      "category": "productivity",
+      "homepage": "https://github.com/Ghost233/ghost-agent-market",
+      "license": "MIT",
+      "keywords": [
+        "goal-dag-runner",
+        "task-dag",
+        "agent-skills",
+        "claude-code"
+      ]
+    }
+  ]
+}

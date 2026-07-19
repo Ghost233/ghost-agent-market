@@ -1,6 +1,6 @@
 interface:
   display_name: "子代理 DAG 协调"
-  short_description: "使用 Claude Code 子代理一次性执行已校验的 v3 任务 DAG"
-  default_prompt: "使用 $subagent-coordination 继续执行这个已校验且已选择子代理模式的 v3 DAG。"
+  short_description: "内部恢复 reservation 并按 Owner affinity 推进子代理 DAG。"
+
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

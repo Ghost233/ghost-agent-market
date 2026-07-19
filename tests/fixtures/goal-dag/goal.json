@@ -1,0 +1,72 @@
+{
+  "contract": "GOAL_CONTRACT_V1",
+  "goal_id": "refactor-page-state",
+  "execution_platform": "codex",
+  "workspace": {
+    "root": "__WORKSPACE_ROOT__"
+  },
+  "source": {
+    "path": "__DOC_PATH__",
+    "digest": "__DOC_DIGEST__",
+    "revision": 1
+  },
+  "objective": "重构页面状态并完成集成验证",
+  "scope": ["状态类型、页面读取、测试夹具和集成验证"],
+  "non_goals": ["部署和发布"],
+  "constraints": ["保持现有公开接口兼容"],
+  "lifecycle": {
+    "controller": "codex_native",
+    "native_goal": {
+      "thread_id": "thread-fixture",
+      "created_at": 1784390400000
+    }
+  },
+  "execution": {
+    "mode": "subagent",
+    "max_concurrency": 3,
+    "reuse_policy": "owner_affinity"
+  },
+  "verification_gates": [
+    {
+      "id": "state-unit",
+      "stage": "unit",
+      "description": "状态类型单元检查通过",
+      "required": true
+    },
+    {
+      "id": "fixture-test",
+      "stage": "unit",
+      "description": "状态夹具测试通过",
+      "required": true
+    },
+    {
+      "id": "integration-smoke",
+      "stage": "smoke",
+      "description": "页面集成 smoke 通过",
+      "required": true
+    },
+    {
+      "id": "source-coverage-audit",
+      "stage": "audit",
+      "description": "独立审计计划源块与覆盖项映射完整",
+      "required": true
+    },
+    {
+      "id": "diff-scope-audit",
+      "stage": "audit",
+      "description": "独立审计最终 tracked diff 均在计划写域内",
+      "required": true
+    }
+  ],
+  "side_effects": {
+    "deploy": "forbidden",
+    "external_write": "forbidden"
+  },
+  "completion": {
+    "all_tasks_completed": true,
+    "plan_coverage_100": true,
+    "required_gates_passed": true,
+    "blocking_findings_zero": true,
+    "diff_in_scope": true
+  }
+}

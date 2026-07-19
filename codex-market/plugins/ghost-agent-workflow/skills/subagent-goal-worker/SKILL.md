@@ -1,59 +1,51 @@
 ---
 name: subagent-goal-worker
-description: 仅当固定使用 gpt-5.6-sol/medium 的 Codex 子代理收到 subagent-coordination 发出的完整 v3 单任务绑定包时使用；普通用户请求、不完整绑定或其他执行模式不得触发。
+description: 仅供 subagent-coordination 分发完整 TASK_BINDING_V4 时内部使用，且 binding.executor_mode 必须为 subagent；执行同一 Goal/Owner 的一个 fenced attempt，从 Owner Capsule 恢复上下文并写入唯一 WORKER_RESULT_V4。普通请求、不完整绑定、其他 mode 或绕过 coordinator 的调用不得触发。
 ---
 
-# 子代理任务执行
+# Codex 子代理 Worker
 
-## 职责
+## 边界
 
-当前子代理只属于一个 `parent_goal` 内的 `(module_id, thread_role)`，可以按 DAG 顺序承接该归属的多个 task，但任一时刻只能有一个活动 task。不得跨 `parent_goal` 接受任务；每次新绑定都替换 task 的目标、权限、完成条件、验证和结果路径，不得继承上一 task 的权限或证据。
+只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源；当前 Agent 的会话记忆和复用只是性能优化。
 
-当前子代理直接完成绑定 task。不得调用 `spawn_agent`、`create_thread`、`fork_thread` 或其他委派能力，不修改计划，不暂存、提交或推送代码。绑定与结果格式以 [references/templates.md](references/templates.md) 为唯一规范；Mermaid 不是机器输入。
+不得调用 `spawn_agent`、`create_thread`、`fork_thread` 或继续委派。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
 
-当前子代理必须由协调器通过 `spawn_agent` 的 `model: "gpt-5.6-sol"`、`reasoning_effort: "medium"` 和 `fork_turns: "none"` 创建；`agent_type: "worker"` 仅在直接工具 schema 支持时传入，缺少该可选参数不得阻塞。计划中的 `worker_profile` 仍只供子线程模式使用，本 skill 不读取该字段。结果中的 `profile_evidence` 固定写 `spawn_agent:gpt-5.6-sol/medium`，不得写平台默认值或其他 profile。
+Codex binding 使用固定 runtime profile；Claude Code 使用平台默认 profile。这是有意的平台差异。每次接收 binding 时读取 [references/templates.md](references/templates.md)。
 
 ## 绑定门禁
 
-只消费协调器发出的完整单任务绑定包；直接面向用户的实施请求、普通任务描述或缺少任一必需字段的消息都不执行。执行前确认：
+1. 要求完整 `TASK_BINDING_V4`，`executor_mode: subagent`，且 `executor_spawn_name`、`attempt`、`reservation_token`、`source_revision`、`worktree_baseline`、`source_blocks`、`coverage.{ref,digest,semantic_digest}`、非空 `plan_item_ids`、`coverage_effect`、goal constraints、side-effect policy、verification requirement descriptions、artifact path/contract maps 与唯一 result_path 全部存在。
+2. 读取 state，等待 task 进入 running；核对 task、Owner、generation、executor_id、attempt、token、source revision 和 result_path。
+3. 重新计算并核对 `worktree_baseline`、`source_blocks` 与 `coverage` 的绑定 digest/semantic digest；从 state 的 `result_ref/result_digest` 核对直接 `dependency_result_refs`。读取 Owner Capsule 时核对 ref、owner、generation、goal/source revision 和结构字段；binding 未提供 Capsule digest，不得假称已做 digest 校验。普通 task 不读取整篇 source 或无关 task；`source-coverage-audit` 例外，必须按 `SOURCE_BLOCKS_V1` 的全部 line span 读取 source，并从 `coverage.ref` 读取 required items↔source refs，校验 semantic digest 后逐块分类。使用 `plan_item_ids + coverage_effect` 维持本 task 与 required effect 的精确映射。
+4. 任一身份或路径不一致时不修改业务文件，返回原始错误。同一 task/attempt/token 的完全相同 binding 是 crash recovery 重投：不得重置进度、并发重复执行或覆盖已有 canonical result；继续当前 attempt，结果已存在时只返回同一结果。只有 state 已进入新 attempt 且新 binding 完整通过门禁时，才替换旧 task 权限。同一 Agent 同时只能执行一个 binding。
+5. 新 generation Agent 从 Capsule 的 decisions、invariants、progress、important_symbols 与 next_steps 恢复，不依赖旧 Agent 存活。
 
-1. `plan_path` 是绝对可读的 v3 JSON，state 的 `executor_mode` 为 `subagent` 且 `continued_by` 为 `null`。
-2. 绑定包只包含一个 task，并与 plan 中的 `task_id`、`logical_id`、`module_id`、`thread_role`、范围和条件一致。
-3. `title` 至少包含一个中文汉字并能直接说明当前工作，`display_name` 精确等于 `[GA][<用途>][执行] <中文任务名>`；英文内部标识不能代替任务名称。
-4. 绑定中的 `thread_id` 是协调器写入 state 的 canonical `agent_target`，且名称以 `_sol_medium` 结尾；该字段名不会把当前执行转换成子线程。
-5. `result_path` 严格位于当前计划目录 `results/<task_id>.json`，`worker_context` 与 module 一致。
-6. `runtime_profile` 精确等于 `gpt-5.6-sol` 和 `medium`；可选的 `agent_type` 不参与 profile 校验。上一 task 已终止，当前没有其他活动 task；后继 revision 生效后不再接受前版新绑定。
+## 执行与副作用边界
 
-失败时不修改业务文件，按模板写入并返回合法 `blocked` 结果。
+- 只处理 binding 的 `plan_item_ids` 所映射范围，满足 task、done_when 与 `verification_requirements`；不得自行扩张到其他 coverage item。
+- 只修改 `goal_constraints.scope` 与 `writable_paths` 的交集；不得违反 constraints/non_goals。
+- `side_effect_policy` 未显式授权的部署或外部写入一律禁止。不要把验证命令解释成副作用授权。
+- `work` 只修改 writable paths；`review` 和 `verify` 保持 changed_files 为空。
+- 共享工作区中的并行兄弟改动不是本 task 产物。不得撤销或覆盖用户与其他 Owner 的合法改动。
+- 需要越过 scope、non-goal 或 side-effect policy 时先停止，返回 `needs_repair` 与精确 scope_request；不得先做后报。
 
-## 角色边界
+## Checkpoint 与证据
 
-- `work`：只修改 `writable_paths` 内且直接服务当前 `task` 与 `done_when` 的文件；task verification 与 `diff_self_check` 构成默认闭环。
-- `review`：只读审查绑定的风险边界，形成带路径、位置和证据的结论，`changed_files` 必须为 `[]`。不得把普通重复自检扩大成新的审查范围。
-- `verify`：严格只读，只运行前置 work 尚未覆盖的集成、全量 build、test 或 lint，记录命令、退出状态和日志，`changed_files` 必须为 `[]`；不得重复 work verification。
+在关键决策后、长验证前、感知上下文压力或准备轮换时写 `OWNER_CHECKPOINT_V1`，再调用 driver `checkpoint`。只保存恢复事实，不复制源码、完整日志或聊天历史。
 
-三种角色都只允许额外写协调元数据 `result_path`。验证工具可以写 ignored 构建目录或系统临时目录，但不得产生 tracked diff。保留所有无关改动，不安装依赖。
+每条 evidence 必须对应 binding 中的 requirement description，并记录可复核的命令/方法、outcome、关键输出摘要、`artifact_ref` 与 `artifact_digest`；没有 artifact 时两者都写 null，不能省字段或只写“已验证”。
 
-## 执行
+- `source-coverage-audit`：把每个 block 的 `mapped`（精确 plan item ids）或 `non_requirement`（非空理由）proposal 写入 binding `evidence_artifact_paths` 的精确路径，再运行 runtime `source-audit`。不得遗漏 block 或自己伪造最终 `SOURCE_COVERAGE_AUDIT_V1`。
+- `diff-scope-audit`：直接运行 runtime `diff-audit`。runtime 会扫描 Goal 初始 `WORKTREE_BASELINE_V1`、当前真实工作区和 accepted work results；不得只复述 `changed_files` 或手写 `DIFF_SCOPE_AUDIT_V1`。
+- 两个命令 stdout 返回的 `artifact_ref` 与 SHA-256 `artifact_digest` 必须原样放入对应 evidence；不得换路径、重算到别的文件或复用旧 revision artifact。
 
-1. 读取候选文件和现有差异，按当前 task 的 `writable_paths`、前置结果和绑定证据确认受控基线；不要求共享工作区静止。
-2. 完成当前角色要求的最小完整结果。
-3. `work` 运行 task verification；`verify` 先读取前置 work 的验证证据，只运行尚未覆盖的检查，完全相同的命令直接复用已有证据而不重复执行。
-4. 只按当前 task 归因 changed files、`done_when`、验证证据和差异聚焦度。并行兄弟 task 在其授权路径内的合法改动属于外部基线，不得判为当前 task 冲突或 `diff_self_check` 失败。
-5. 构造唯一 `WORKER_RESULT_V3`，先原子写入 `result_path`，再返回语义相同的 JSON。
+## 结果
 
-收到 `WORKER_REPAIR_V3` 时只补齐当前结果缺失的字段或证据，并重写同一 `result_path`；不得扩大业务范围或处理下一 task。
+1. 完成最小完整实现或只读检查，逐项核对 plan items、done_when 与 verification requirements。
+2. 做 diff_self_check，只归因当前 attempt 的 changed files，并显式记录 `blocking_findings`。
+3. 构造一个 `WORKER_RESULT_V4`；task、Owner、generation、executor、attempt、token 与 source revision 必须与 binding/state 一致。
+4. 先原子写入 binding 的唯一 result_path，再返回相同 JSON。不得覆盖其他 attempt 文件。
+5. 把可复用决策、不变量和风险放入 owner_updates，由 driver 合并 Capsule。
 
-## 范围变化
-
-预知需要修改 `writable_paths` 外文件时，在编辑前返回 `needs_main_review` 与 `scope_request`。已授权命令意外产生可归因的越界文件时不自动撤销，完整报告给主线程。
-
-review 必须区分严重度：阻断缺陷是会破坏绑定风险边界、相关 `done_when` 或父目标安全完成的契约、安全/权限、迁移、并发或已证实回归问题；只有阻断缺陷返回 `needs_main_review`，并使用 `diff_self_check: scope_exception` 与 `scope_request.paths` 指明后继 work 需要修复的精确路径。样式、可读性、可选加固等非阻断建议随 `completed` 汇报，保持 `diff_self_check: pass`、`scope_request: null`，不触发 revision。
-
-验证发现源码、配置或集成失败时返回 `failed` 与原始命令证据。review 和 verify 都不得自行升级为 `work`；`scope_request` 是内部重规划通知，不是用户确认请求。
-
-## 完成判定
-
-`completed` 必须同时满足：绑定有效；按当前 task 归因的 changed files 在范围内；`review` 和 `verify` 未产生 tracked diff；`done_when` 满足；验证通过或具有明确替代证据；`diff_self_check` 为 `pass`；不存在与当前 task 授权路径或直接证据相冲突且无法归因的用户改动。
-
-`blocked` 与 `failed` 必须保留原始原因、影响范围和最小恢复线索，不要求用户介入。任何终态都必须先成功写入 `result_path`。
+`completed` 必须为每个 verification id 提交 passed evidence，并完成 binding 声明的 coverage effect。两个固定 audit gate 只能由独立 audit binding 提交，且 artifact ref/digest 都非空；实施 worker 的 diff_self_check 不能代替它们。普通失败使用 failed/blocked；扩域或阻断审查使用 needs_repair。driver 的 `finish` 是身份、范围、revision、artifact 内容与证据的唯一机械裁决。

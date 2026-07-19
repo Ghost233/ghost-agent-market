@@ -1,82 +1,79 @@
 ---
 name: subagent-coordination
-description: 仅当用户为当前已校验的 Claude Code v3 任务 DAG 明确选择子代理模式并明确要求执行，或恢复 state 已锁定为 subagent 的同一 parent_goal 时使用；普通任务、仅规划请求、未选择执行方式或选择执行线程模式时不得触发。不创建独立执行线程，也不指定模型或思考强度。
+description: 仅供 goal-dag-runner 内部使用：在已验证的 claude_code/subagent DAG_PLAN_V4 上先恢复 reservation，再按 Owner affinity 调度 Claude Code 子代理，并把 attempt 唯一结果交给 runtime 裁决。普通请求、仅规划、thread mode、非 v4 plan 或绕过 runner 的调用不得触发。
+user-invocable: false
 ---
 
-# 子代理任务协调
+# Claude Code 子代理协调
 
-## 职责
+## 边界
 
-主会话是业务只读协调器：消费 `$parallel-task-planner` 生成的同一份 v3 plan，推进 DAG、创建或复用子代理、回收结果、触发当前任务内修订并完成总验收。可以通过 driver 写 plan/state/result 协调元数据，但不得修改业务文件、暂存、提交或推送代码；所有正式实施、审查和验证都必须是 DAG task。
+只调度、恢复和收集证据，不修改业务文件。逻辑 Owner 与 Capsule 是正确性真相源；物理 Agent 复用只是性能优化。不同 Goal 不复用 Agent。
 
-本模式首次派发使用 `Agent`，复用已有子代理使用 `SendMessage({to: agentId})`。不得创建独立执行线程。调用 Agent 工具时只提供平台要求的任务、标识和后台执行字段，不得传入 `model`、thinking、reasoning 或 effort 参数；子代理使用平台默认配置。
+Claude Code 子代理使用平台默认 profile；调用 Agent 时不得指定 model、thinking、reasoning 或 effort。Codex 固定 profile，是有意的平台差异。
 
-初次进入时不得根据任务复杂度、DAG 拓扑或缺省习惯推断子代理模式。必须具有用户对当前计划的明确执行授权和唯一模式选择；同一 `parent_goal` 的后继 revision 继承已锁定模式和既有授权，可直接恢复。
+进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。
 
-计划中的 `worker_profile` 只供执行线程模式使用。本 skill 不读取、不校验、不传递该字段，也不把它作为完成条件。每次进入本 coordination 时先读取一次本 skill 的 [references/templates.md](references/templates.md) 与 `$subagent-goal-worker` 的 `references/templates.md`；后者是绑定包、结果和补修契约的唯一规范来源。同一次执行及其 revision 中模板未变化时不得按 task 重读，确有变化时才在下一次绑定前重新读取。
+## 每次调用先恢复
 
-## 入口
-
-1. 用户已为当前计划明确选择子代理模式并要求执行，或者 state 已在同一 `parent_goal` 中锁定为 `subagent`。仅完成规划、未选择模式、“都可以”或“你决定”都不构成入口授权。
-2. `plan_path` 位于当前项目 `.ghost-agent-workflow/parallel_plan/<plan_id>/plan.json`，使用 `planner: parallel-task-planner`、`plan_format_version: 3` 和当前平台。
-3. `safety.status` 为 `parallel_safe` 或 `sequential_only`；`needs_user_review` 才暂停。
-4. 运行以下命令锁定执行方式。同值可重复，已选执行线程模式时必须拒绝切换：
+严格按顺序运行：
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs validate <plan_path>
-node <plugin-root>/scripts/thread-plan.mjs mode <plan_path> <state_path> subagent
+node <plugin-root>/scripts/goal-dag.mjs status <plan_path> <state_path>
+node <plugin-root>/scripts/goal-dag.mjs reconcile <plan_path> <state_path>
 ```
 
-5. state 中非空的 `thread_id` 在本模式表示真实 `agentId`，只是共享 driver 的标识字段，不会创建执行线程。恢复时确认这些 id 属于当前主会话创建的子代理；缺失或冲突时返回 `executor_mode_mismatch`，不得创建替代执行单元。
+先处理 `status`/`reconcile` 返回的每个 `active_reservations[]`，再运行 reserve。每项都携带 runtime 锁内重建的完整 canonical `binding` 以及 `action`/`phase`：`spawn_executor|reuse_executor` + `reserved_unbound`，或 `wait_or_redeliver` + `running_bound`。恢复分发只能使用这里的 binding；不要从聊天记忆或自行扫描 plan 重算 token、attempt、权限和路径。核验 executor 是否属于当前 Goal、generation 是否匹配以及是否仍健康，不要因进程仍在运行而回收。
 
-## 执行循环
+若 `status`/`reconcile` 返回 `source_drift_drain`，停止 reserve，只回收现有 reservation：健康 Agent 继续到 canonical result 并 finish；丢失的 running Agent 或 `reserved_unbound + reuse_executor` 目标先 reclaim，再停止返回的物理 Agent，确认确已停止后运行 `confirm-stale-executor`；`reserved_unbound + spawn_executor` 无匹配执行单元时只 abandon。只有 active reservation 与 stale executor 都清零后才把控制权交 runner 执行原子 `goal-refresh`。
 
-1. 读取 plan 和 state；已有 `running` task 时先回收，不因上下文中断询问用户。
-2. 运行：
+需要安全回收同一 reservation 时运行：
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs next <plan_path> <state_path>
+node <plugin-root>/scripts/goal-dag.mjs abandon <plan_path> <state_path> <task_id> <reservation_token> <reason>
+node <plugin-root>/scripts/goal-dag.mjs reclaim <plan_path> <state_path> <task_id> <reservation_token> <reason>
+node <plugin-root>/scripts/goal-dag.mjs confirm-stale-executor <plan_path> <state_path> <executor_id>
+node <plugin-root>/scripts/goal-dag.mjs rotate-owner <plan_path> <state_path> <owner_id> <expected_generation> <reason>
 ```
 
-3. 立即处理返回的全部 `dispatch_task`。不同 `module_id + thread_role` 的 ready task 独立推进；`sequential_only` 自然一次只返回一个。平台暂时无法创建更多子代理时保留 task 为 `pending`，先回收已有结果再重试，不改变 DAG。
-4. 按“子代理选择”取得真实 `agentId`，再运行：
+`reclaim` 之后旧 executor 和迟到结果都被 reservation、attempt、generation、source revision fencing 拒绝。按 reference 中的 orphan、spawn-before-bind、bind-before-send、result-written-before-finish 矩阵恢复，不能跳过 reconcile 直接 reserve。
+
+## reserve 与分发
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> running <agentId>
+node <plugin-root>/scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
 ```
 
-5. 使用 `SendMessage` 向该子代理发送唯一完整绑定包。绑定首次失败只向同一 id 重试一次，不创建替代子代理。
-6. 低频回收后台 Agent 结果；运行中不是失败。任一结果到达即可推进其依赖，不等待无关的 `running` task，因而不得引入批次屏障。以原子写入的 `result_path` 为事实来源，不根据消息摘要补造结果。
-7. 对同一次回收中已经到达的全部终态，逐个只读取 `status` 与 `result_path` 并运行终态更新，然后再调用一次 `next`。`update` 是结果结构、身份、范围和状态的唯一机械裁决；协调器不得预先人工重复校验全部字段：
+只处理 runtime 返回的 actions。新 reservation 使用 `reserve.actions[]` 的 binding；crash recovery 使用 `status`/`reconcile.active_reservations[]` 的 binding。两者都是该 attempt 的唯一 canonical 权限来源，不得用聊天记录、旧 prompt 或本地推导重建。
+
+### spawn_executor
+
+1. 把 action/binding 的 `executor_spawn_name` 原样作为 Agent 名称；不得自行截断、拼接或重算 Goal/Owner/generation/attempt 标识。它是 runtime 为 crash recovery 下发的 instance identity；同一 Agent 后续复用时保留原名，只以新 binding 切换权限。
+2. 以完整 `TASK_BINDING_V4` 作为首次 `Agent` 消息并后台执行；不创建启动握手回合，不指定 model 或思考参数。
+3. 取得 agentId 后立即运行 `bind`。worker 必须等 state 进入 running 后才能修改业务文件。
+
+### reuse_executor
+
+1. 确认 action.executor_id 是当前 Goal/Owner 的 idle 健康 Agent。
+2. 先运行 `bind`，再用 `SendMessage({to: agentId})` 发送原样完整 binding。
+3. 不拼接旧 task prompt、权限或证据；Agent 从 Owner Capsule 恢复。
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> completed|blocked|failed|needs_main_review <result_path>
+node <plugin-root>/scripts/goal-dag.mjs bind <plan_path> <state_path> <task_id> <reservation_token> <agent_id>
 ```
 
-`update` 成功即接受该终态；失败时保留 driver 的具体错误，只向原子代理发送最多一次聚焦补修。
+`reserved_unbound + spawn_executor` 创建失败、无匹配 executor 或尚未 bind 时运行 `abandon`；runtime 尚不知道且无法唯一匹配的 orphan Agent 先停止后 abandon。`reserved_unbound + reuse_executor` 的 bound 目标确认丢失是窄例外：以当前 token `reclaim`，让 runtime 清除 binding 并登记 stale executor；已经 bind/running 后发送失败或 Agent 丢失也同样 reclaim。随后停止返回的 executor_id，确认停止后运行 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。普通物理丢失后在同一逻辑 Owner/generation 上换 Agent；只有污染、重复失败或 Capsule 语义确需隔离时才运行 `rotate-owner`。
 
-## 子代理选择
+## 回收、结果与追加 DAG
 
-`next.action.thread_id` 是当前 `parent_goal` 内 `module_id + thread_role` 的唯一归属决议：
+- 低频回收后台 Agent；running 不是失败。
+- 只接受 binding 指定的 `results/<task>/attempt-<attempt>-<token>.json`。同一 task 的其他路径、旧 token、旧 attempt 或旧 source revision 结果一律拒绝。audit task 的 evidence 还必须精确引用 binding `evidence_artifact_paths` 下发的路径并带 SHA-256 `artifact_digest`。
+- worker 先写 result 再结束；结果出现后立即运行 `finish`，然后重新从 reconcile/reserve 循环推进，不等待并行兄弟。
+- failed、blocked、needs_repair 交 planner 生成受影响子图 delta；无关 Owner 继续。
+- DAG exhausted 但 `PLAN_COVERAGE_V1` 未达 100% 时生成 coverage delta，不得 finalize。
 
-1. 非空时，它就是既有 `agentId`。确认该子代理已空闲后，用 `SendMessage({to: agentId})` 恢复；不要向 `Agent` 传 resume 参数。
-2. 为 `null` 时，先按稳定名称 `ga_<plan_token>_<module_token>_<role>` 核对当前会话已创建的子代理。`plan_token` 取 `plan.json` 父目录名，`module_token` 取 `module_id`；两者都转为小写，把每段连续的非 `[a-z0-9]` 字符替换为一个下划线并去掉首尾下划线，空值分别回退为 `plan` 和 `module`。唯一匹配则恢复；零匹配才调用 `Agent`；多个匹配则停止。
-3. 首次 Agent 提示只包含 `dispatch_key` 和启动门禁，要求加载 `$subagent-goal-worker`、返回 `READY` 且不执行或修改业务文件。取得非空 `agentId` 并确认空闲后，才更新 task 为 `running` 并发送完整绑定包。
+```text
+node <plugin-root>/scripts/goal-dag.mjs finish <plan_path> <state_path> <task_id> <reservation_token> <result_path>
+```
 
-名称只使用小写字母、数字和下划线。该稳定名称仅为内部技术标识，不得出现在面向用户的报告或标题中；对用户只显示 task 的中文 `title`，不显示 `logical_id` 或 `module_id`。子代理归属只在当前主会话和 `parent_goal` 内复用；不得跨父目标搜索。
-
-## 结果与修订
-
-共享结果字段 `thread_id` 必须填写该 `agentId`，`profile_evidence` 固定为 `subagent-defaults`，不代表模型检查。协调器只读取结果声明的 `status` 和既定 `result_path`，由 driver `update` 机械裁决 task、module、role、agent、范围和结构；不得提前重复实现这些校验。driver 报告字段缺失、验证不足或差异自检错误时，把原始错误放入唯一一次 `WORKER_REPAIR_V3`。
-
-`work` 完成定向 verification 与差异自检后默认闭环，不因缺少独立 review 补造 task。`review` 的非阻断建议必须随 `completed` 保留，不触发 revision；只有阻断缺陷才使用 `needs_main_review`，并按 worker 契约携带 `diff_self_check: scope_exception` 与指向后继 work 精确修复路径的 `scope_request`。合法范围变化、阻断缺陷和验证失败在静止点一次聚合，交 `$parallel-task-planner` 生成唯一下一 revision；重复自检、非阻断建议或缺少独立 review 不构成修订理由，不得补造 `review` 或 `verify`。新计划校验并继承 `subagent` 模式后自动继续，不要求用户确认。
-
-共享工作区中的差异按当前 task 的 `writable_paths`、依赖结果中的 `changed_files`、受审风险边界和 driver 已接受的 result 归因。其他并行兄弟 task 的合法改动不是冲突，也不触发补修或 revision；只有无法归因且确实进入当前授权路径或受审边界的改动才升级。
-
-只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时才暂停。
-
-## 总验收
-
-只有当前 revision 的全部 task 都是 `completed` 且 result 已被 driver 接受，才汇总 `project_verification`、task 证据和最终差异。work verification 与差异自检是默认闭环证据；只有计划中风险触发的 review 或非重复集成 verify 才额外参与总验收。主会话不得重复 work verification，也不得因计划没有独立审查而补造。通过后按模板返回 `PARALLEL_PLAN_RESULT.status: completed`。
-
-对用户只报告启动、必要的 revision 摘要、最终结果或真实用户边界，不逐 task 播报。
+当 runtime 报告 coverage 100%、所有有效 task resolved 且 gate 证据齐全时，把控制权交还 runner；`local_fallback` 的完成只能由 runner 调用 finalize。

@@ -1,88 +1,78 @@
 ---
 name: subagent-coordination
-description: 仅当用户已明确选择子代理模式并授权执行通过校验的 Codex v3 任务 DAG，或恢复 executor_mode 已锁定为 subagent 的同一 parent_goal 时使用；所有新建子代理固定使用 gpt-5.6-sol/medium，只规划请求或未明确执行方式时不得使用。
+description: 仅供 goal-dag-runner 内部使用：在已验证的 codex/subagent DAG_PLAN_V4 上先恢复 reservation，再按 Owner affinity 调度 Codex 子代理，并把 attempt 唯一结果交给 runtime 裁决。普通请求、仅规划、thread mode、非 v4 plan 或绕过 runner 的调用不得触发。
 ---
 
-# 子代理任务协调
+# Codex 子代理协调
 
-## 职责
+## 边界
 
-主线程是业务只读协调器：消费 `$parallel-task-planner` 生成的同一份 v3 plan，推进 DAG、创建或复用子代理、回收结果、触发当前任务内修订并完成总验收。可以通过 driver 写 plan/state/result 协调元数据，但不得修改业务文件、暂存、提交或推送代码；所有正式实施、审查和验证都必须是 DAG task。
+只调度、恢复和收集证据，不修改业务文件。逻辑 Owner 与 Capsule 是正确性真相源；物理 Agent 复用只是性能优化。不同 Goal 不复用 Agent。
 
-进行子代理生命周期操作时只直接调用 collaboration 的 `list_agents`、`spawn_agent`、`followup_task` 和 `wait_agent`。不得通过 `functions.exec`、`ALL_TOOLS` 或工具搜索判断这些接口是否存在或支持哪些参数；driver 命令与协调元数据读写不受此列表限制。不得调用 `create_thread`、`fork_thread`、`list_threads`、`read_thread`、`send_message_to_thread` 或标题/归档工具。
+Codex 子代理固定使用 `gpt-5.6-sol/medium`、`fork_turns: "none"`，schema 支持时使用 `agent_type: "worker"`。这是与 Claude Code 平台默认 profile 的有意差异。
 
-每次新建子代理都必须实际调用一次 `spawn_agent`，显式传入 `model: "gpt-5.6-sol"`、`reasoning_effort: "medium"` 和 `fork_turns: "none"`。直接调用的工具 schema 暴露 `agent_type` 时附加 `agent_type: "worker"`，未暴露时省略；该可选角色参数不属于运行 profile，也不得单独导致阻塞。不得省略模型或思考强度、继承主线程配置、静默降级或改用其他 profile。只有直接调用缺失、实际调用拒绝固定模型组合或返回创建错误时，才保持 task 为 `pending` 并返回 `dispatch_failed` 与原始工具证据。
+进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。
 
-计划中的 `worker_profile` 只供子线程模式使用。本 skill 不读取、不校验、不传递该字段，也不把它作为完成条件。每次进入 coordination 时只读取一次本 skill 的 [references/templates.md](references/templates.md) 与 `$subagent-goal-worker` 的 `references/templates.md`；模板文件未变化时不得按 task 重读。后者是绑定包、结果和补修契约的唯一规范来源。
+## 每轮先恢复
 
-初次执行必须有用户明确且唯一的子代理选择和规划后执行授权，不能把空模式默认成 `subagent`。后继 revision 或中断恢复可以沿用 state 中已锁定的 `subagent`；已锁定其他模式时不得接管或转换。
-
-## 入口
-
-1. 初次进入时，用户已明确选择子代理并要求规划后执行；仅要求规划、模式缺失或选择含糊时停止，不调用 `mode`。恢复同一 `parent_goal` 时，state 的 `executor_mode` 必须已经是 `subagent`。
-2. `plan_path` 位于当前项目 `.ghost-agent-workflow/parallel_plan/<plan_id>/plan.json`，使用 `planner: parallel-task-planner`、`plan_format_version: 3` 和当前平台。
-3. `safety.status` 为 `parallel_safe` 或 `sequential_only`；`needs_user_review` 才暂停。
-4. 每个 task 的 `title` 必须至少包含一个中文汉字并能直接说明当前工作；英文内部标识不能代替任务名称。
-5. 运行以下命令锁定执行方式。同值可重复，已选子线程模式时必须拒绝切换：
+严格按顺序运行：
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs validate <plan_path>
-node <plugin-root>/scripts/thread-plan.mjs mode <plan_path> <state_path> subagent
+node <plugin-root>/scripts/goal-dag.mjs status <plan_path> <state_path>
+node <plugin-root>/scripts/goal-dag.mjs reconcile <plan_path> <state_path>
 ```
 
-5. state 中非空的 `thread_id` 在本模式表示 `followup_task` 可接受的 canonical agent target，只是共享 driver 的标识字段，不会创建子线程。恢复时用 `list_agents` 确认这些 target 属于当前根任务树且名称以 `_sol_medium` 结尾；缺失、profile 标识不符或冲突时返回 `executor_mode_mismatch`，不得创建替代执行单元。
+先处理 `status`/`reconcile` 返回的每个 `active_reservations[]`，再运行 reserve。每项都携带 runtime 锁内重建的完整 canonical `binding` 以及 `action`/`phase`：`spawn_executor|reuse_executor` + `reserved_unbound`，或 `wait_or_redeliver` + `running_bound`。恢复分发只能使用这里的 binding；不要从聊天记忆或自行扫描 plan 重算 token、attempt、权限和路径。使用 `list_agents` 核验 executor 是否属于当前 Goal、generation/profile 是否匹配以及是否仍健康，不要因进程仍在运行而回收。
 
-## 执行循环
+若 `status`/`reconcile` 返回 `source_drift_drain`，停止 reserve，只回收现有 reservation：健康 executor 继续到 canonical result 并 finish；丢失的 running executor 或 `reserved_unbound + reuse_executor` 目标先 reclaim，再停止返回的物理 Agent，确认确已停止后运行 `confirm-stale-executor`；`reserved_unbound + spawn_executor` 无匹配执行单元时只 abandon。只有 active reservation 与 stale executor 都清零后才把控制权交 runner 执行原子 `goal-refresh`。
 
-1. 读取 plan 和 state；已有 `running` task 时先回收，不因上下文中断询问用户。
-2. 运行：
+需要安全回收同一 reservation 时运行：
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs next <plan_path> <state_path>
+node <plugin-root>/scripts/goal-dag.mjs abandon <plan_path> <state_path> <task_id> <reservation_token> <reason>
+node <plugin-root>/scripts/goal-dag.mjs reclaim <plan_path> <state_path> <task_id> <reservation_token> <reason>
+node <plugin-root>/scripts/goal-dag.mjs confirm-stale-executor <plan_path> <state_path> <executor_id>
+node <plugin-root>/scripts/goal-dag.mjs rotate-owner <plan_path> <state_path> <owner_id> <expected_generation> <reason>
 ```
 
-3. 立即处理返回的全部 `dispatch_task`。不同 `module_id + thread_role` 的 ready task 独立推进；`sequential_only` 自然一次只返回一个。平台暂时无法创建更多子代理时保留 task 为 `pending`，先回收已有结果再重试，不改变 DAG。
-4. 按“子代理选择”取得 canonical `agent_target`，再运行：
+`reclaim` 之后旧 executor 和迟到结果都被 reservation、attempt、generation、source revision fencing 拒绝。按 reference 中的 orphan、spawn-before-bind、bind-before-send、result-written-before-finish 矩阵恢复，不能跳过 reconcile 直接 reserve。
+
+## reserve 与分发
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> running <agent_target>
+node <plugin-root>/scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
 ```
 
-5. 使用 `followup_task` 向该子代理发送唯一完整绑定包。绑定首次失败只向同一 id 重试一次，不创建替代子代理。
-6. 使用 `wait_agent` 低频等待状态变化；子代理运行中不是失败。以原子写入的 `result_path` 为事实来源，不根据 mailbox 摘要补造结果。
-7. 某次等待快照出现终态时，只读取其 `status` 和 `result_path`，把当前快照中已就绪的终态逐一交给 driver：
+只处理 runtime 返回的 actions。新 reservation 使用 `reserve.actions[]` 的 binding；crash recovery 使用 `status`/`reconcile.active_reservations[]` 的 binding。两者都是该 attempt 的唯一 canonical 权限来源，不得用聊天记录、旧 prompt 或本地推导重建。
+
+### spawn_executor
+
+1. 把 action/binding 的 `executor_spawn_name` 原样作为 `spawn_agent.task_name`；不得自行截断、拼接 profile 或重算 Goal/Owner/generation/attempt 名称。它是 runtime 为 crash recovery 下发的 instance identity；同一 Agent 后续复用时保留原名，只以新 binding 切换权限。
+2. 调用 `spawn_agent`，传入完整 `TASK_BINDING_V4`、`model: "gpt-5.6-sol"`、`reasoning_effort: "medium"`、`fork_turns: "none"`；schema 支持时使用 `agent_type: "worker"`，不创建启动握手回合。
+3. 取得 canonical target 后立即运行 `bind`。worker 必须等 state 进入 running 后才能修改业务文件。
+
+### reuse_executor
+
+1. 用 `list_agents` 确认 action.executor_id 是当前 Goal/Owner 的 idle 健康 Agent。
+2. 先运行 `bind`，再用 `followup_task` 发送原样完整 binding。
+3. 不拼接旧 task prompt、权限或证据；Agent 从 Owner Capsule 恢复。
 
 ```text
-node <plugin-root>/scripts/thread-plan.mjs update <plan_path> <state_path> <task_id> completed|blocked|failed|needs_main_review <result_path>
+node <plugin-root>/scripts/goal-dag.mjs bind <plan_path> <state_path> <task_id> <reservation_token> <agent_target>
 ```
 
-8. `update` 是结果结构、身份和范围的唯一机械裁决。若它返回具体契约错误，只把原始错误发送给对应子代理做最多一次 `WORKER_REPAIR_V3`，不得先人工重复校验全部字段。
-9. 当前快照的已就绪终态全部 `update` 后只调用一次 `next`；不等待仍在运行的并行兄弟，因此每个已完成结果都能立即放行后继。
+`reserved_unbound + spawn_executor` 创建失败、无匹配 executor 或尚未 bind 时运行 `abandon`；runtime 尚不知道且无法唯一匹配的 orphan Agent 先停止后 abandon。`reserved_unbound + reuse_executor` 的 bound 目标确认丢失是窄例外：以当前 token `reclaim`，让 runtime 清除 binding 并登记 stale executor；已经 bind/running 后发送失败或 Agent 丢失也同样 reclaim。随后 `interrupt_agent` 停止返回的 executor_id，确认停止后运行 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。普通物理丢失后在同一逻辑 Owner/generation 上换 Agent；只有污染、重复失败或 Capsule 语义确需隔离时才运行 `rotate-owner`。
 
-## 子代理选择
+## 回收、结果与追加 DAG
 
-`next.action.thread_id` 是当前 `parent_goal` 内 `module_id + thread_role` 的唯一归属决议：
+- 使用 `wait_agent` 低频等待；running 不是失败。
+- 只接受 binding 指定的 `results/<task>/attempt-<attempt>-<token>.json`。同一 task 的其他路径、旧 token、旧 attempt 或旧 source revision 结果一律拒绝。audit task 的 evidence 还必须精确引用 binding `evidence_artifact_paths` 下发的路径并带 SHA-256 `artifact_digest`。
+- worker 先写 result 再结束；结果出现后立即运行 `finish`，然后重新从 reconcile/reserve 循环推进，不等待并行兄弟。
+- failed、blocked、needs_repair 交 planner 生成受影响子图 delta；无关 Owner 继续。
+- DAG exhausted 但 `PLAN_COVERAGE_V1` 未达 100% 时生成 coverage delta，不得 finalize。
 
-1. 非空时，它就是既有 `agent_target`。确认该子代理已空闲后，用 `followup_task` 继续执行。
-2. 为 `null` 时，先用稳定名称 `ga_<plan_token>_<module_token>_<role>_sol_medium` 查询当前 agent tree。`plan_token` 取 `plan.json` 父目录名，`module_token` 取 `module_id`；两者都转为小写，把每段连续的非 `[a-z0-9]` 字符替换为一个下划线并去掉首尾下划线，空值分别回退为 `plan` 和 `module`。唯一匹配则恢复；零匹配才调用 `spawn_agent`；多个匹配则停止。
-3. 首次 `spawn_agent` 固定使用 `model: "gpt-5.6-sol"`、`reasoning_effort: "medium"` 和 `fork_turns: "none"`；仅在直接 schema 支持时附加 `agent_type: "worker"`。只发送包含 `dispatch_key` 与固定 runtime profile 的启动包，要求加载 `$subagent-goal-worker`、返回 `READY` 且不执行或修改业务文件。取得返回的 canonical `task_name` 作为 `agent_target` 并确认空闲后，才更新 task 为 `running` 并发送完整绑定包。
+```text
+node <plugin-root>/scripts/goal-dag.mjs finish <plan_path> <state_path> <task_id> <reservation_token> <result_path>
+```
 
-名称只使用小写字母、数字和下划线。子代理归属只在当前根任务树和 `parent_goal` 内复用；不得跨父目标搜索。
-
-`task_name` 和 canonical `agent_target` 受工具约束，只是内部技术标识。每个启动包和绑定包必须另外携带 `[GA][<用途>][<状态>] <中文任务名>` 形式的 `display_name`，中文任务名取 task 的 `title`。面向用户的启动、修订和结果报告只使用 `display_name`，不得展示英文内部 agent 名称。
-
-## 结果与修订
-
-只接受与当前 task、module、role、`agent_target` 和 `result_path` 一致的结果。共享结果字段 `thread_id` 必须填写该 `agent_target`，`profile_evidence` 固定为 `spawn_agent:gpt-5.6-sol/medium`，对应创建该子代理时的必需工具参数；是否传入可选 `agent_type` 不改变证据。
-
-driver 判定字段缺失、验证不足或普通差异自检失败时，只向原子代理发送一次 `WORKER_REPAIR_V3`。合法 `scope_request`、review 阻断缺陷和验证失败在静止点一次聚合，交 `$parallel-task-planner` 生成唯一下一 revision；非阻断建议随 `completed` 汇报且不触发 revision。新计划继承当前 `subagent` 模式和执行授权，校验后自动继续，不要求用户重新选择。
-
-work 的 task verification 与 `diff_self_check` 是默认闭环。协调器只消费计划已有的风险触发 review 和未覆盖集成 verify，不得因缺少独立审查而补造 task，也不得让 verify 重复 work verification。review 与 verify 同时存在时按计划作为共同 work 后的并列节点推进。
-
-只有父目标变化、无法归因的用户改动、敏感或破坏性操作、外部副作用、权限升级或无法安全消歧时才暂停。
-
-## 总验收
-
-只有当前 revision 的全部 task 都是 `completed` 且 result 合法，才汇总 `project_verification`、task 证据和最终差异。总验收优先消费 work 默认闭环，只消费计划已有的独立 review/verify；主线程不得临时补造审查、重复 work verification 或重复执行已有检查。通过后按模板返回 `PARALLEL_PLAN_RESULT.status: completed`。
-
-对用户只报告启动、必要的 revision 摘要、最终结果或真实用户边界，不逐 task 播报。
+当 runtime 报告 coverage 100%、所有有效 task resolved 且 gate 证据齐全时，把控制权交还 runner 执行 finalize 和原生完成桥接；coordinator 不直接更新外层 Goal。

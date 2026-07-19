@@ -1,6 +1,6 @@
 interface:
-  display_name: "执行线程任务"
-  short_description: "在 Claude Code 执行单元中完成范围受控的单个 DAG 任务"
-  default_prompt: "使用 $thread-goal-worker 处理协调器发来的完整 v3 单任务分派包。"
+  display_name: "执行线程 Goal Worker"
+  short_description: "内部执行一个 fenced TASK_BINDING_V4 attempt。"
+
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
