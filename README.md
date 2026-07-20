@@ -9,6 +9,10 @@
 - `subagent-goal-worker`
 - `git-commit`
 
+Codex App 专用测试 skill：
+
+- `git-commit-direct-model-test`
+
 ## Goal DAG 入口
 
 Codex 推荐直接输入这一行：
@@ -57,7 +61,8 @@ ghost-agent-market/
         │       ├── parallel-task-planner/
         │       ├── subagent-coordination/
         │       ├── subagent-goal-worker/
-        │       └── git-commit/
+        │       ├── git-commit/
+        │       └── git-commit-direct-model-test/
         └── rtk-hook/
             ├── .codex-plugin/plugin.json
             ├── hooks/

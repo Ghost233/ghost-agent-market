@@ -5,12 +5,13 @@
 - `ghost-agent-workflow`
 - `rtk-hook`
 
-`ghost-agent-workflow` 包含四个 skill：
+`ghost-agent-workflow` 包含五个 skill：
 
 - `parallel-task-planner`
 - `subagent-coordination`
 - `subagent-goal-worker`
 - `git-commit`
+- `git-commit-direct-model-test`
 
 ## 推荐入口
 
@@ -26,7 +27,9 @@ Owner 是稳定的逻辑责任域，Agent 只是软亲和执行载体。runtime 
 
 `.ghost-agent-workflow/` 只保存本地 runtime state，不应提交；请在使用插件的项目中将它加入 `.gitignore`。
 
-`git-commit` 使用继承当前 profile 的通用子代理只读分析 checkout，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+`git-commit` 先按当前注册工具选择 `multi_agent_v1` 的 Spark/xhigh 或直接 `spawn_agent` 的 Terra/medium，只运行一个只读分析子代理，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+
+`git-commit-direct-model-test` 是 Codex App 专用的只读运行时探测：严格串行直接测试 `spawn_agent` / `create_thread` 与 Spark / Luna 的四种组合，不读取自定义 agent 定义。
 
 ## 安装
 

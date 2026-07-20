@@ -40,14 +40,17 @@ class GoalDagSkillContractTests(unittest.TestCase):
         self.assertIsNotNone(match, heading)
         return json.loads(match.group(1))
 
-    def test_only_three_dag_skills_remain(self) -> None:
+    def test_expected_platform_skills_remain(self) -> None:
         for platform, root in PLATFORMS.items():
             actual_skills = {
                 path.name
                 for path in (root / "skills").iterdir()
                 if path.is_dir() and (path / "SKILL.md").is_file()
             }
-            self.assertEqual(actual_skills, {"git-commit", *ACTIVE_DAG_SKILLS}, platform)
+            expected_skills = {"git-commit", *ACTIVE_DAG_SKILLS}
+            if platform == "codex":
+                expected_skills.add("git-commit-direct-model-test")
+            self.assertEqual(actual_skills, expected_skills, platform)
 
     def test_subagent_coordinator_is_the_only_public_dag_entrypoint(self) -> None:
         for platform in PLATFORMS:

@@ -1,6 +1,6 @@
 # Ghost Agent Workflow Codex 插件
 
-包含四个 skill：`subagent-coordination`、`parallel-task-planner`、`subagent-goal-worker` 和 `git-commit`。前三者组成 subagent-only Goal DAG。
+包含五个 skill：`subagent-coordination`、`parallel-task-planner`、`subagent-goal-worker`、`git-commit` 和 Codex App 专用的 `git-commit-direct-model-test`。前三者组成 subagent-only Goal DAG；最后一个只读、严格串行探测四种直接模型与执行载体组合。
 
 Codex 推荐入口只有这一行：
 

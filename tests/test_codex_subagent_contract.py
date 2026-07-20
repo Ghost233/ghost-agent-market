@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
+LOCAL_DIRECT_MODEL_TEST = ROOT / ".codex/skills/git-commit-direct-model-test"
 AGENTS = ROOT / "AGENTS.md"
 
 
@@ -32,6 +33,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
         cls.worker_reference = read("skills/subagent-goal-worker/references/templates.md")
         cls.git_commit = read("skills/git-commit/SKILL.md")
         cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
+        cls.direct_model_test = read("skills/git-commit-direct-model-test/SKILL.md")
+        cls.direct_model_test_metadata = read(
+            "skills/git-commit-direct-model-test/agents/openai.yaml"
+        )
 
     def test_codex_subagent_entrypoint_uses_direct_fixed_profile(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_metadata}"
@@ -135,31 +140,76 @@ class CodexWorkflowContractTests(unittest.TestCase):
             actual_skills,
             {
                 "git-commit",
+                "git-commit-direct-model-test",
                 "parallel-task-planner",
                 "subagent-coordination",
                 "subagent-goal-worker",
             },
         )
 
-    def test_git_commit_uses_readonly_default_agent_then_main_task_commits(self) -> None:
+    def test_git_commit_selects_one_readonly_agent(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
         self.assertIn('agent_type: "default"', combined)
         self.assertIn('fork_turns: "none"', self.git_commit)
+        self.assertIn('fork_context: false', self.git_commit)
         self.assertIn("GIT_COMMIT_ANALYSIS_V1", self.git_commit)
         self.assertIn("wait_agent", self.git_commit)
         self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
         self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
-        self.assertIn("spawn_agent:default/inherited", combined)
-        self.assertIn('model: "gpt-5.6-luna"', self.git_commit)
-        self.assertIn('thinking: "medium"', self.git_commit)
-        self.assertIn("create_thread:gpt-5.6-luna/medium fallback", self.git_commit)
-        self.assertIn("[时间戳] git-commit · Luna 模型回退分析", self.git_commit)
-        self.assertIn("YYYYMMDD-HHmm", self.git_commit)
+        self.assertIn('names.has("multi_agent_v1__spawn_agent")', self.git_commit)
+        self.assertIn('names.has("multi_agent_v1__wait_agent")', self.git_commit)
+        self.assertIn('model: "gpt-5.3-codex-spark"', self.git_commit)
+        self.assertIn('reasoning_effort: "xhigh"', self.git_commit)
+        self.assertIn("multi_agent_v1:gpt-5.3-codex-spark/xhigh", combined)
+        self.assertIn('model: "gpt-5.6-terra"', self.git_commit)
+        self.assertIn('reasoning_effort: "medium"', self.git_commit)
+        self.assertIn("spawn_agent:gpt-5.6-terra/medium", combined)
+        self.assertNotIn("create_thread", self.git_commit)
+        self.assertNotIn("list_projects", self.git_commit)
+        self.assertNotIn("wait_threads", self.git_commit)
+        self.assertNotIn("gpt-5.6-luna", self.git_commit)
         self.assertIn("主线程复核", self.git_commit)
 
     def test_git_commit_has_no_dedicated_agent_config(self) -> None:
         matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
         self.assertEqual(matching_configs, [])
+
+    def test_direct_model_test_uses_fixed_serial_matrix_without_custom_agents(self) -> None:
+        skill = self.direct_model_test
+        expected_order = (
+            '1. `spawn_agent` + `gpt-5.3-codex-spark`',
+            '2. `create_thread` + `gpt-5.3-codex-spark`',
+            '3. `spawn_agent` + `gpt-5.6-luna`',
+            '4. `create_thread` + `gpt-5.6-luna`',
+        )
+        positions = [skill.index(item) for item in expected_order]
+        self.assertEqual(positions, sorted(positions))
+        for invariant in (
+            'agent_type: "default"',
+            'fork_turns: "none"',
+            "不得读取 agent 配置",
+            "必须进行一次真实 `spawn_agent` 调用",
+            "任何单项失败都必须记录并继续后续 case",
+            "DIRECT_MODEL_TEST_V1",
+            "wait_agent",
+            "wait_threads",
+            "不自动归档",
+        ):
+            self.assertIn(invariant, skill)
+        self.assertNotIn("git_commit_worker", skill)
+        self.assertIn("$git-commit-direct-model-test", self.direct_model_test_metadata)
+
+    def test_project_direct_model_test_copy_matches_marketplace_source(self) -> None:
+        self.assertEqual(
+            (LOCAL_DIRECT_MODEL_TEST / "SKILL.md").read_text(encoding="utf-8"),
+            self.direct_model_test,
+        )
+        self.assertEqual(
+            (LOCAL_DIRECT_MODEL_TEST / "agents/openai.yaml").read_text(
+                encoding="utf-8"
+            ),
+            self.direct_model_test_metadata,
+        )
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -179,6 +229,12 @@ class CodexWorkflowContractTests(unittest.TestCase):
         prompt = manifest["interface"]["defaultPrompt"][0]
         self.assertIn("/goal 每轮使用 $subagent-coordination", prompt)
         self.assertIn("覆盖率 100%", prompt)
+        self.assertTrue(
+            any(
+                "$git-commit-direct-model-test" in item
+                for item in manifest["interface"]["defaultPrompt"]
+            )
+        )
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)

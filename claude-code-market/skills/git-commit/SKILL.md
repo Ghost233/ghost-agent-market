@@ -8,7 +8,7 @@ description: |
 
 # Git 智能提交
 
-在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
+在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。Codex 端按注册工具选择 `multi_agent_v1` 或直接子代理的能力探测不适用于 Claude Code；这里继续由当前主会话完成分析和 Git 写入。
 
 提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 

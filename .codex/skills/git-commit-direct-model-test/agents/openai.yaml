@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Commit Direct Model Test"
+  short_description: "严格串行验证四种直接模型调用与运行载体组合的兼容性结果"
+  default_prompt: "使用 $git-commit-direct-model-test 按固定顺序运行全部四项直接模型测试并汇总结果。"
