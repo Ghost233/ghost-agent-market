@@ -7,7 +7,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
-GIT_COMMIT_WORKER = ROOT / ".codex/agents/git-commit-worker.toml"
 AGENTS = ROOT / "AGENTS.md"
 
 
@@ -33,7 +32,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
         cls.worker_reference = read("skills/subagent-goal-worker/references/templates.md")
         cls.git_commit = read("skills/git-commit/SKILL.md")
         cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
-        cls.git_commit_worker = GIT_COMMIT_WORKER.read_text(encoding="utf-8")
 
     def test_codex_subagent_entrypoint_uses_direct_fixed_profile(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_metadata}"
@@ -143,26 +141,25 @@ class CodexWorkflowContractTests(unittest.TestCase):
             },
         )
 
-    def test_git_commit_uses_readonly_worker_then_main_task_commits(self) -> None:
+    def test_git_commit_uses_readonly_default_agent_then_main_task_commits(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
-        self.assertIn('agent_type: "git_commit_worker"', combined)
+        self.assertIn('agent_type: "default"', combined)
         self.assertIn('fork_turns: "none"', self.git_commit)
         self.assertIn("GIT_COMMIT_ANALYSIS_V1", self.git_commit)
         self.assertIn("wait_agent", self.git_commit)
         self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
         self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
-        self.assertIn("git_commit_worker:gpt-5.3-codex-spark/high", combined)
+        self.assertIn("spawn_agent:default/inherited", combined)
         self.assertIn('model: "gpt-5.6-luna"', self.git_commit)
         self.assertIn('thinking: "medium"', self.git_commit)
         self.assertIn("create_thread:gpt-5.6-luna/medium fallback", self.git_commit)
+        self.assertIn("[时间戳] git-commit · Luna 模型回退分析", self.git_commit)
+        self.assertIn("YYYYMMDD-HHmm", self.git_commit)
         self.assertIn("主线程复核", self.git_commit)
 
-    def test_git_commit_worker_returns_primary_contract(self) -> None:
-        self.assertIn('model = "gpt-5.3-codex-spark"', self.git_commit_worker)
-        self.assertIn('model_reasoning_effort = "high"', self.git_commit_worker)
-        self.assertIn("GIT_COMMIT_ANALYSIS_V1 JSON 对象", self.git_commit_worker)
-        self.assertIn("profile_evidence 必须精确等于", self.git_commit_worker)
-        self.assertNotIn("gpt-5.6-luna", self.git_commit_worker)
+    def test_git_commit_has_no_dedicated_agent_config(self) -> None:
+        matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
+        self.assertEqual(matching_configs, [])
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -176,7 +173,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^0\.8\.\d+\+codex\.")
+        self.assertRegex(manifest["version"], r"^0\.9\.\d+\+codex\.")
         self.assertIn("/goal", manifest["description"])
         self.assertIn("v4", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

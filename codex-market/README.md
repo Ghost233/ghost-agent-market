@@ -26,7 +26,7 @@ Owner 是稳定的逻辑责任域，Agent 只是软亲和执行载体。runtime 
 
 `.ghost-agent-workflow/` 只保存本地 runtime state，不应提交；请在使用插件的项目中将它加入 `.gitignore`。
 
-`git-commit` 使用只读 `git_commit_worker` 分析 checkout，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+`git-commit` 使用继承当前 profile 的通用子代理只读分析 checkout，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 ## 安装
 
