@@ -1,0 +1,10 @@
+{
+  "version": "2",
+  "plugins": [
+    {
+      "id": "ghost-agent-workflow",
+      "displayName": "Ghost Agent Workflow",
+      "source": "./plugins/ghost-agent-workflow"
+    }
+  ]
+}

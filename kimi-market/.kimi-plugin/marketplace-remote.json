@@ -1,0 +1,10 @@
+{
+  "version": "2",
+  "plugins": [
+    {
+      "id": "ghost-agent-workflow",
+      "displayName": "Ghost Agent Workflow",
+      "source": "https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip"
+    }
+  ]
+}

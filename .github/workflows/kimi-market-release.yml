@@ -1,0 +1,36 @@
+name: kimi-market-release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "kimi-market/**"
+      - ".github/workflows/kimi-market-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rolling-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build plugin zip
+        run: |
+          cd kimi-market/plugins
+          zip -r "$GITHUB_WORKSPACE/ghost-agent-workflow-kimi.zip" ghost-agent-workflow -x "*/.DS_Store"
+
+      - name: Update rolling release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view kimi-latest >/dev/null 2>&1; then
+            gh release create kimi-latest \
+              --title "kimi-market latest" \
+              --notes "Rolling build of the Kimi Code ghost-agent-workflow plugin from main. Install in Kimi Code: /plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip"
+          fi
+          gh release upload kimi-latest "$GITHUB_WORKSPACE/ghost-agent-workflow-kimi.zip" --clobber

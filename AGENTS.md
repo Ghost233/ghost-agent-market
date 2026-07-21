@@ -28,13 +28,15 @@ git config user.email
 
 - `claude-code-market/`：Claude Code 本地插件入口
 - `codex-market/`：Codex 本地 marketplace/plugin 入口
+- `kimi-market/`：Kimi Code 本地 marketplace/plugin 入口
 - `SkillOpt/`：`microsoft/SkillOpt` Git submodule
 
 ## Skill 同步规则
 
-更新任意 skill 内容时，必须同时更新 Claude Code 和 Codex 两端对应内容：
+更新任意 skill 内容时，必须同时更新 Claude Code、Codex 和 Kimi Code 三端对应内容：
 
 - Claude Code：`claude-code-market/skills/<skill>/`
 - Codex：`codex-market/plugins/ghost-agent-workflow/skills/<skill>/`
+- Kimi Code：`kimi-market/plugins/ghost-agent-workflow/skills/<skill>/`
 
 只有用户明确要求单端差异化实现时，才允许两端内容不同；这种差异必须在对应 skill 中写清平台原因。

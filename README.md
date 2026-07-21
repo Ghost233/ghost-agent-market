@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-这是一个 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
+这是一个 agent marketplace 工作区，包含 Claude Code / Codex / Kimi Code 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 内置 skill：
 
@@ -70,6 +70,22 @@ ghost-agent-market/
             └── rules.json
 ```
 
+`kimi-market/` 提供 Kimi Code 可安装插件：
+
+```text
+kimi-market/
+├── .kimi-plugin/marketplace.json
+└── plugins/
+    └── ghost-agent-workflow/
+        ├── kimi.plugin.json
+        ├── scripts/goal-dag.mjs
+        └── skills/
+            ├── parallel-task-planner/
+            ├── subagent-coordination/
+            ├── subagent-goal-worker/
+            └── git-commit/
+```
+
 ## 安装 Claude Code Market
 
 在 Claude Code 里添加远程 marketplace：
@@ -105,4 +121,26 @@ Codex marketplace 文件位置：
 
 ```text
 codex-market/.agents/plugins/marketplace.json
+```
+
+## 安装 Kimi Code Market
+
+GitHub 一键安装（CI 从 `main` 分支构建的滚动 release zip，免克隆）：
+
+```text
+/plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip
+```
+
+或克隆本仓库后本地安装：
+
+```text
+/plugins install <仓库路径>/kimi-market/plugins/ghost-agent-workflow
+```
+
+也可以通过 marketplace 清单安装（远程用 `kimi-market/.kimi-plugin/marketplace-remote.json` 的 raw URL，本地用 `marketplace.json`）。注意 Kimi 不支持仓库整库 URL（含 `/tree/...`）安装 monorepo 子目录插件，必须走 release zip 或本地路径。
+
+插件为用户级安装，对所有项目生效；安装或更新后需要 `/reload` 或开启新会话。推荐入口：
+
+```text
+/skill:subagent-coordination 执行 `./plan.md`，以子代理 DAG 完整执行，直到计划项覆盖率 100% 且所有验收通过。
 ```
