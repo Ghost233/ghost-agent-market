@@ -34,4 +34,4 @@ GitHub 一键安装（CI 从 `main` 构建的滚动 release zip）：
 /plugins install <仓库路径>/kimi-market/plugins/ghost-agent-workflow
 ```
 
-插件安装在用户级，对全部项目生效；安装或更新后需 `/reload` 或开启新会话。本地安装会复制到 managed 目录，修改源目录后需重新安装。仓库整库 URL（含 `/tree/...`）不支持安装，monorepo 子目录的 manifest 不会被发现；zip 安装不参与自动更新检查，重新执行同一命令即可更新。
+插件安装在用户级，对全部项目生效；安装或更新后需 `/reload` 或开启新会话。本地安装会复制到 managed 目录，修改源目录后需重新安装。仓库整库 URL（含 `/tree/...`）不支持安装，monorepo 子目录的 manifest 不会被发现；zip 安装不参与自动更新检查，重新执行同一命令即可更新。Goal DAG 相关 skill 通过 `node` 执行 runtime 脚本，需要用户机器安装 Node.js（`git-commit` 不依赖）。

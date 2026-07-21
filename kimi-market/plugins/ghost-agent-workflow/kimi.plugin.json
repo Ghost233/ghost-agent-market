@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "面向 Kimi Code local_fallback 生命周期的 subagent-only 文档 coverage、v4 Owner/task DAG、短续跑恢复与智能 Git 提交技能。",
   "author": {
     "name": "Ghost233",

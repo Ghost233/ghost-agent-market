@@ -19,12 +19,12 @@ Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task
 | 观测状态 | 必须动作 |
 |---|---|
 | `reserved_unbound` + `spawn_executor`，未发现匹配 executor，result 不存在 | 用同一 token `abandon`，再由后续 reserve 产生新 attempt；不得把聊天记忆当作已 spawn 证据。 |
-| spawn-before-bind：发现唯一、健康且精确匹配 `executor_spawn_name` 的 executor，state 仍 reserved | 使用 recovery item 的同一 token 与 canonical binding 执行 `bind`；无法唯一证明身份时先停止 runtime 尚未知的 orphan executor，再 `abandon`。 |
+| spawn-before-bind：用 `TaskList(active_only: false)` 发现唯一、健康且精确匹配 `executor_spawn_name` 的 executor（默认 active_only=true 会隐藏已完成实例），state 仍 reserved | 使用 recovery item 的同一 token 与 canonical binding 执行 `bind`；无法唯一证明身份时先停止 runtime 尚未知的 orphan executor，再 `abandon`。 |
 | `reserved_unbound` + `reuse_executor`，目标健康 | 核验 recovery item 的 `executor_id` 仍是 Owner 已绑定 executor，使用同一 token `bind`，再发送该 item 的 canonical binding。 |
 | `reserved_unbound` + `reuse_executor`，复用目标确认丢失 | 以同一 token `reclaim`；runtime 清除 Owner binding 并把该 executor 写入 stop-pending ledger，随后 stop → `confirm-stale-executor`。不得 abandon 后继续复用死 id，也不得 rotate generation。 |
 | bind-before-send：`running_bound` + `wait_or_redeliver` 且 executor 匹配，但消息未送达 | 向同一 executor 重发 recovery item 的 canonical binding。executor 丢失时先 `reclaim`，再停止返回的 executor_id，确认停止后 `confirm-stale-executor`。 |
 | result-written-before-finish：canonical result 已存在，state 仍 reserved/running | 校验 task、owner、generation、attempt、token、source revision 与 result_path 后立即 `finish`；executor 是否已结束不影响裁决。 |
-| reserved/running，executor 健康且 result 尚不存在 | 继续等待；运行中、上下文压缩或暂时无输出都不是 orphan。 |
+| reserved/running，executor 健康且 result 尚不存在 | 继续等待：结束本轮，平台会在 executor 完成时自动送达结果，只允许低频非阻塞 `TaskOutput` 快照，不得轮询或阻塞等待；运行中、上下文压缩或暂时无输出都不是 orphan。 |
 | canonical result 字段不匹配或证据不可复核 | 不调用 finish；保留原始文件供审计，reclaim 或生成 repair delta。 |
 | reservation 已 reclaim/替换后旧 result 到达 | 按 attempt/token/source revision fencing 拒绝，不移动到新路径、不人工合并。 |
 | task 为 failed/blocked/needs_repair | 保留 attempt result，交 planner 生成局部 delta；不影响无关 running Owner。 |

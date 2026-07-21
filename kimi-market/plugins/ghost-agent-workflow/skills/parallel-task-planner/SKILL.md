@@ -16,7 +16,7 @@ whenToUse: 仅当 subagent-coordination coordinator 在已验证 GOAL_CONTRACT_V
 
 ## 先建立覆盖率
 
-1. 读取 `goal.json`，再亲自读取 `goal.source.path` 指向的计划文件；不能只根据 Goal 摘要规划。同时读取 `goal-state.source_blocks.ref` 指向的 runtime `SOURCE_BLOCKS_V1` 并校验其 digest/revision。
+1. 从调用参数（正文末尾 `ARGUMENTS:` 追加段）取得 `goal.json` 绝对路径；读取 `goal.json`，再亲自读取 `goal.source.path` 指向的计划文件；不能只根据 Goal 摘要规划。同时读取 `goal-state.source_blocks.ref` 指向的 runtime `SOURCE_BLOCKS_V1` 并校验其 digest/revision。
 2. 把 source 拆为稳定、原子、可验收的 required plan items。每个 item 都必须有非空 `source_refs`，只引用当前 source block id；并声明非空 `required_effects`，值只能是 `implementation` 或 `verification`。
 3. 先形成 `PLAN_COVERAGE_V1.required_plan_items`，再按 `(plan_item_id, required_effect)` 设计 Owner 和 task。写入 plan 后，把 coverage 的 plan path/digest/revision 绑定到该 plan。
 4. 在 `DAG_PLAN_V4.plan_source` 原样记录 source path/digest/revision，并写入绝对 `coverage_path`。

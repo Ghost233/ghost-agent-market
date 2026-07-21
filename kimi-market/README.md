@@ -66,3 +66,4 @@ CI 会把 `main` 分支的 `kimi-market/` 构建成滚动 release（tag `kimi-la
 - 插件安装在用户级 `$KIMI_CODE_HOME/plugins/managed/<id>/`，对全部项目生效。
 - 安装或更新后需要 `/reload` 或开启新会话才会生效。
 - 本地安装会把插件复制到 managed 目录；修改源目录后需要重新安装才能同步改动。
+- Goal DAG 相关 skill 通过 `node` 执行 runtime 脚本，需要用户机器安装 Node.js；`git-commit` 不依赖 Node。

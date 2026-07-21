@@ -56,7 +56,7 @@ Kimi 没有可用的 native instance。默认 instance digest 为 `SHA-256(UTF-8
 2. 合并仓库强制策略、计划验收和用户追加要求。固定加入 required gate `source-coverage-audit` 与 `diff-scope-audit`；用户只能增加 gate 或授权副作用，不能移除强制项。
 3. 按 reference 写入 `GOAL_CONTRACT_V1`：`execution_platform: kimi`、`lifecycle.controller: local_fallback`、`native_goal: null`、`execution.mode: subagent`、绝对 workspace/source、scope、constraints、non-goals、side-effect policy 与 verification gates。
 4. 运行 `goal-validate`。它必须先捕获 `WORKTREE_BASELINE_V1` 和 `SOURCE_BLOCKS_V1`，再写 goal state；baseline 之前不得分发业务 task。
-5. 调用 `parallel-task-planner` 亲自读取 source 与 runtime source blocks，先生成 `PLAN_COVERAGE_V1`，再生成 `DAG_PLAN_V4`；运行 `validate` 和 `render`。不得把整篇 source 复制进 Goal Contract。
+5. 以 `<goal.json绝对路径>` 作为 skill 参数调用 `parallel-task-planner`，亲自读取 source 与 runtime source blocks，先生成 `PLAN_COVERAGE_V1`，再生成 `DAG_PLAN_V4`；运行 `validate` 和 `render`。不得把整篇 source 复制进 Goal Contract。
 6. 用户明确只规划时返回 coverage 与 DAG；否则进入执行循环。
 
 ```text
@@ -100,8 +100,8 @@ node ${KIMI_SKILL_DIR}/../../scripts/goal-dag.mjs rotate-owner <plan_path> <stat
 node ${KIMI_SKILL_DIR}/../../scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
 ```
 
-- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 调用的 `description`，用完整 binding 原文作为 `prompt`，以 `Agent(run_in_background: true)` 创建后台子代理；不创建启动握手回合，不指定 model 或思考参数。取得 agent id 后立即 `bind`。
-- `reuse_executor`：先用 `TaskList` 确认目标是当前 Goal/Owner 的 idle 健康 Agent；先 `bind`，再用 `Agent(resume: <agent_id>, prompt: <binding 原文>)` 发送原样 binding。
+- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 调用的 `description`，以 `Agent(subagent_type: "coder", run_in_background: true)` 创建后台子代理，`prompt` 为固定分发前缀加完整 binding 原文；worker 需要 Write/Bash/Skill 工具，不得使用 explore/plan 类型，不创建启动握手回合，不指定 model 或思考参数。取得 agent id 后立即 `bind`。固定分发前缀逐字为：`你是 subagent-goal-worker 执行器。立即通过 Skill 工具调用 subagent-goal-worker skill 加载执行协议，并严格按协议处理以下 TASK_BINDING_V4：`
+- `reuse_executor`：先用 `TaskList(active_only: false)` 确认目标是当前 Goal/Owner 的 idle 健康 Agent（默认 active_only=true 会隐藏已完成、可 resume 的实例）；先 `bind`，再用 `Agent(resume: <agent_id>)` 发送同一固定分发前缀加原样 binding。
 - `reserved_unbound + spawn_executor` 无匹配 executor 时 `abandon`。复用目标或 running Agent 确认丢失时以当前 token `reclaim`，用 `TaskStop` 停止返回的 executor，确认停止后 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。
 - 物理 Agent 丢失后默认保持同一逻辑 Owner/generation；只有污染、重复失败或 Capsule 语义需要隔离时才 `rotate-owner`。不同 Goal 不复用 Agent；会话记忆和复用只是性能优化。
 

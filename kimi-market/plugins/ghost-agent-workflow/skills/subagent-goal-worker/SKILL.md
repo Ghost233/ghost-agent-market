@@ -14,6 +14,8 @@ whenToUse: 仅当 subagent-coordination 通过 Agent 工具以后台方式分发
 
 Kimi binding 使用平台默认 profile，Codex 使用固定 runtime profile，这是有意的平台差异。每次接收 binding 时读取 [references/templates.md](references/templates.md)。
 
+runtime 入口为 `node ${KIMI_SKILL_DIR}/../../scripts/goal-dag.mjs`（加载本 skill 时已展开为绝对路径）；templates.md 中三处命令的 `${KIMI_SKILL_DIR}` 一律替换为该展开值执行。
+
 ## 绑定门禁
 
 1. 要求完整 `TASK_BINDING_V4`，`executor_mode: subagent`，且 `executor_spawn_name`、`attempt`、`reservation_token`、`source_revision`、`worktree_baseline`、`source_blocks`、`coverage.{ref,digest,semantic_digest}`、非空 `plan_item_ids`、`coverage_effect`、goal constraints、side-effect policy、verification requirement descriptions、artifact path/contract maps 与唯一 result_path 全部存在。

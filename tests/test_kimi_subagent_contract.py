@@ -141,6 +141,17 @@ class KimiWorkflowContractTests(unittest.TestCase):
             [path for path in MARKET.rglob("agents") if path.is_dir()], []
         )
 
+    def test_coordination_dispatch_contract(self) -> None:
+        coordinator = self.skill_texts["subagent-coordination"]
+        self.assertIn('subagent_type: "coder"', coordinator)
+        self.assertIn("TaskList(active_only: false)", coordinator)
+        self.assertIn("Skill 工具调用 subagent-goal-worker", coordinator)
+        self.assertIn("explore/plan", coordinator)
+        worker = self.skill_texts["subagent-goal-worker"]
+        self.assertIn("node ${KIMI_SKILL_DIR}/../../scripts/goal-dag.mjs", worker)
+        git_commit = self.skill_texts["git-commit"]
+        self.assertIn("/skill:git-commit", git_commit)
+
     def test_remote_marketplace_points_at_release_zip(self) -> None:
         marketplace = json.loads(REMOTE_MARKETPLACE.read_text(encoding="utf-8"))
         self.assertEqual(marketplace["version"], "2")
