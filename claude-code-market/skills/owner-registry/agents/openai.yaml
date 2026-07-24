@@ -1,0 +1,6 @@
+interface:
+  display_name: "功能域 Owner 注册表"
+  short_description: "跨 Goal 维护 owner 身份、模块独占域、接口独占与生命周期。"
+
+policy:
+  allow_implicit_invocation: true

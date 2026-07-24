@@ -60,3 +60,12 @@ node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <de
 ```
 
 只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 coordinator 请求用户决定。
+
+## owner 覆盖检查（功能域角色）
+
+若 Goal 关联了 owner 注册表（`.ghost-agent-workflow/owners/registry.json`），规划前先调 `owner-query` 判断现有 owner 能否覆盖需求模块；`can_cover=false` 时先建议 `owner-add`/`owner-split`，再产 plan。plan 的 `owners[].id` 必须引用 registry `lifecycle=active` 的 owner，`writable_paths` 由其 `owned_modules` 派生；产出后调 `owner-verify-plan` 机械复核（未注册或 writable 越界即 `fail`）。owner 注册表的生命周期操作（add/split/query）不在本 skill 内执行，交 controller 驱动。
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs owner-query <registry.json> <requirement.json>
+node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan <registry.json> <plan.json>
+```

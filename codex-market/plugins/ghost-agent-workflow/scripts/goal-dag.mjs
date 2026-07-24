@@ -344,6 +344,61 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const COMPILED_PLATFORM = "codex";
 const EXPECTED_PLATFORM = (
   COMPILED_PLATFORM.startsWith("__")
@@ -1320,6 +1375,220 @@ function parseOwner(value         , index        )                  {
     runtime_profile: parseRuntimeProfile(source.runtime_profile, `owners[${index}].runtime_profile`),
     reuse_policy: "owner_affinity",
   };
+}
+
+const REGISTRY_HISTORY_EVENTS                         = [
+  "created",
+  "split",
+  "split_from",
+  "retired",
+  "worktree_created",
+  "worktree_merged",
+  "worktree_removed",
+];
+
+function registryOwnerPaths(owner               )           {
+  return [...owner.owned_modules, ...owner.interfaces];
+}
+
+function parseRegistryOwnerInput(value         , index        , label        )                     {
+  const source = requireRecord(value, `${label}[${index}]`);
+  const ownedModules = requireStringArray(
+    source.owned_modules,
+    `${label}[${index}].owned_modules`,
+    false,
+  ).map(normalizePathPattern);
+  ensureUnique(ownedModules, `${label}[${index}].owned_modules`);
+  const interfaces = requireStringArray(
+    source.interfaces ?? [],
+    `${label}[${index}].interfaces`,
+    true,
+  ).map(normalizePathPattern);
+  ensureUnique(interfaces, `${label}[${index}].interfaces`);
+  const depends = requireStringArray(
+    source.depends_on_owners ?? [],
+    `${label}[${index}].depends_on_owners`,
+    true,
+  );
+  ensureUnique(depends, `${label}[${index}].depends_on_owners`);
+  for (const iface of interfaces) {
+    if (!ownedModules.some((pattern) => pathsOverlap(iface, pattern))) {
+      fail(`${label}[${index}].interfaces entry "${iface}" must be within owned_modules`);
+    }
+  }
+  return {
+    owner_id: requireIdentifier(source.owner_id, `${label}[${index}].owner_id`),
+    functional_domain: requireString(source.functional_domain, `${label}[${index}].functional_domain`),
+    owned_modules: ownedModules,
+    interfaces,
+    depends_on_owners: depends,
+  };
+}
+
+function parseRegistryHistoryEntry(value         , index        , ownerLabel        )                       {
+  const source = requireRecord(value, `${ownerLabel}.history[${index}]`);
+  const event = requireString(source.event, `${ownerLabel}.history[${index}].event`);
+  if (!REGISTRY_HISTORY_EVENTS.includes(event                        )) {
+    fail(`${ownerLabel}.history[${index}].event is invalid: ${event}`);
+  }
+  const childIds = source.child_ids === null || source.child_ids === undefined
+    ? null
+    : requireStringArray(source.child_ids, `${ownerLabel}.history[${index}].child_ids`, false);
+  return {
+    at: requireString(source.at, `${ownerLabel}.history[${index}].at`),
+    event: event                        ,
+    reason: requireNullableString(source.reason, `${ownerLabel}.history[${index}].reason`),
+    child_ids: childIds,
+    parent: requireNullableString(source.parent, `${ownerLabel}.history[${index}].parent`),
+  };
+}
+
+function parseRegistryWorktreeBinding(value         , ownerLabel        )                          {
+  const source = requireRecord(value, ownerLabel);
+  const status = requireString(source.status, `${ownerLabel}.status`);
+  if (status !== "active" && status !== "merged" && status !== "removed") {
+    fail(`${ownerLabel}.status is invalid: ${status}`);
+  }
+  return {
+    feature_branch: requireString(source.feature_branch, `${ownerLabel}.feature_branch`),
+    owner_branch: requireString(source.owner_branch, `${ownerLabel}.owner_branch`),
+    worktree_path: requireString(source.worktree_path, `${ownerLabel}.worktree_path`),
+    status: status                          ,
+    created_at: requireString(source.created_at, `${ownerLabel}.created_at`),
+  };
+}
+
+function parseRegistryOwnerStored(value         , index        )                {
+  const source = requireRecord(value, `owners[${index}]`);
+  const lifecycle = requireString(source.lifecycle, `owners[${index}].lifecycle`);
+  if (lifecycle !== "active" && lifecycle !== "split" && lifecycle !== "retired") {
+    fail(`owners[${index}].lifecycle is invalid: ${lifecycle}`);
+  }
+  const ownedModules = requireStringArray(
+    source.owned_modules,
+    `owners[${index}].owned_modules`,
+    false,
+  ).map(normalizePathPattern);
+  ensureUnique(ownedModules, `owners[${index}].owned_modules`);
+  const interfaces = requireStringArray(
+    source.interfaces ?? [],
+    `owners[${index}].interfaces`,
+    true,
+  ).map(normalizePathPattern);
+  ensureUnique(interfaces, `owners[${index}].interfaces`);
+  const depends = requireStringArray(
+    source.depends_on_owners ?? [],
+    `owners[${index}].depends_on_owners`,
+    true,
+  );
+  ensureUnique(depends, `owners[${index}].depends_on_owners`);
+  const historyRaw = source.history;
+  if (!Array.isArray(historyRaw)) fail(`owners[${index}].history must be an array`);
+  const history = historyRaw.map((entry, hIndex) =>
+    parseRegistryHistoryEntry(entry, hIndex, `owners[${index}]`),
+  );
+  return {
+    owner_id: requireIdentifier(source.owner_id, `owners[${index}].owner_id`),
+    functional_domain: requireString(source.functional_domain, `owners[${index}].functional_domain`),
+    owned_modules: ownedModules,
+    interfaces,
+    depends_on_owners: depends,
+    lifecycle: lifecycle                          ,
+    history,
+    memory_docs_ref: requireNullableString(source.memory_docs_ref, `owners[${index}].memory_docs_ref`),
+    worktree_binding: source.worktree_binding === null || source.worktree_binding === undefined
+      ? null
+      : parseRegistryWorktreeBinding(source.worktree_binding, `owners[${index}].worktree_binding`),
+  };
+}
+
+function parseOwnerRegistry(value         )                 {
+  const source = requireRecord(value, "registry");
+  const contract = requireString(source.contract, "registry.contract");
+  if (contract !== "OWNERS_REGISTRY_V1") {
+    fail(`registry.contract must equal OWNERS_REGISTRY_V1: ${contract}`);
+  }
+  const ownersRaw = source.owners;
+  if (!Array.isArray(ownersRaw)) fail("registry.owners must be an array");
+  const owners = ownersRaw.map((entry, index) => parseRegistryOwnerStored(entry, index));
+  ensureUnique(owners.map((owner) => owner.owner_id), "registry owner_id");
+  assertRegistryDisjoint(owners, "registry");
+  return {
+    contract: "OWNERS_REGISTRY_V1",
+    registry_version: requirePositiveInteger(source.registry_version, "registry.registry_version"),
+    workspace_root: requireString(source.workspace_root, "registry.workspace_root"),
+    updated_at: requireString(source.updated_at, "registry.updated_at"),
+    owners,
+  };
+}
+
+function assertRegistryDisjoint(owners                 , label        )       {
+  for (let i = 0; i < owners.length; i += 1) {
+    const aPaths = registryOwnerPaths(owners[i]);
+    for (let j = i + 1; j < owners.length; j += 1) {
+      const bPaths = registryOwnerPaths(owners[j]);
+      for (const pa of aPaths) {
+        for (const pb of bPaths) {
+          if (pathsOverlap(pa, pb)) {
+            fail(
+              `${label}: owner ${owners[i].owner_id} path "${pa}" overlaps owner ${owners[j].owner_id} path "${pb}"`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+function emptyRegistry(workspaceRoot        )                 {
+  return {
+    contract: "OWNERS_REGISTRY_V1",
+    registry_version: 1,
+    workspace_root: resolve(workspaceRoot),
+    updated_at: new Date().toISOString(),
+    owners: [],
+  };
+}
+
+function stampHistory(
+  owner               ,
+  event                      ,
+  reason               ,
+  extra                                            ,
+)       {
+  owner.history.push({
+    at: new Date().toISOString(),
+    event,
+    reason,
+    child_ids: extra?.child_ids ?? null,
+    parent: extra?.parent ?? null,
+  });
+  owner.lifecycle = event === "retired" ? "retired" : owner.lifecycle;
+}
+
+function registryOwnerFromInput(
+  input                    ,
+  event                      ,
+  reason               ,
+  extra                                            ,
+)                {
+  const owner                = {
+    owner_id: input.owner_id,
+    functional_domain: input.functional_domain,
+    owned_modules: input.owned_modules,
+    interfaces: input.interfaces,
+    depends_on_owners: input.depends_on_owners,
+    lifecycle: "active",
+    history: [],
+    memory_docs_ref: null,
+    worktree_binding: null,
+  };
+  stampHistory(owner, event, reason, extra);
+  return owner;
+}
+
+function ownerMemoryDocsRef(registryPath        , ownerId        )         {
+  return join(dirname(registryPath), ownerId, "memory.md");
 }
 
 function parseTask(value         , index        )                 {
@@ -5423,6 +5692,478 @@ function nativeConfirmCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+function ownerInitCommand(registryArgument        , workspaceRootArgument        )       {
+  const registryPath = resolve(registryArgument);
+  if (existsSync(registryPath)) fail(`registry already exists: ${registryPath}`);
+  const workspaceRoot = resolve(workspaceRootArgument);
+  const registry = emptyRegistry(workspaceRoot);
+  const runtimeDir = join(workspaceRoot, ".ghost-agent-workflow");
+  const gitignorePath = join(runtimeDir, ".gitignore");
+  const gitignoreBody =
+    "# owner 数据（registry.json、owners/）随仓库提交永久存档；仅忽略运行时临时文件与 worktree 检出。\n" +
+    "worktrees/\n" +
+    "*.lock\n" +
+    "*.lock.*.tmp\n" +
+    "*.tmp\n" +
+    "*.transaction.json\n";
+  let archiveWarning                = null;
+  const rootGitignore = join(workspaceRoot, ".gitignore");
+  if (existsSync(rootGitignore)) {
+    const lines = readFileSync(rootGitignore, "utf8").split(/\r?\n/);
+    const wholeIgnored = lines.some((line) => {
+      const trimmed = line.trim();
+      return trimmed === ".ghost-agent-workflow/" || trimmed === ".ghost-agent-workflow";
+    });
+    if (wholeIgnored) {
+      archiveWarning =
+        "根 .gitignore 整体忽略了 .ghost-agent-workflow/，owner 数据无法随仓库提交存档。" +
+        "请改为仅忽略运行时临时文件（worktrees/、*.lock、*.tmp、*.transaction.json），保留 owners/ 与 registry.json。";
+    }
+  }
+  writeTextAtomic(gitignorePath, gitignoreBody);
+  writeTransaction(registryPath, [[registryPath, registry]]);
+  process.stdout.write(
+    `${JSON.stringify({
+      status: "initialized",
+      registry_path: registryPath,
+      workspace_root: workspaceRoot,
+      gitignore_path: gitignorePath,
+      archive_warning: archiveWarning,
+    })}\n`,
+  );
+}
+
+function loadRegistryLocked(registryPath        )                 {
+  return parseOwnerRegistry(readJson(registryPath));
+}
+
+function ownerListCommand(registryArgument        )       {
+  const registryPath = resolve(registryArgument);
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    return {
+      contract: "OWNER_REGISTRY_LIST_V1"         ,
+      registry_version: registry.registry_version,
+      owners: registry.owners.map((owner) => ({
+        owner_id: owner.owner_id,
+        functional_domain: owner.functional_domain,
+        owned_modules: owner.owned_modules,
+        interfaces: owner.interfaces,
+        lifecycle: owner.lifecycle,
+        worktree_status: owner.worktree_binding === null ? "none" : owner.worktree_binding.status,
+      })),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function ownerAddCommand(registryArgument        , ownerDefArgument        , planOnly         )       {
+  const registryPath = resolve(registryArgument);
+  const ownerDefPath = resolve(ownerDefArgument);
+  const input = parseRegistryOwnerInput(readJson(ownerDefPath), 0, "owner_def");
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    if (registry.owners.some((owner) => owner.owner_id === input.owner_id)) {
+      fail(`owner already exists: ${input.owner_id}`);
+    }
+    const newOwner = registryOwnerFromInput(input, "created", "owner-add");
+    const nextOwners = [...registry.owners, newOwner];
+    assertRegistryDisjoint(nextOwners, "owner-add");
+    if (!planOnly) {
+      const nextRegistry                 = {
+        ...registry,
+        owners: nextOwners,
+        updated_at: new Date().toISOString(),
+      };
+      writeTransaction(registryPath, [[registryPath, nextRegistry]]);
+    }
+    return {
+      status: (planOnly ? "plan" : "added")         ,
+      would_add: {
+        owner_id: newOwner.owner_id,
+        functional_domain: newOwner.functional_domain,
+        owned_modules: newOwner.owned_modules,
+        interfaces: newOwner.interfaces,
+        depends_on_owners: newOwner.depends_on_owners,
+      },
+      registry_version: registry.registry_version,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function ownerQueryCommand(registryArgument        , requirementArgument        )       {
+  const registryPath = resolve(registryArgument);
+  const requirementPath = resolve(requirementArgument);
+  const requirement = requireRecord(readJson(requirementPath), "requirement");
+  const modules = requireStringArray(
+    requirement.modules,
+    "requirement.modules",
+    true,
+  ).map(normalizePathPattern);
+  const text = requireString(requirement.text, "requirement.text");
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const covered                                              = [];
+    const gaps           = [];
+    for (const modulePath of modules) {
+      const candidates = registry.owners.filter((owner) =>
+        registryOwnerPaths(owner).some((pattern) => pathsOverlap(modulePath, pattern)),
+      );
+      if (candidates.length === 0) {
+        gaps.push(modulePath);
+      } else {
+        covered.push({ module: modulePath, owner_id: candidates[0].owner_id });
+      }
+    }
+    const splitCandidates = registry.owners
+      .filter((owner) => registryOwnerPaths(owner).length >= 4)
+      .map((owner) => ({ parent: owner.owner_id, reason: `模块跨度较大(${registryOwnerPaths(owner).length} 条)` }));
+    return {
+      contract: "OWNER_COVERAGE_QUERY_V1"         ,
+      text,
+      covered,
+      gaps,
+      split_candidates: splitCandidates,
+      can_cover: gaps.length === 0,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function ownerSplitCommand(
+  registryArgument        ,
+  parentOwnerId        ,
+  splitSpecArgument        ,
+  planOnly         ,
+)       {
+  const registryPath = resolve(registryArgument);
+  const splitSpecPath = resolve(splitSpecArgument);
+  const spec = requireRecord(readJson(splitSpecPath), "split_spec");
+  const reason = requireString(spec.reason, "split_spec.reason");
+  const newOwnersRaw = spec.new_owners;
+  if (!Array.isArray(newOwnersRaw) || newOwnersRaw.length === 0) {
+    fail("split_spec.new_owners must be a non-empty array");
+  }
+  const inputs = newOwnersRaw.map((entry, index) =>
+    parseRegistryOwnerInput(entry, index, "split_spec.new_owners"),
+  );
+  ensureUnique(inputs.map((item) => item.owner_id), "split_spec.new_owners.owner_id");
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const parentIndex = registry.owners.findIndex((owner) => owner.owner_id === parentOwnerId);
+    if (parentIndex === -1) fail(`parent owner not found: ${parentOwnerId}`);
+    const parent = registry.owners[parentIndex];
+    if (parent.lifecycle !== "active") {
+      fail(`parent owner ${parentOwnerId} lifecycle must be active: ${parent.lifecycle}`);
+    }
+    if (parent.worktree_binding !== null && parent.worktree_binding.status === "active") {
+      fail(`parent owner ${parentOwnerId} has an active worktree; merge-back or remove first`);
+    }
+    // Each claimed module must live within the parent's domain.
+    const claimed           = [];
+    for (const input of inputs) {
+      for (const modulePath of [...input.owned_modules, ...input.interfaces]) {
+        if (!parent.owned_modules.some((pattern) => pathsOverlap(modulePath, pattern))) {
+          fail(`split module "${modulePath}" is not within parent ${parentOwnerId} owned_modules`);
+        }
+        claimed.push(modulePath);
+      }
+    }
+    const childIds = inputs.map((item) => item.owner_id);
+    const children = inputs.map((input) =>
+      registryOwnerFromInput(input, "split_from", reason, { parent: parentOwnerId }),
+    );
+    // Parent retains modules/interfaces not claimed by any child.
+    const retainedModules = parent.owned_modules.filter(
+      (pattern) => !claimed.some((claim) => pathsOverlap(pattern, claim)),
+    );
+    const retainedInterfaces = parent.interfaces.filter(
+      (pattern) => !claimed.some((claim) => pathsOverlap(pattern, claim)),
+    );
+    const nextParent                = {
+      ...parent,
+      owned_modules: retainedModules,
+      interfaces: retainedInterfaces,
+      lifecycle: retainedModules.length === 0 ? "retired" : "active",
+    };
+    stampHistory(nextParent, "split", reason, { child_ids: childIds });
+    const others = registry.owners.filter((_, index) => index !== parentIndex);
+    const nextOwners = [...others, ...children];
+    if (nextParent.lifecycle !== "retired" || retainedModules.length > 0) {
+      nextOwners.push(nextParent);
+    }
+    ensureUnique(nextOwners.map((owner) => owner.owner_id), "registry owner_id after split");
+    assertRegistryDisjoint(nextOwners, "owner-split");
+    if (!planOnly) {
+      const nextRegistry                 = {
+        ...registry,
+        owners: nextOwners,
+        updated_at: new Date().toISOString(),
+      };
+      writeTransaction(registryPath, [[registryPath, nextRegistry]]);
+    }
+    return {
+      status: (planOnly ? "plan" : "split")         ,
+      parent_owner_id: parentOwnerId,
+      parent_would_lifecycle: nextParent.lifecycle,
+      parent_would_retain: retainedModules,
+      new_owners: children.map((child) => ({
+        owner_id: child.owner_id,
+        functional_domain: child.functional_domain,
+        owned_modules: child.owned_modules,
+        interfaces: child.interfaces,
+      })),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function sparseCheckoutDirs(modules          )           {
+  const dirs = new Set        ();
+  for (const modulePath of modules) {
+    const star = modulePath.indexOf("*");
+    const prefix = (star === -1 ? modulePath : modulePath.slice(0, star)).replace(/\/+$/, "");
+    if (!prefix || prefix.includes("*")) continue;
+    dirs.add(prefix.includes(".") ? prefix.slice(0, prefix.lastIndexOf("/")) : prefix);
+  }
+  return [...dirs].filter((dir) => dir && dir !== ".");
+}
+
+function findActiveOwner(registry                , ownerId        )                {
+  const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
+  if (owner === undefined) fail(`owner not found: ${ownerId}`);
+  return owner;
+}
+
+function worktreeCreateCommand(
+  registryArgument        ,
+  featureBranch        ,
+  ownerId        ,
+)       {
+  const registryPath = resolve(registryArgument);
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const owner = findActiveOwner(registry, ownerId);
+    if (owner.worktree_binding !== null && owner.worktree_binding.status === "active") {
+      fail(`owner ${ownerId} already has an active worktree`);
+    }
+    const workspaceRoot = registry.workspace_root;
+    gitOutput(
+      workspaceRoot,
+      ["rev-parse", "--verify", featureBranch],
+      "verify feature branch",
+    );
+    const ownerBranch = `dev_${ownerId}`;
+    const worktreePath = join(workspaceRoot, ".ghost-agent-workflow", "worktrees", ownerId);
+    if (existsSync(worktreePath)) fail(`worktree path already exists: ${worktreePath}`);
+    gitOutput(
+      workspaceRoot,
+      ["worktree", "add", "-b", ownerBranch, worktreePath, featureBranch],
+      "git worktree add",
+    );
+    const dirs = sparseCheckoutDirs(owner.owned_modules);
+    if (dirs.length > 0) {
+      gitOutput(
+        worktreePath,
+        ["sparse-checkout", "set", "--cone", ...dirs],
+        "sparse-checkout set",
+      );
+    }
+    owner.worktree_binding = {
+      feature_branch: featureBranch,
+      owner_branch: ownerBranch,
+      worktree_path: worktreePath,
+      status: "active",
+      created_at: new Date().toISOString(),
+    };
+    stampHistory(owner, "worktree_created", null);
+    registry.updated_at = new Date().toISOString();
+    writeTransaction(registryPath, [[registryPath, registry]]);
+    return {
+      status: "created"         ,
+      owner_id: ownerId,
+      owner_branch: ownerBranch,
+      worktree_path: worktreePath,
+      sparse_dirs: dirs,
+      owned_modules: owner.owned_modules,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function worktreeMergeBackCommand(
+  registryArgument        ,
+  featureBranch        ,
+  ownerId        ,
+)       {
+  const registryPath = resolve(registryArgument);
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const owner = findActiveOwner(registry, ownerId);
+    const binding = owner.worktree_binding;
+    if (binding === null || binding.status !== "active") {
+      fail(`owner ${ownerId} has no active worktree to merge`);
+    }
+    if (binding.feature_branch !== featureBranch) {
+      fail(`feature_branch mismatch: binding has ${binding.feature_branch}, got ${featureBranch}`);
+    }
+    const workspaceRoot = registry.workspace_root;
+    const ownerBranch = binding.owner_branch;
+    const diffRaw = gitOutput(
+      workspaceRoot,
+      ["diff", "--name-only", "-z", "--diff-filter=AMD", `${featureBranch}...${ownerBranch}`],
+      "owner scope diff",
+    );
+    const changed = diffRaw.split("\0").filter((path) => path.length > 0);
+    const violations           = [];
+    for (const path of changed) {
+      const normalized = normalizePathPattern(path);
+      if (!owner.owned_modules.some((pattern) => pathMatchesPattern(normalized, pattern))) {
+        violations.push(path);
+      }
+    }
+    if (violations.length > 0) {
+      fail(
+        `owner ${ownerId} changed files outside owned_modules: ${violations.join(", ")}`,
+      );
+    }
+    gitOutput(workspaceRoot, ["checkout", featureBranch], "checkout feature branch");
+    gitOutput(
+      workspaceRoot,
+      ["merge", "--no-ff", ownerBranch, "-m", `merge ${ownerBranch} into ${featureBranch}`],
+      "merge owner branch",
+    );
+    owner.worktree_binding.status = "merged";
+    stampHistory(owner, "worktree_merged", null);
+    registry.updated_at = new Date().toISOString();
+    writeTransaction(registryPath, [[registryPath, registry]]);
+    return {
+      status: "merged"         ,
+      owner_id: ownerId,
+      feature_branch: featureBranch,
+      owner_branch: ownerBranch,
+      changed_files: changed.length,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function worktreeRemoveCommand(registryArgument        , ownerId        , force         )       {
+  const registryPath = resolve(registryArgument);
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
+    if (owner === undefined) fail(`owner not found: ${ownerId}`);
+    const binding = owner.worktree_binding;
+    if (binding === null) fail(`owner ${ownerId} has no worktree`);
+    if (binding.status !== "merged" && !force) {
+      fail(`worktree not merged; pass --force to remove anyway`);
+    }
+    const workspaceRoot = registry.workspace_root;
+    if (existsSync(binding.worktree_path)) {
+      gitOutput(
+        workspaceRoot,
+        ["worktree", "remove", ...(force ? ["--force"] : []), binding.worktree_path],
+        "git worktree remove",
+      );
+    }
+    gitOutput(
+      workspaceRoot,
+      ["branch", force ? "-D" : "-d", binding.owner_branch],
+      "git branch delete",
+    );
+    owner.worktree_binding.status = "removed";
+    stampHistory(owner, "worktree_removed", null);
+    registry.updated_at = new Date().toISOString();
+    writeTransaction(registryPath, [[registryPath, registry]]);
+    return { status: "removed"         , owner_id: ownerId, owner_branch: binding.owner_branch };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function ownerVerifyPlanCommand(registryArgument        , planArgument        )       {
+  const registryPath = resolve(registryArgument);
+  const planPath = resolve(planArgument);
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const plan = requireRecord(readJson(planPath), "plan");
+    const ownersRaw = plan.owners;
+    if (!Array.isArray(ownersRaw)) fail("plan.owners must be an array");
+    const activeMap = new Map(
+      registry.owners
+        .filter((owner) => owner.lifecycle === "active")
+        .map((owner) => [owner.owner_id, owner]         ),
+    );
+    for (let index = 0; index < ownersRaw.length; index += 1) {
+      const planOwner = requireRecord(ownersRaw[index], `plan.owners[${index}]`);
+      const id = requireIdentifier(planOwner.id, `plan.owners[${index}].id`);
+      const writable = requireStringArray(
+        planOwner.writable_paths ?? [],
+        `plan.owners[${index}].writable_paths`,
+        true,
+      ).map(normalizePathPattern);
+      const regOwner = activeMap.get(id);
+      if (regOwner === undefined) {
+        fail(`plan owner ${id} is not an active registry owner`);
+      }
+      for (const path of writable) {
+        if (!regOwner.owned_modules.some((module) => patternCovers(module, path))) {
+          fail(
+            `plan owner ${id} writable_path "${path}" is not covered by registry owned_modules`,
+          );
+        }
+      }
+    }
+    return {
+      status: "verified"         ,
+      plan_owners: ownersRaw.length,
+      registry_active_owners: activeMap.size,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function ownerNoteCommand(registryArgument        , ownerId        , noteArgument        )       {
+  const registryPath = resolve(registryArgument);
+  const notePath = resolve(noteArgument);
+  const note = requireRecord(readJson(notePath), "note");
+  const text = requireString(note.text, "note.text");
+  const kind = requireString(note.kind, "note.kind");
+  if (kind !== "memory" && kind !== "requirement") {
+    fail(`note.kind must equal memory or requirement: ${kind}`);
+  }
+  const slug = note.slug === null || note.slug === undefined
+    ? "note"
+    : requireString(note.slug, "note.slug").replace(/[^A-Za-z0-9._-]+/g, "-");
+  const payload = withStateLock(registryPath, () => {
+    const registry = loadRegistryLocked(registryPath);
+    const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
+    if (owner === undefined) fail(`owner not found: ${ownerId}`);
+    const ownersDir = dirname(registryPath);
+    const ownerDir = join(ownersDir, ownerId);
+    const stamp = new Date().toISOString();
+    const memoryPath = join(ownerDir, "memory.md");
+    if (kind === "requirement") {
+      const reqDir = join(ownerDir, "requirements");
+      const reqPath = join(reqDir, `${stamp.replaceAll(/[:.]/g, "-")}-${slug}.md`);
+      writeTextAtomic(reqPath, `# ${slug}\n\n${text}\n`);
+    }
+    const previous = existsSync(memoryPath) ? readFileSync(memoryPath, "utf8") : "";
+    writeTextAtomic(memoryPath, `${previous}## ${stamp} [${kind}]\n\n${text}\n\n`);
+    owner.memory_docs_ref = memoryPath;
+    registry.updated_at = stamp;
+    writeTransaction(registryPath, [[registryPath, registry]]);
+    return {
+      status: "noted"         ,
+      owner_id: ownerId,
+      kind,
+      memory_docs_ref: memoryPath,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
 function main(argv          )       {
   const [command, ...args] = argv;
   if (command === "goal-validate" && args.length === 1) return goalValidateCommand(args[0]);
@@ -5474,8 +6215,39 @@ function main(argv          )       {
   if (command === "native-confirm" && args.length === 3) {
     return nativeConfirmCommand(args[0], args[1], args[2]);
   }
+  if (command === "owner-init" && args.length === 2) {
+    return ownerInitCommand(args[0], args[1]);
+  }
+  if (command === "owner-list" && args.length === 1) return ownerListCommand(args[0]);
+  if (command === "owner-add" && (args.length === 2 || (args.length === 3 && args[2] === "--plan"))) {
+    return ownerAddCommand(args[0], args[1], args.length === 3);
+  }
+  if (command === "owner-query" && args.length === 2) {
+    return ownerQueryCommand(args[0], args[1]);
+  }
+  if (command === "owner-split" && (args.length === 3 || (args.length === 4 && args[3] === "--plan"))) {
+    return ownerSplitCommand(args[0], args[1], args[2], args.length === 4);
+  }
+  if (command === "owner-verify-plan" && args.length === 2) {
+    return ownerVerifyPlanCommand(args[0], args[1]);
+  }
+  if (command === "owner-note" && args.length === 3) {
+    return ownerNoteCommand(args[0], args[1], args[2]);
+  }
+  if (command === "worktree-create" && args.length === 3) {
+    return worktreeCreateCommand(args[0], args[1], args[2]);
+  }
+  if (command === "worktree-merge-back" && args.length === 3) {
+    return worktreeMergeBackCommand(args[0], args[1], args[2]);
+  }
+  if (
+    command === "worktree-remove" &&
+    (args.length === 2 || (args.length === 3 && args[2] === "--force"))
+  ) {
+    return worktreeRemoveCommand(args[0], args[1], args.length === 3);
+  }
   fail(
-    "usage: goal-dag.mjs goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | validate <plan.json> | render <plan.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <executor_id> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | apply-delta <plan.json> <state.json> <delta.json> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <executor_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token>",
+    "usage: goal-dag.mjs goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | validate <plan.json> | render <plan.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <executor_id> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | apply-delta <plan.json> <state.json> <delta.json> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <executor_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-init <registry.json> <workspace_root> | owner-list <registry.json> | owner-add <registry.json> <owner-def.json> [--plan] | owner-query <registry.json> <requirement.json> | owner-split <registry.json> <parent_owner_id> <split-spec.json> [--plan] | owner-verify-plan <registry.json> <plan.json> | owner-note <registry.json> <owner_id> <note.json> | worktree-create <registry.json> <feature_branch> <owner_id> | worktree-merge-back <registry.json> <feature_branch> <owner_id> | worktree-remove <registry.json> <owner_id> [--force]",
   );
 }
 

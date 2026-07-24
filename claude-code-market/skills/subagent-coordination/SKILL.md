@@ -137,3 +137,21 @@ node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <
 ```
 
 不要拼入计划、Goal Contract、DAG、Owner Capsule、worker prompt 或人工摘要。
+
+## owner 多代理 fan-out（per-owner worktree 物理隔离）
+
+当 Goal 涉及多个 owner 且要求严格文件隔离时，按 feature 分支 fan-out（不依赖实验性 agent teams，用原生命名子代理 + SendMessage + 共享 Task 板）：
+
+1. 规划阶段调 `owner-query` 判断覆盖；`can_cover=false` 时先 `owner-add --plan`/`owner-split --plan` 拿方案，**以 AskUserQuestion 列给用户确认后**才正式 add/split（不可跳过，见 owner-registry「变更 owner 必须先经用户确认」），再产 plan 并 `owner-verify-plan` 复核。owner 数据随仓库提交存档（见 owner-registry「数据存档」）。
+2. 对每个参与 owner 先建 worktree：`worktree-create <feature_branch> <owner_id>` 产出 sparse worktree（分支 `dev_{owner_id}`，仅含 `owned_modules`，1 owner = 1 worktree，重复创建即拒）。
+3. 以 owner 名 spawn 命名子代理（`agent_type=owner-<owner_id>`，`isolation: worktree`）。项目级 owner-acl PreToolUse hook 按 `agent_type` 映射 owner 模块，越界写 `permissionDecision:"deny"` 硬拒——这是写隔离的硬保证，sparse worktree 是物理基底。
+4. 各 owner 完成且 owner-scope 通过后 `worktree-merge-back <feature_branch> <owner_id>` 合回 feature 分支（`owned_modules` 全表互斥 → 理论零冲突；冲突即注册表被绕过）。
+5. 全部合回后交用户测试；`worktree-remove <owner_id>` 清理。owner 间依赖由 registry `depends_on_owners` 声明，经 SendMessage 协调时序。
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs owner-query        <registry.json> <requirement.json>
+node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan  <registry.json> <plan.json>
+node <plugin-root>/scripts/goal-dag.mjs worktree-create     <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-remove     <registry.json> <owner_id> [--force]
+```

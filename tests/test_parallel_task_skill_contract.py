@@ -50,7 +50,29 @@ class GoalDagSkillContractTests(unittest.TestCase):
             expected_skills = {"git-commit", *ACTIVE_DAG_SKILLS}
             if platform == "codex":
                 expected_skills.add("git-commit-direct-model-test")
+            if platform == "claude":
+                expected_skills.add("owner-registry")
             self.assertEqual(actual_skills, expected_skills, platform)
+
+    def test_owner_registry_is_claude_only_internal_skill(self) -> None:
+        # owner-registry 仅 claude 端存在（依赖 isolation:worktree + PreToolUse hook）
+        self.assertFalse(
+            (PLATFORMS["codex"] / "skills" / "owner-registry").exists(),
+            "owner-registry must be claude-only",
+        )
+        skill = self.skill("claude", "owner-registry")
+        metadata = self.metadata("claude", "owner-registry")
+        self.assertIn("user-invocable: false", skill)
+        self.assertIn("allow_implicit_invocation: true", metadata)
+        self.assertNotIn("default_prompt:", metadata)
+        self.assertIn("内部", skill)
+        registry = self.reference("claude", "owner-registry", "registry.md")
+        contract = self.json_block_after(registry, "## OWNERS_REGISTRY_V1")
+        self.assertEqual(contract["contract"], "OWNERS_REGISTRY_V1")
+        self.assertIn("owned_modules", contract["owners"][0])
+        self.assertIn("严格文件隔离", skill)
+        self.assertIn("owner-split", skill)
+        self.assertIn("owner-query", skill)
 
     def test_subagent_coordinator_is_the_only_public_dag_entrypoint(self) -> None:
         for platform in PLATFORMS:
