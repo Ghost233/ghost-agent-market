@@ -5,10 +5,10 @@
 Codex 推荐入口只有这一行：
 
 ```text
-/goal 每轮使用 $subagent-coordination，以子代理 DAG 完整执行 `./plan.md`，直到计划项覆盖率 100% 且所有验收通过。
+/goal 每轮使用 $subagent-coordination，完整执行 `./plan.md`。
 ```
 
-原生 `/goal` 是持久外循环；每轮显式 `$subagent-coordination` 是内循环入口和唯一公开控制器。它只读取并校验原生 objective，不调用 `create_goal`，也不通过 `update_goal` 覆盖 objective；内部调用 planner 生成 `GOAL_CONTRACT_V1`、`PLAN_COVERAGE_V1` 和 v4 `DAG_PLAN_V4`，再把 fenced attempt 分发给 worker。执行方式固定为 `subagent`。每个本地 `goal_id`/目录都包含 `threadId + createdAt` 的稳定 SHA-256 短摘要，恢复时再精确校验完整 native identity 与 objective digest。Codex 不需要人工 continuation prompt。
+原生 `/goal` 是持久外循环；每轮显式 `$subagent-coordination` 是内循环入口和唯一公开控制器。它只读取并校验原生 objective，不调用 `create_goal`，也不通过 `update_goal` 覆盖 objective；内部调用 planner 生成 `GOAL_CONTRACT_V1`、`PLAN_COVERAGE_V1` 和 v4 `DAG_PLAN_V4`，再把 fenced attempt 分发给 worker。执行方式固定为 `subagent`。首次建图和每次 delta 修订后显示 runtime 生成的完整 DAG；只有 task、coverage、gate、revision 或 `next_action` 实质变化时才显示状态快照，无变化的等待不重复播报。每个本地 `goal_id`/目录都包含 `threadId + createdAt` 的稳定 SHA-256 短摘要，恢复时再精确校验完整 native identity 与 objective digest。Codex 不需要人工 continuation prompt。
 
 首次 `goal-validate` 会冻结 `WORKTREE_BASELINE_V1` 并生成 `SOURCE_BLOCKS_V1`。planner 为每个 plan item 写 source refs 和 required effects，task 用 `coverage_effect` 精确覆盖；独立 source audit 必须先于所有 work，最终 diff audit 由 runtime 扫描 baseline、真实工作区与 accepted results，两个 artifact 都用 SHA-256 绑定。
 

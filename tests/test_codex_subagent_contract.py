@@ -227,8 +227,12 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("/goal", manifest["description"])
         self.assertIn("v4", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
-        self.assertIn("/goal 每轮使用 $subagent-coordination", prompt)
-        self.assertIn("覆盖率 100%", prompt)
+        self.assertEqual(
+            prompt,
+            "/goal 每轮使用 $subagent-coordination，完整执行 `./plan.md`。",
+        )
+        self.assertNotIn("子代理 DAG", prompt)
+        self.assertNotIn("首次建图", prompt)
         self.assertTrue(
             any(
                 "$git-commit-direct-model-test" in item

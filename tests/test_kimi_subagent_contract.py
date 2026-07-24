@@ -152,6 +152,21 @@ class KimiWorkflowContractTests(unittest.TestCase):
         git_commit = self.skill_texts["git-commit"]
         self.assertIn("/skill:git-commit", git_commit)
 
+    def test_coordinator_exposes_authoritative_dag_progress(self) -> None:
+        coordinator = self.skill_texts["subagent-coordination"]
+        for requirement in (
+            "## 用户可见的 DAG 与状态",
+            "展示 `render` 产生的完整当前 DAG",
+            "每次 `apply-delta` 成功后",
+            "planned coverage、completed coverage",
+            "实质状态变化",
+            "同一推进批次中的多项变化合并播报",
+            "没有产生实质状态变化时不重复播报",
+            "不得根据聊天记忆手画状态",
+            "effect-aware coverage 达到 100%",
+        ):
+            self.assertIn(requirement, coordinator)
+
     def test_remote_marketplace_points_at_release_zip(self) -> None:
         marketplace = json.loads(REMOTE_MARKETPLACE.read_text(encoding="utf-8"))
         self.assertEqual(marketplace["version"], "2")

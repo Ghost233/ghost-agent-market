@@ -78,6 +78,17 @@ node <plugin-root>/scripts/goal-dag.mjs goal-refresh <goal.json> <goal-state.jso
 node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <delta.json>
 ```
 
+## 用户可见的 DAG 与状态
+
+用户可见进度由本控制器负责；planner 只生成结构化 coverage、plan 或 delta，worker 只执行绑定任务。
+
+- 首次 `validate` 和 `render` 成功后，展示 `render` 产生的完整当前 DAG，不省略节点或依赖；同时说明 plan revision、planned coverage、completed coverage、首批 ready/running task 与下一步。
+- 每次 `apply-delta` 成功后，重新运行 `validate` 和 `render`，展示修订后的完整 DAG，并说明相对上一 revision 新增、替换、失效、保留的 task、依赖变化及修订原因。
+- task 从 ready 进入 running、完成、失败、阻塞、被替换，或 source revision、planned/completed coverage、required gate、`next_action` 发生变化时，基于当前 plan 与 runtime `status`/`reconcile` 输出简短状态快照；同一推进批次中的多项变化合并播报。
+- wait、轮询或 reconcile 没有产生实质状态变化时不重复播报。不得根据聊天记忆手画状态、猜测进度，或把旧 revision 的结果写进当前快照。
+- 面向用户只展示 task id/title、公开状态、覆盖率、门禁、变化原因与下一步；不输出 reservation token、完整 `TASK_BINDING_V4`、Owner Capsule、executor target 或内部 artifact 内容。
+- 持续推进直到计划项 effect-aware coverage 达到 100%、所有 required gate 通过且 `finalize` 成功；最终回复展示终态快照和验收结论。
+
 ## Reservation 恢复与分发
 
 `status`/`reconcile.active_reservations[]` 与 `reserve.actions[]` 都携带 runtime 锁内重建的完整 canonical `TASK_BINDING_V4`。分发只能使用返回的 binding；不得从聊天记忆、旧 prompt 或自行扫描 plan 重算 attempt、token、权限、result path 或 artifact path。

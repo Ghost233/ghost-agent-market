@@ -1,7 +1,7 @@
 interface:
   display_name: "Goal DAG 子代理控制器"
   short_description: "在 Codex 原生 Goal 中规划并持续执行可恢复的子代理 v4 DAG。"
-  default_prompt: "/goal 每轮使用 $subagent-coordination，以子代理 DAG 完整执行 `./plan.md`，直到计划项覆盖率 100% 且所有验收通过。"
+  default_prompt: "/goal 每轮使用 $subagent-coordination，完整执行 `./plan.md`。"
 
 policy:
   allow_implicit_invocation: false

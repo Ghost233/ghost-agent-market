@@ -59,6 +59,8 @@ class GoalDagSkillContractTests(unittest.TestCase):
             self.assertIn("default_prompt:", metadata)
             self.assertIn("allow_implicit_invocation: false", metadata)
             self.assertIn("subagent-coordination", metadata)
+            self.assertNotIn("子代理 DAG", metadata)
+            self.assertNotIn("首次建图", metadata)
             self.assertIn("唯一公开", coordinator)
 
             for name in INTERNAL_DAG_SKILLS:
@@ -211,6 +213,26 @@ class GoalDagSkillContractTests(unittest.TestCase):
             self.assertIn("canonical recovery binding", recovery)
             self.assertIn("reserved_unbound", recovery)
             self.assertIn("running_bound", recovery)
+
+    def test_coordinator_exposes_authoritative_dag_progress(self) -> None:
+        for platform in PLATFORMS:
+            skill = self.skill(platform, "subagent-coordination")
+            for requirement in (
+                "## 用户可见的 DAG 与状态",
+                "展示 `render` 产生的完整当前 DAG",
+                "每次 `apply-delta` 成功后",
+                "planned coverage、completed coverage",
+                "实质状态变化",
+                "同一推进批次中的多项变化合并播报",
+                "没有产生实质状态变化时不重复播报",
+                "不得根据聊天记忆手画状态",
+                "effect-aware coverage 达到 100%",
+            ):
+                self.assertIn(requirement, skill, platform)
+            self.assertLess(
+                skill.index("goal-dag.mjs apply-delta"),
+                skill.index("## 用户可见的 DAG 与状态"),
+            )
 
     def test_worker_binding_and_result_are_fenced_and_auditable(self) -> None:
         for platform in PLATFORMS:

@@ -5,10 +5,10 @@
 Kimi 推荐入口只有这一行：
 
 ```text
-/skill:subagent-coordination 执行 `./plan.md`,以子代理 DAG 完整执行,直到计划项覆盖率 100% 且所有验收通过。
+/skill:subagent-coordination 执行 `./plan.md`
 ```
 
-Kimi Code 的原生 Goal 不向插件暴露稳定的 native instance identity（无 threadId/createdAt），因此本插件使用 `local_fallback` 生命周期。显式 `/skill:subagent-coordination` 是内循环入口和唯一公开控制器；目标未完成时，逐字使用它返回的 runtime 单行续跑提示（`/skill:subagent-coordination 继续 <goal.json绝对路径>`）继续执行。也可以自行用原生 `/goal` 包裹获得自动外循环；skill 不调用 CreateGoal/UpdateGoal，不依赖原生 Goal 存在。控制器内部调用 planner 生成 `GOAL_CONTRACT_V1`、`PLAN_COVERAGE_V1` 和 v4 `DAG_PLAN_V4`，再把 fenced attempt 分发给 worker。执行方式固定为 `subagent`。instance identity 取 source 绝对路径与 source digest 的 SHA-256 前 12 位小写 hex 后缀，恢复时精确校验完整 instance 与 objective digest。
+Kimi Code 的原生 Goal 不向插件暴露稳定的 native instance identity（无 threadId/createdAt），因此本插件使用 `local_fallback` 生命周期。显式 `/skill:subagent-coordination` 是内循环入口和唯一公开控制器；目标未完成时，逐字使用它返回的 runtime 单行续跑提示（`/skill:subagent-coordination 继续 <goal.json绝对路径>`）继续执行。也可以自行用原生 `/goal` 包裹获得自动外循环；skill 不调用 CreateGoal/UpdateGoal，不依赖原生 Goal 存在。控制器内部调用 planner 生成 `GOAL_CONTRACT_V1`、`PLAN_COVERAGE_V1` 和 v4 `DAG_PLAN_V4`，再把 fenced attempt 分发给 worker。执行方式固定为 `subagent`。首次建图和每次 delta 修订后显示 runtime 生成的完整 DAG；只有 task、coverage、gate、revision 或 `next_action` 实质变化时才显示状态快照，无变化的等待不重复播报。instance identity 取 source 绝对路径与 source digest 的 SHA-256 前 12 位小写 hex 后缀，恢复时精确校验完整 instance 与 objective digest。
 
 首次 `goal-validate` 会冻结 `WORKTREE_BASELINE_V1` 并生成 `SOURCE_BLOCKS_V1`。planner 为每个 plan item 写 source refs 和 required effects，task 用 `coverage_effect` 精确覆盖；独立 source audit 必须先于所有 work，最终 diff audit 由 runtime 扫描 baseline、真实工作区与 accepted results，两个 artifact 都用 SHA-256 绑定。
 
