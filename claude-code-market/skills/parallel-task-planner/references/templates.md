@@ -120,6 +120,23 @@
 
 Claude Code 每个 Owner 的 `runtime_profile` 必须为 `null`，由平台选择实际模型。每个 work task 必须依赖当前 `source-coverage-audit`；所有 task 都必须有非空 `plan_item_ids` 和合法 `coverage_effect`。
 
+若 Goal 关联 owner 注册表，`owners[].id` 必须引用 registry `lifecycle=active` 的 owner，`writable_paths` 由该 owner 的 `owned_modules` 派生（review/verify owner 派生为空）；产 plan 后由 planner 调只读 `owner-verify-plan` 复核。`owner-query` 的输入 `requirement.json` 最小样例见下节。
+
+## requirement.json（owner-query 输入，最小样例）
+
+`owner-query` 用 requirement.json 描述本 Goal 需要覆盖的写入模块与能力，registry 据此判断现有 active owner 能否覆盖：
+
+```json
+{
+  "requirement_id": "req-runtime-owner-state",
+  "modules": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+  "capabilities": ["reservation", "attempt", "capsule-checkpoint"],
+  "notes": "覆盖 Owner 状态机所需的写入范围与能力"
+}
+```
+
+`modules` 即候选 owner 的 `owned_modules` 比对范围；`capabilities` 是非必需的语义标签。`can_cover=false` 时 planner 不得自行写 registry，交 controller 经 `--plan` + `AskUserQuestion` 执行 `owner-add`/`owner-split`。
+
 ## DAG_DELTA_V1：source revision 刷新
 
 只有 `goal-refresh` 已完成原子刷新并令 state 进入 `goal_refresh_pending` 后，才生成 source delta：

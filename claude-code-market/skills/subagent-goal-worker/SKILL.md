@@ -8,11 +8,19 @@ user-invocable: false
 
 ## 边界
 
-只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源；当前 Agent 的会话记忆和复用只是性能优化。
+只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源。Owner 模型下，命名子代理（Agent 名 = `owner-<owner_id>`）的 owner_affinity 复用与会话记忆是承重机制（支撑 SendMessage 多次寻址与记忆汇总），不是可选性能优化；仅跨 Goal 才不复用。「低频回收后台 Agent」仅指非 owner 的普通 executor。
 
-不得创建或委派其他执行单元。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
+不得创建或委派其他执行单元。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。不得写 `owners/<id>/memory.md` 或 `requirements/`（controller owner-note 职责；worker 写入违反写白名单并触发 L3 per-owner scope audit 越界 fail）。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
 
 Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置；Codex 固定 profile。这是有意的平台差异。每次接收 binding 时读取 [references/templates.md](references/templates.md)。
+
+## Owner 环境自检
+
+命名子代理（Agent 名 = `owner-<owner_id>`，binding 含非空 `owner_exec`）开工前自检三项，任一不满足立即返回 `needs_repair`，不重试、不换路径绕过：
+
+1. `owner_exec.agent_type` 必须为 `owner-<owner_id>`，与 registry.owners[].owner_id 一致（L1 PreToolUse hook owner-acl-hook.py 按此写前硬 deny）。非 owner 普通 executor（无 owner_exec）跳过本节检查。
+2. 必须位于 `owner_exec.worktree_path` 指向的 sparse worktree（L2 物理隔离），且 `owner_branch` = `dev_{owner_id}` 绑定有效、sparse 范围覆盖 `owned_modules_glob`。worktree 丢失或 sparse 范围不符时返回 `needs_repair`，并在 scope_request 注明 worktree 重建需求。
+3. L1 hook 拦截写操作（deny）时，直接返回 `needs_repair`，不得换路径或重试绕过。hook 始终读主工作区 registry（owner-acl-hook.py 从 cwd 向上查找 `.ghost-agent-workflow` 根或用 `CLAUDE_PROJECT_DIR`），子代理无需关心自身 cwd 是否含 `.ghost-agent-workflow`。
 
 ## 绑定门禁
 
@@ -47,6 +55,6 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 2. 做 diff_self_check，只归因当前 attempt 的 changed files，并显式记录 `blocking_findings`。
 3. 构造一个 `WORKER_RESULT_V4`；task、Owner、generation、executor、attempt、token 与 source revision 必须与 binding/state 一致。
 4. 先原子写入 binding 的唯一 result_path，再返回相同 JSON。不得覆盖其他 attempt 文件。
-5. 把可复用决策、不变量和风险放入 owner_updates，由 driver 合并 Capsule。
+5. 把可复用决策、不变量和风险放入 `owner_updates`，由 driver 合并 per-Goal Capsule。worker 绝不写 `owners/<id>/memory.md` 或 `requirements/`（controller 在主工作区经 owner-note 沉淀跨 Goal registry memory）。命名子代理 SendMessage 二次寻址做记忆汇总为可选增强，平台前提验证后启用；当前默认 controller 据 owner_updates + diff 自写 owner-note。
 
 `completed` 必须为每个 verification id 提交 passed evidence，并完成 binding 声明的 coverage effect。两个固定 audit gate 只能由独立 audit binding 提交，且 artifact ref/digest 都非空；实施 worker 的 diff_self_check 不能代替它们。普通失败使用 failed/blocked；扩域或阻断审查使用 needs_repair。driver 的 `finish` 是身份、范围、revision、artifact 内容与证据的唯一机械裁决。

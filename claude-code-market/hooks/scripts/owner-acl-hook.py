@@ -5,10 +5,19 @@ Denies file writes by an owner subagent outside its owned_modules. The active
 owner is identified by `agent_type` (the subagent frontmatter name, shaped
 `owner-<owner_id>`). Non-owner agents are allowed through (fail-open).
 
-Isolation layers (defense in depth):
-  L2  this hook          — hard deny at write time (platform-enforced)
-  L3  worktree sparse    — out-of-module files physically absent in the worktree
-  L1  worktree-merge-back scope audit — backstop at merge time
+Isolation layers (defense in depth; the L1/L2/L3 numbering is shared across the
+whole owner-registry chain — keep it identical in every skill / hook / audit):
+  L1  this hook (PreToolUse) — hard deny at write time, keyed on agent_type
+  L2  sparse worktree        — out-of-module files are physically absent from
+                               the per-owner worktree (sparse checkout)
+  L3  worktree-merge-back    — per-owner scope audit (diff feature..owner; any
+                               file outside owned_modules fails the merge)
+
+Registry source (R9): owner worktrees are sparse checkouts that omit
+.ghost-agent-workflow, so this hook never reads cwd-local. It resolves the MAIN
+workspace (walk up from cwd to .ghost-agent-workflow, else CLAUDE_PROJECT_DIR)
+and always reads that workspace's registry.json — so L1 holds whether the
+subagent's cwd is the main repo or a per-owner worktree.
 """
 from __future__ import annotations
 
@@ -76,11 +85,47 @@ def path_matches(rel_path: str, globs: list[str]) -> bool:
 
 
 def workspace_root(payload: dict) -> Path:
+    """Root used to normalize a write target to a repo-relative path.
+
+    For an owner subagent this is its own working directory — the worktree root
+    when running inside a sparse worktree, or the main workspace otherwise. The
+    repo-relative path is what owned_modules globs are matched against. This is
+    deliberately distinct from main_workspace_root(), which locates the registry.
+    """
     cwd = payload.get("cwd")
     if cwd:
         return Path(cwd)
     env_root = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("PLUGIN_ROOT")
     return Path(env_root) if env_root else Path.cwd()
+
+
+def main_workspace_root(payload: dict) -> Path:
+    """Locate the MAIN workspace that owns ``.ghost-agent-workflow/registry.json``.
+
+    Owner worktrees are sparse checkouts that deliberately omit
+    ``.ghost-agent-workflow`` (see goal-dag.mjs WORKTREE_BASELINE), so reading the
+    registry from ``cwd`` would miss it and the hook would fail-open. Per R9 we
+    resolve the main workspace by (in order):
+
+      1. walk up from the agent cwd to the nearest ancestor containing
+         ``.ghost-agent-workflow`` (covers cwd == main workspace, and worktrees
+         nested under it);
+      2. ``CLAUDE_PROJECT_DIR`` / ``PLUGIN_ROOT`` env (the authoritative main
+         workspace pointer set by Claude Code; survives sibling worktrees that
+         live outside the main repo);
+      3. the cwd itself (the registry is then absent and the hook fails open,
+         matching the missing-registry contract).
+    """
+    cwd = payload.get("cwd")
+    if cwd:
+        start = Path(cwd).resolve()
+        for candidate in [start, *start.parents]:
+            if (candidate / ".ghost-agent-workflow").is_dir():
+                return candidate
+    env_root = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("PLUGIN_ROOT")
+    if env_root:
+        return Path(env_root)
+    return Path(cwd) if cwd else Path.cwd()
 
 
 def load_owner_modules(registry_path: Path, owner_id: str) -> list[str] | None:
@@ -135,7 +180,7 @@ def main() -> int:
     rel = target_rel_path(payload)
     if rel is None:
         return 0  # no resolvable file target (e.g. Bash) — defer to other layers
-    root = workspace_root(payload)
+    root = main_workspace_root(payload)
     registry_path = root / ".ghost-agent-workflow" / "owners" / "registry.json"
     modules = load_owner_modules(registry_path, owner_id)
     if modules is None:

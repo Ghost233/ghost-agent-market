@@ -7,7 +7,7 @@
 - **orphan reservation**：state 为 reserved/running，但无法证明一个健康 executor 正持有同一 goal、owner generation、task、attempt 与 reservation token，且 canonical result 尚不存在。
 - **orphan executor**：已创建 executor，但 state 没有把它绑定到当前 reservation，或 reservation 已被 reclaim/替换。
 - **canonical result**：binding 给出的 `results/<task_id>/attempt-<attempt>-<reservation_token>.json`。同一 task 的任何其他路径都不是该 attempt 的结果。
-- **canonical spawn identity**：reserve action 与 binding 同时下发的 `executor_spawn_name`。spawn-before-bind 恢复只接受这个精确名字；协调器不得推导或改写。
+- **canonical spawn identity**：reserve action 与 binding 同时下发的 `executor_spawn_name`。spawn-before-bind 恢复只接受这个精确名字；协调器不得推导或改写。**owner 模型例外**：owner 命名子代理的 Agent spawn name 固定为 `owner-<owner_id>`（稳定，跨 attempt 不变，作 SendMessage 二次寻址句柄）；此时 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）退化为 per-attempt executor_id / reservation token，仅用于 `bind`，绝不当 Agent spawn name。
 - **canonical recovery binding**：`status`/`reconcile.active_reservations[]` 在 runtime 锁内从当前 plan/state 重建的完整 `TASK_BINDING_V4`。它与最初 reserve binding 等价，是崩溃恢复时唯一允许重新 bind/send 的输入。
 
 Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task 身份、权限或完成状态；只信 Owner/Capsule、binding、state 与 canonical result。
@@ -31,12 +31,13 @@ Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task
 | 无 active/ready task，但 required effect pair 仍为 pending | 生成追加 `DAG_DELTA_V1`，不得 finalize。 |
 | `source_status: source_changed` 且仍有 active reservation | `source_drift_drain`：停止 reserve；健康 executor finish；丢失 executor reclaim → stop → confirm。active/stale 清零后才 `goal-refresh`。 |
 | audit binding 下发 artifact path/contract | worker 只在精确 `evidence_artifact_paths` 写 proposal/运行 runtime audit，并在 evidence 同时返回 `artifact_ref` 与 `artifact_digest`。 |
+| owner 模型恢复：per-owner worktree 重连 | `owner-list` 列出 registry active owner，逐 owner 校验 worktree 存在 + `dev_{owner_id}` 绑定 + sparse 范围；executor 健康则 `SendMessage({to: owner-<owner_id>})` 重连，executor 丢失则 `abandon` + 重新以 `owner-<owner_id>` spawn，worktree 丢失则按 `feature_branch` 重建。 |
 
 ## 顺序不变量
 
 1. 每次进入都运行 `status`，再 `reconcile`。
 2. 完成上表的恢复动作后才运行 `reserve`。
-3. 分发只使用 `reserve.actions[]` 或 `status`/`reconcile.active_reservations[]` 返回的完整 canonical binding；禁止依赖聊天记忆或自行重算。spawn 使用精确 `executor_spawn_name`，每次 bind/send 都保持 attempt、token、result_path 与 artifact paths 不变。
+3. 分发只使用 `reserve.actions[]` 或 `status`/`reconcile.active_reservations[]` 返回的完整 canonical binding；禁止依赖聊天记忆或自行重算。非 owner executor 使用精确 `executor_spawn_name` spawn；owner 命名子代理以 `owner-<owner_id>` 为 Agent spawn name，`executor_spawn_name` 仅作 executor_id 用于 `bind`。每次 bind/send 都保持 attempt、token、result_path 与 artifact paths 不变。
 4. worker 先原子写 canonical result；coordinator 再 `finish`。
 5. `finish` 后重新 reconcile；`reclaim` 后必须 stop + `confirm-stale-executor`，stale 列表清零后才 reserve。
 6. 只有 runtime 证明 coverage 100%、所有有效 task resolved 且 gate 通过时，coordinator 才运行 finalize；Codex 随后完成 native bridge，Claude Code 则确认本地 completed。

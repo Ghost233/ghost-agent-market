@@ -1,3 +1,4 @@
+# 本平台 Codex/Kimi 不实现 owner 体系，仅占位元数据（owner 体系仅 claude 端实现，见 owner-registry/SKILL.md）。
 interface:
   display_name: "功能域 Owner 注册表"
   short_description: "跨 Goal 维护 owner 身份、模块独占域、接口独占与生命周期。"

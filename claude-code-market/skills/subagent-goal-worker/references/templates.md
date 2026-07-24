@@ -41,6 +41,12 @@
   "attempt": 2,
   "source_revision": 3,
   "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
+  "owner_exec": {
+    "agent_type": "owner-runtime-core",
+    "worktree_path": "/absolute/repo/.ghost-agent-workflow/worktrees/dev_runtime-core",
+    "owner_branch": "dev_runtime-core",
+    "owned_modules_glob": ["tooling/goal-dag/**"]
+  },
   "writable_paths": ["tooling/goal-dag/**"],
   "resource_locks": ["goal-dag-runtime"],
   "done_when": ["Owner 可复用也可安全换 Agent"],
@@ -90,6 +96,12 @@
   "runtime_profile": null
 }
 ```
+
+字段说明（owner 模式相关）：
+
+- `executor_spawn_name`：per-attempt reservation token（形如 `runtime-...-g2_a2_<hex>`），仅用作 executor_id / reservation token 绑定，绝不是 Agent 工具 spawn 的 name。Agent spawn name = `owner-<owner_id>`（稳定，跨 attempt 不变，作 SendMessage 二次寻址句柄）。coordinator 以 `owner-<owner_id>` 为 Agent 名 spawn；`executor_spawn_name` 仅作 executor_id bind。
+- `owner_exec`：owner 命名子代理执行环境（仅 owner 模式 binding 非空，普通 executor binding 省略）。`agent_type` = `owner-<owner_id>`（L1 hook owner-acl-hook.py 按此写前硬 deny）；`worktree_path` = owner sparse worktree 物理路径（L2 物理隔离）；`owner_branch` = `dev_{owner_id}`（物理载体，对应 registry worktree_binding.owner_branch）；`owned_modules_glob` = registry.owners[].owned_modules 的 glob 形式。
+- `writable_paths`：派生自 registry.owners[].owned_modules（经 owner-verify-plan 机械复核），与 `goal_constraints.scope` 取交集；worker 只写两者交集。
 
 固定 audit task 的 binding 会把对应路径/contract 改为非空。`source-coverage-audit` worker 先把逐 block proposal 写到指定路径，再运行：
 

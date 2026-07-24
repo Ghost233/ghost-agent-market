@@ -18,9 +18,10 @@ user-invocable: false
 
 1. 读取 `goal.json`，再亲自读取 `goal.source.path` 指向的计划文件；不能只根据 Goal 摘要规划。同时读取 `goal-state.source_blocks.ref` 指向的 runtime `SOURCE_BLOCKS_V1` 并校验其 digest/revision。
 2. 把 source 拆为稳定、原子、可验收的 required plan items。每个 item 都必须有非空 `source_refs`，只引用当前 source block id；并声明非空 `required_effects`，值只能是 `implementation` 或 `verification`。
-3. 先形成 `PLAN_COVERAGE_V1.required_plan_items`，再按 `(plan_item_id, required_effect)` 设计 Owner 和 task。写入 plan 后，把 coverage 的 plan path/digest/revision 绑定到该 plan。
+3. 先形成 `PLAN_COVERAGE_V1.required_plan_items`，再按 `(plan_item_id, required_effect)` 设计 Owner 和 task。若 Goal 关联 owner 注册表，在设计 Owner 前前置调只读 `owner-query`（见下方「owner 覆盖检查」）判断现有 owner 能否覆盖需求模块；`can_cover=false` 时先交 controller 经 `--plan` + `AskUserQuestion` 确认执行 `owner-add`/`owner-split`，待 registry 写入后再设计 Owner。写入 plan 后，把 coverage 的 plan path/digest/revision 绑定到该 plan。
 4. 在 `DAG_PLAN_V4.plan_source` 原样记录 source path/digest/revision，并写入绝对 `coverage_path`。
 5. 要求每个 task 的 `plan_item_ids` 为非空数组并声明一个 `coverage_effect`：work 必须为 `implementation`；review/verify 可为 `verification` 或 `audit`，不能为 implementation。初始 DAG 必须覆盖每个 required effect pair，而不只是出现一次 item id。
+6. 产出 `DAG_PLAN_V4` 后，若 Goal 关联 owner 注册表，后置调只读 `owner-verify-plan` 机械复核（owner 未注册或 writable 越界即 `fail`），通过后才交 runtime。
 
 coverage 是完成判定的一部分，不是说明文档。DAG 无 ready/running task 而 required effect pair 仍 pending 时，生成追加 `DAG_DELTA_V1`；不得 finalize。
 
@@ -28,7 +29,7 @@ coverage 是完成判定的一部分，不是说明文档。DAG 无 ready/runnin
 
 - 用稳定 `owner_id` 表示 Goal 生命周期内的领域责任，不表示永久 Agent。
 - 把共享代码边界、长期不变量和连续决策放入同一 Owner；work、review、verify 使用不同 Owner。
-- 一个 Owner 可连续承担多个 task，但同一时刻只运行一个。Agent 复用只是性能优化，Owner Capsule 才是持久真相源。
+- 一个 Owner 可连续承担多个 task，但同一时刻只运行一个。`owner_affinity` 复用 + 命名子代理完成后不回收，是 owner 模型的承重机制（支持 SendMessage 多次寻址 / 记忆汇总），不是可选性能优化；Owner Capsule 是持久真相源。仅跨 Goal 才不复用，同一 Goal 内命名子代理稳定存活以承接二次寻址。
 - 每个 task 只产生一个可验收结果。`work.writable_paths` 必须包含于 Owner 写域；review/verify 写域为空。
 - `depends_on` 只表达数据依赖；写域或运行资源冲突写入 `resource_locks`。
 - 为每个 `verification_id` 保留 Goal gate 的完整 description；覆盖 Goal gate 时同时写 `satisfies_goal_gates`。
@@ -63,7 +64,12 @@ node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <de
 
 ## owner 覆盖检查（功能域角色）
 
-若 Goal 关联了 owner 注册表（`.ghost-agent-workflow/owners/registry.json`），规划前先调 `owner-query` 判断现有 owner 能否覆盖需求模块；`can_cover=false` 时先建议 `owner-add`/`owner-split`，再产 plan。plan 的 `owners[].id` 必须引用 registry `lifecycle=active` 的 owner，`writable_paths` 由其 `owned_modules` 派生；产出后调 `owner-verify-plan` 机械复核（未注册或 writable 越界即 `fail`）。owner 注册表的生命周期操作（add/split/query）不在本 skill 内执行，交 controller 驱动。
+若 Goal 关联了 owner 注册表（`.ghost-agent-workflow/owners/registry.json`），planner 在规划期单点调用两个 in-scope 只读校验：
+
+- 前置 `owner-query`：判断现有 owner 能否覆盖需求模块；`can_cover=false` 时不得自行写 registry，先交 controller 经 `--plan` + `AskUserQuestion` 确认执行 `owner-add`/`owner-split`，待 registry 写入后再产 plan。
+- 后置 `owner-verify-plan`：产出 plan 后机械复核（owner 未注册或 writable 越界即 `fail`）。
+
+`owner-query`、`owner-verify-plan` 是只读操作，在本 skill 内执行；`owner-add`、`owner-split` 是写操作，由 controller 驱动，不在本 skill 内执行。plan 的 `owners[].id` 必须引用 registry `lifecycle=active` 的 owner，`writable_paths` 由其 `owned_modules` 派生（review/verify owner 派生为空）。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs owner-query <registry.json> <requirement.json>
