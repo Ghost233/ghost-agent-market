@@ -62,6 +62,8 @@ node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <de
 
 worker 因同一业务文件反复改 >3 次回 `needs_repair` 时，按方案问题重判该闭包：拆分 task、调整 coverage 或换实现路径，而非简单 `repairs` 换一个同质 replacement 让 worker 继续硬磨。
 
+worker 因 task 实际复杂度远超单 task 粒度回 `needs_repair` 时，优先在同 owner 内拆成多个 task（每个有独立 `plan_item_ids` 与可验收 `done_when`）；只有涉及跨 owner 模块边界、需新增功能域角色时，才建议 owner 拆分（`owner-split`/`owner-add`，须 controller 经 AskUserQuestion 用户确认）。
+
 只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 coordinator 请求用户决定。
 
 ## owner 覆盖检查（功能域角色）

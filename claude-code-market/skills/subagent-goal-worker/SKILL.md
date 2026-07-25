@@ -40,6 +40,7 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 - 需要越过 scope、non-goal 或 side-effect policy 时先停止，返回 `needs_repair` 与精确 scope_request；不得先做后报。
 - 读业务源码用 `grep`/`Glob` 定位再精读相关段，不整篇 `Read` 大文件。
 - 同一业务文件反复改 **>3 次**仍不收敛时回 `needs_repair`（注明反复改的文件与已尝试方案），让 `parallel-task-planner` 重判该闭包（拆分或换方案），不硬磨。
+- 开工后若发现 task 实际复杂度远超单 task 合理粒度（多模块大面积改、多步骤耦合逻辑、或一个 task 含多个可独立验收的子目标），不要硬扛：返回 `needs_repair`，scope_request 注明「task 过大，建议拆分」并列出感知到的子目标与涉及模块。重拆**优先在同 owner 内拆成多个 task**；只有涉及跨 owner 模块边界、需新增功能域角色时，才在 scope_request 标注「建议 owner 拆分」（`owner-add`/`owner-split` 由 controller 经用户确认，worker 不直接做）。
 
 ## Checkpoint 与证据
 
