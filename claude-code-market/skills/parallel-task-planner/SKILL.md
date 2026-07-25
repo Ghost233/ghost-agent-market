@@ -60,6 +60,8 @@ node <plugin-root>/scripts/goal-dag.mjs render <absolute-plan.json>
 node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <delta.json>
 ```
 
+worker 因同一业务文件反复改 >3 次回 `needs_repair` 时，按方案问题重判该闭包：拆分 task、调整 coverage 或换实现路径，而非简单 `repairs` 换一个同质 replacement 让 worker 继续硬磨。
+
 只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时退回 coordinator 请求用户决定。
 
 ## owner 覆盖检查（功能域角色）

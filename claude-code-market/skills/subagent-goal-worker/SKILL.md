@@ -38,6 +38,8 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 - `work` 只修改 writable paths；`review` 和 `verify` 保持 changed_files 为空。
 - 共享工作区中的并行兄弟改动不是本 task 产物。不得撤销或覆盖用户与其他 Owner 的合法改动。
 - 需要越过 scope、non-goal 或 side-effect policy 时先停止，返回 `needs_repair` 与精确 scope_request；不得先做后报。
+- 读业务源码用 `grep`/`Glob` 定位再精读相关段，不整篇 `Read` 大文件。
+- 同一业务文件反复改 **>3 次**仍不收敛时回 `needs_repair`（注明反复改的文件与已尝试方案），让 `parallel-task-planner` 重判该闭包（拆分或换方案），不硬磨。
 
 ## Checkpoint 与证据
 
@@ -55,6 +57,6 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 2. 做 diff_self_check，只归因当前 attempt 的 changed files，并显式记录 `blocking_findings`。
 3. 构造一个 `WORKER_RESULT_V4`；task、Owner、generation、executor、attempt、token 与 source revision 必须与 binding/state 一致。
 4. 先原子写入 binding 的唯一 result_path，再返回相同 JSON。不得覆盖其他 attempt 文件。
-5. 把可复用决策、不变量和风险放入 `owner_updates`，由 driver 合并 per-Goal Capsule。worker 绝不写 `owners/<id>/memory.md` 或 `requirements/`（controller 在主工作区经 owner-note 沉淀跨 Goal registry memory）。命名子代理 SendMessage 二次寻址做记忆汇总为可选增强，平台前提验证后启用；当前默认 controller 据 owner_updates + diff 自写 owner-note。
+5. 把可复用决策、不变量和风险放入 `owner_updates`，由 driver 合并 per-Goal Capsule。`owner_updates` 与 evidence 只回决策/不变量/风险/命令/outcome 摘要与 artifact ref，**不贴源码片段**——源码留在 worker 自己 context，主线程靠 result 与 artifact ref 裁决，避免主 context 雪球。worker 绝不写 `owners/<id>/memory.md` 或 `requirements/`（controller 在主工作区经 owner-note 沉淀跨 Goal registry memory）。命名子代理 SendMessage 二次寻址做记忆汇总为可选增强，平台前提验证后启用；当前默认 controller 据 owner_updates + diff 自写 owner-note。
 
 `completed` 必须为每个 verification id 提交 passed evidence，并完成 binding 声明的 coverage effect。两个固定 audit gate 只能由独立 audit binding 提交，且 artifact ref/digest 都非空；实施 worker 的 diff_self_check 不能代替它们。普通失败使用 failed/blocked；扩域或阻断审查使用 needs_repair。driver 的 `finish` 是身份、范围、revision、artifact 内容与证据的唯一机械裁决。

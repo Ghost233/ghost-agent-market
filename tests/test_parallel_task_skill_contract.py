@@ -303,7 +303,8 @@ class GoalDagSkillContractTests(unittest.TestCase):
         self.assertIn('model: "gpt-5.6-sol"', codex_coordinator)
         self.assertIn('reasoning_effort: "medium"', codex_coordinator)
         self.assertIn('fork_turns: "none"', codex_coordinator)
-        self.assertIn("不得指定 model", claude_coordinator)
+        self.assertIn("model alias", claude_coordinator)
+        self.assertIn("`claude-*` 完整 model id", claude_coordinator)
 
     def test_runtime_and_generated_scripts_are_subagent_only(self) -> None:
         source = (ROOT / "tooling/goal-dag/goal-dag.ts").read_text(encoding="utf-8")

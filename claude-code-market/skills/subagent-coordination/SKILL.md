@@ -16,9 +16,29 @@ Claude Code 没有 Codex 原生 Goal 外循环，因此明确使用 `lifecycle.c
 
 `$subagent-coordination` 不是 Claude Code 插件 skill 的显式调用语法，不能据此启动。执行方式固定为 `subagent`。用户明确只规划时返回 coverage 与 DAG；否则持续推进执行。
 
-本控制器只写 Goal/DAG 协调元数据并调度执行单元，不修改业务文件，不暂存、提交或推送代码。所有正式实施、审查和验证都必须是 DAG task。
+本控制器只写 Goal/DAG 协调元数据并调度执行单元，**绝不直接修改业务文件**（`src/`、`test/`、`scripts/` 等实现产物），不暂存、提交或推送代码。所有正式实施、审查和验证都必须是 DAG task，由 worker 子代理完成。worker spawn 失败（含 503 通道错误、Agent 异常退出）时，按 `needs_repair` 停下并在 scope_request 注明通道/模型问题，等用户修复后用续跑命令恢复——**禁止主线程兜底自己 Edit/Write 业务文件**；主线程仅可写 `.ghost-agent-workflow/` 下的协调元数据（goal/plan/state/capsule/results/owners）。
 
-Claude Code 子代理使用平台默认 profile；调用 Agent 时不得指定 model、thinking、reasoning 或 effort。Codex 固定 `gpt-5.6-sol/medium`，这是有意的平台差异。
+Claude Code 子代理按任务难度选 **model alias**（`opus`/`sonnet`/`haiku`）spawn，**禁止填 `claude-*` 完整 model id**（如 `claude-opus-4-8`），也不指定 thinking/reasoning/effort。alias 经 `ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL` 映射到本地实际模型；完整 id 绕过该映射直送上游通道，会因通道不可用（503 / `No available channel`）失败。难度选档：架构、跨模块审查、安全、迁移 → `opus`；常规实现、verify → `sonnet`；只读检索、grep、状态查询 → `haiku`。**自检**：spawn 后若 Agent 返回 503 / 通道错误，立即回看刚发出的 Agent 工具 input 是否误填了 `claude-*` 完整 id——若是，改回对应难度 alias 重发同一 binding，不换路径、不放弃 task、不自行兜底执行。Codex 固定 `gpt-5.6-sol/medium`，这是有意的平台差异。
+
+## 守住主线程 context（防雪球）
+
+主线程（controller）只持有协调元数据，业务源码与产物一律在 worker 子代理 context 内处理。这样主 context 不随业务膨胀，单 session token 有界。
+
+- **禁读业务源码全文**：不得 `Read` `src/`、`test/`、`scripts/` 等业务文件整篇。需核对业务时经 `Explore` 子代理或 `grep` 取摘要回传，不把源码拉进主 context。
+- **禁改业务文件**：业务实现只由 worker 经 DAG task 完成（见「公开入口与平台边界」）。主线程仅写 `.ghost-agent-workflow/`；改任何文件前自确认目标是协调元数据而非业务产物，否则回 worker。
+- **大文件用 grep 定位**：即便 `.ghost-agent-workflow/` 内大文件（plan/state/capsule）也用 `grep`/`status`/`reconcile` 取切片，不整篇 `Read`。
+- **worker 结果只取结论**：收 worker 结果只读 result/summary/evidence 与 artifact ref，不要求 worker 回吐源码片段。
+
+## worker 失败退避与续跑
+
+worker spawn 失败（503 / `No available channel` / Agent 异常退出）时按退避重试，给通道恢复时间——不立即放弃，也不无限硬重试：
+
+1. 首次失败：等 **10 秒**后用同一 binding + 正确难度 alias 重发（先按「公开入口与平台边界」自查 Agent input 是否误填 `claude-*` 完整 id）。
+2. 再失败：等 **30 秒**重发。
+3. 第三次失败：等 **60 秒**重发。
+4. 三档退避走完（10+30+60s）仍失败：置 `needs_repair` 停下，scope_request 注明通道/模型问题，逐字返回 continuation_prompt 交用户用新 session 续跑——**禁止主线程兜底自己干业务**（见「守住主线程 context」）。
+
+同一业务文件被反复改 **>3 次**仍不收敛，说明方案而非执行有问题：停下该闭包，回 `parallel-task-planner` 重判（出 `DAG_DELTA_V1` 拆分或换方案），不在主线程或单 worker 硬磨。
 
 首次创建 Goal 时读取 [references/goal-contract.md](references/goal-contract.md)。进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。需要初始计划或局部修订时调用内部 `parallel-task-planner`，不得自行拼造 coverage、plan 或 delta。
 
@@ -103,7 +123,7 @@ node <plugin-root>/scripts/goal-dag.mjs rotate-owner <plan_path> <state_path> <o
 node <plugin-root>/scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
 ```
 
-- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 名称（仅适用非 owner 普通 executor；owner 命名子代理的 spawn name 见下文「owner 多代理 fan-out」），用完整 binding 创建后台 Agent；不创建启动握手回合，不指定 model 或思考参数。取得 agentId 后立即 `bind`。
+- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 名称（仅适用非 owner 普通 executor；owner 命名子代理的 spawn name 见下文「owner 多代理 fan-out」），用完整 binding 创建后台 Agent；不创建启动握手回合。model 按上方「公开入口与平台边界」选难度 alias（`opus`/`sonnet`/`haiku`），禁 `claude-*` 完整 id；不指定 thinking/reasoning/effort。取得 agentId 后立即 `bind`。
 - `reuse_executor`：确认目标是当前 Goal/Owner 的 idle 健康 Agent；先 `bind`，再用 `SendMessage({to: agentId})` 发送原样 binding。
 - `reserved_unbound + spawn_executor` 无匹配 executor 时 `abandon`。复用目标或 running Agent 确认丢失时以当前 token `reclaim`，停止返回的 executor，确认停止后 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。
 - 物理 Agent 丢失后默认保持同一逻辑 Owner/generation；只有污染、重复失败或 Capsule 语义需要隔离时才 `rotate-owner`。owner 模型的 owner_affinity 复用 + 命名子代理完成后不回收，是承重机制（支撑 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询），不是可选性能优化；记忆汇总 via SendMessage 是可选增强，不影响承重。仅跨 Goal 才不复用。
@@ -144,7 +164,7 @@ node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <
 
 1. 规划阶段调 `owner-query` 判断覆盖；`can_cover=false` 时先 `owner-add --plan`/`owner-split --plan` 拿方案，**以 AskUserQuestion 列给用户确认后**才正式 add/split（不可跳过，见 owner-registry「变更 owner 必须先经用户确认」），再产 plan 并 `owner-verify-plan` 复核。owner 数据随仓库提交存档（见 owner-registry「归档 owner 数据」）。
 2. 对每个参与 owner 先建 worktree：`worktree-create <registry.json> <feature_branch> <owner_id>` 产出 sparse worktree（分支 `dev_{owner_id}`，仅含 `owned_modules`，1 owner = 1 worktree，重复创建即拒）。三映射：Agent spawn name = `owner-<owner_id>`（逻辑身份，作 SendMessage 二次寻址句柄）↔ registry.owners[].owner_id ↔ worktree_binding.owner_branch = `dev_{owner_id}`（物理载体）。
-3. 以 `owner-<owner_id>` 为 Agent spawn name spawn 命名子代理（`isolation: worktree`）；该名稳定、跨 attempt 不变，是 SendMessage 二次寻址与记忆汇总的句柄。runtime 下发的 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）仅作 per-attempt executor_id / reservation token，用于 `bind`，绝不当 Agent spawn name。写隔离三层缺一不可：L1 = 项目级 owner-acl PreToolUse hook（`owner-acl-hook.py`，按 `agent_type=owner-<owner_id>` 映射 owner 模块，越界写 `permissionDecision:"deny"` 硬拒）；L2 = sparse worktree 物理隔离；L3 = `worktree-merge-back` 已内置 per-owner scope audit（diff feature..owner 逐文件比 `owned_modules`，越界即 fail）。
+3. 以 `owner-<owner_id>` 为 Agent spawn name spawn 命名子代理（`isolation: worktree`，model 按任务难度选 alias、禁 `claude-*` 完整 id，见「公开入口与平台边界」）；该名稳定、跨 attempt 不变，是 SendMessage 二次寻址与记忆汇总的句柄。runtime 下发的 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）仅作 per-attempt executor_id / reservation token，用于 `bind`，绝不当 Agent spawn name。写隔离三层缺一不可：L1 = 项目级 owner-acl PreToolUse hook（`owner-acl-hook.py`，按 `agent_type=owner-<owner_id>` 映射 owner 模块，越界写 `permissionDecision:"deny"` 硬拒）；L2 = sparse worktree 物理隔离；L3 = `worktree-merge-back` 已内置 per-owner scope audit（diff feature..owner 逐文件比 `owned_modules`，越界即 fail）。
 4. worker 经其结果契约的 `owner_updates` 字段（WORKER_RESULT_V4）回写 per-Goal Owner Capsule；worker 绝不写 `owners/<id>/memory.md`（会触发 L3 scope audit 越界 fail，且违反 worker 写白名单）。收口时由本 controller（subagent-coordination）在**主工作区**调 `owner-note` 写 `owners/<id>/memory.md` 与 `requirements/`（主工作区路径，随仓库提交），把跨 Goal 关键 decisions/invariants 沉淀为 registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总是「可选增强，平台前提验证后启用」，不影响「不回收」的承重性；当前默认 controller 据 `owner_updates` + owner worktree diff（`diff feature..dev_{owner_id}`，merge-back 前后均可用，即 L3 scope audit 同一 diff）自写 owner-note。
 5. 各 owner 完成且 owner-scope 通过后，多 owner 的 merge-back 经 registry state lock **串行**执行，不得并发对同一 feature 分支。逐 owner `worktree-merge-back <registry.json> <feature_branch> <owner_id>` 用 `--no-ff` 合回 feature 分支，并已内置 L3 per-owner scope audit（越界即 fail——越界意味 registry 被绕过，须排查 owner 定义而非手工解冲突；`owned_modules` 全表互斥 ⇒ 理论零冲突）。每个 merge 后 `git checkout` 回主工作区原分支（仅文档声明，runtime 改动另议）。**所有 owner 全部 merge-back 完成后才进入 finalize，不得提前。**
 6. 全部 merge-back 完成后运行 `finalize`（须在所有 owner 的 merge-back 之后）；finalize 成功后交用户测试，`worktree-remove <owner_id>` 清理。owner 间依赖由 registry `depends_on_owners` 声明，经 SendMessage 协调时序。
