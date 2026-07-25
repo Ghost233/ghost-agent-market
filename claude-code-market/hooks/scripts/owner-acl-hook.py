@@ -208,11 +208,38 @@ def target_rel_path(payload: dict) -> str | None:
     return raw.replace("\\", "/")
 
 
+def _is_owner_mutation_without_plan(payload: dict) -> bool:
+    """True when a Bash command runs ``owner-add``/``owner-split`` without
+    ``--plan`` (the registry-writing form). The ``--plan`` dry-run is allowed.
+
+    owner-add/owner-split rewrite the cross-Goal owner topology and are
+    irreversible, so the write form is blocked for ANY agent — the skill must
+    run ``--plan`` (exposes the proposal) and confirm via AskUserQuestion before
+    the real write. This is the hard backstop for the skill's soft constraint.
+    """
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return False
+    command = tool_input.get("command")
+    if not isinstance(command, str):
+        return False
+    if not re.search(r"\bowner-(?:add|split)\b", command):
+        return False
+    return re.search(r"--plan\b", command) is None
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (OSError, ValueError):
         return 0  # fail-open: cannot parse, let the platform decide
+    if _is_owner_mutation_without_plan(payload):
+        emit_deny(
+            "owner-add/owner-split 改写跨 Goal owner 拓扑（不可逆）。必须先 "
+            "owner-add/owner-split --plan 拿方案，经 AskUserQuestion 由用户确认后，"
+            "再执行不带 --plan 的落盘命令。dry-run 请加 --plan。"
+        )
+        return 0
     agent_type = payload.get("agent_type") or ""
     if not isinstance(agent_type, str) or not agent_type.startswith(OWNER_PREFIX):
         return 0  # not an owner subagent

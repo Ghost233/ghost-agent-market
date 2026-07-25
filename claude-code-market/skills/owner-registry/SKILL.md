@@ -78,6 +78,8 @@ node <plugin-root>/scripts/goal-dag.mjs owner-split <registry.json> <parent_owne
 
 **禁止跳过确认直接 add/split。** 即便 planner/worker 经 `needs_repair.scope_request` 建议分裂，也必须由 controller 走上述确认流程，不得自动执行。`owner-query`/`owner-list`/`owner-verify-plan` 只读，无需确认；`owner-note` 由 controller 在主工作区写入（见「owner 记忆」节）。
 
+该约束由 owner-acl hook 在 runtime 硬强制：不带 `--plan` 的 `owner-add`/`owner-split` 命令（落盘形式）会被 PreToolUse hook 直接 `deny`，任何 agent（含主线程 controller）都无法绕过——必须先 `--plan` 暴露方案。`--plan` dry-run 放行。
+
 ## 归档 owner 数据（随仓库提交）
 
 所有 owner 数据落在 `.ghost-agent-workflow/`：`owners/registry.json`（注册表）、`owners/<id>/memory.md` + `requirements/*.md`（记忆）、`owners/<id>/worktree_binding`。这些**随仓库 git 提交永久存档**，跨需求/跨机器可追溯。

@@ -180,6 +180,50 @@ class OwnerAclHookTests(unittest.TestCase):
                 "tool_input": {"file_path": str(workspace_root / "src/api/leak.ts")},
             }))
 
+    def test_blocks_owner_mutation_without_plan(self) -> None:
+        # owner-add/owner-split 落盘（无 --plan）必须经 --plan + AskUserQuestion；
+        # hook 对任何 agent（含主线程 controller）硬拦，防跳过确认直接改 registry。
+        with self.workspace_with_owner() as (workspace_root, _):
+            reg = workspace_root / ".ghost-agent-workflow" / "owners" / "registry.json"
+            denied = self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-add {reg} /tmp/def.json"},
+            })
+            self.assertIsNotNone(denied)
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertIn("AskUserQuestion", denied["hookSpecificOutput"]["permissionDecisionReason"])
+            # split 落盘同样拦
+            denied_split = self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-split {reg} parent spec.json"},
+            })
+            self.assertIsNotNone(denied_split)
+
+    def test_allows_owner_mutation_plan_dry_run_and_unrelated_bash(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, _):
+            reg = workspace_root / ".ghost-agent-workflow" / "owners" / "registry.json"
+            # --plan dry-run 放行（owner-add / owner-split）
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-add {reg} /tmp/def.json --plan"},
+            }))
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-split {reg} parent spec.json --plan"},
+            }))
+            # 无关 Bash 放行
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": "git status && ls"},
+            }))
+
+    def test_non_owner_agent_is_allowed(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, _):
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/api/leak.ts")},
+            }))
+
     def test_unknown_owner_fails_open(self) -> None:
         with self.workspace_with_owner() as (workspace_root, _):
             self.assertIsNone(self.run_hook({
