@@ -12,7 +12,7 @@ user-invocable: false
 
 不得创建或委派其他执行单元。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。不得写 `owners/<id>/memory.md` 或 `requirements/`（controller owner-note 职责；worker 写入违反写白名单并触发 L3 per-owner scope audit 越界 fail）。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
 
-Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置；Codex 固定 profile。这是有意的平台差异。每次接收 binding 时读取 [references/templates.md](references/templates.md)。
+Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置；Codex 固定 profile。这是有意的平台差异。每次接收 binding 时参考本 SKILL.md 末尾「## 契约与模板」节（TASK_BINDING_V4 / OWNER_CHECKPOINT_V1 / WORKER_RESULT_V4 等已内联，不再 Read references）。
 
 ## Owner 环境自检
 
@@ -61,3 +61,224 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 5. 把可复用决策、不变量和风险放入 `owner_updates`，由 driver 合并 per-Goal Capsule。`owner_updates` 与 evidence 只回决策/不变量/风险/命令/outcome 摘要与 artifact ref，**不贴源码片段**——源码留在 worker 自己 context，主线程靠 result 与 artifact ref 裁决，避免主 context 雪球。worker 绝不写 `owners/<id>/memory.md` 或 `requirements/`（controller 在主工作区经 owner-note 沉淀跨 Goal registry memory）。命名子代理 SendMessage 二次寻址做记忆汇总为可选增强，平台前提验证后启用；当前默认 controller 据 owner_updates + diff 自写 owner-note。
 
 `completed` 必须为每个 verification id 提交 passed evidence，并完成 binding 声明的 coverage effect。两个固定 audit gate 只能由独立 audit binding 提交，且 artifact ref/digest 都非空；实施 worker 的 diff_self_check 不能代替它们。普通失败使用 failed/blocked；扩域或阻断审查使用 needs_repair。driver 的 `finish` 是身份、范围、revision、artifact 内容与证据的唯一机械裁决。
+
+## 契约与模板
+
+> 以下契约原存于 `references/templates.md`，现已内联于本节，worker 触发本 skill 即见，无需再 Read references。
+
+### Subagent Worker 契约
+
+#### TASK_BINDING_V4
+
+协调器把 `reserve.actions[]` 或 `status`/`reconcile.active_reservations[]` 返回的完整 canonical binding 原样发送。result_path 由 runtime 首次 reserve 时按 attempt/token 唯一生成，crash recovery 不得重算或换路径。
+
+```json
+{
+  "contract": "TASK_BINDING_V4",
+  "goal_id": "runtime-owner-reuse",
+  "goal_objective": "完整执行计划并通过所有验收",
+  "plan_path": "/absolute/goal/plan.json",
+  "state_path": "/absolute/goal/state.json",
+  "executor_mode": "subagent",
+  "executor_spawn_name": "runtime-owner-reuse_runtime-core_g2_a2_0123456789ab",
+  "worktree_baseline": {
+    "ref": "/absolute/goal/worktree-baseline.json",
+    "digest": "<sha256>"
+  },
+  "source_blocks": {
+    "ref": "/absolute/goal/source-blocks.json",
+    "digest": "<sha256>"
+  },
+  "coverage": {
+    "ref": "/absolute/goal/coverage.json",
+    "digest": "<coverage.json sha256>",
+    "semantic_digest": "<source/revision/required-items semantic sha256>"
+  },
+  "task_id": "T1",
+  "logical_id": "runtime.owner-state",
+  "title": "实现 Owner 状态机",
+  "display_name": "[GA][实施][执行] 实现 Owner 状态机",
+  "role": "work",
+  "owner_id": "runtime-core",
+  "owner_generation": 2,
+  "owner_responsibility": "负责任务状态机与并发不变量",
+  "owner_context": "保持 reservation、attempt、source revision 与 Capsule 更新原子",
+  "owner_capsule_ref": "/absolute/goal/owners/runtime-core/capsule.json",
+  "checkpoint_path": "/absolute/goal/owners/runtime-core/checkpoints/T1.json",
+  "reservation_token": "<uuid>",
+  "attempt": 2,
+  "source_revision": 3,
+  "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
+  "owner_exec": {
+    "agent_type": "owner-runtime-core",
+    "worktree_path": "/absolute/repo/.ghost-agent-workflow/worktrees/dev_runtime-core",
+    "owner_branch": "dev_runtime-core",
+    "owned_modules_glob": ["tooling/goal-dag/**"]
+  },
+  "writable_paths": ["tooling/goal-dag/**"],
+  "resource_locks": ["goal-dag-runtime"],
+  "done_when": ["Owner 可复用也可安全换 Agent"],
+  "verification_ids": ["runtime-unit"],
+  "satisfies_goal_gates": ["runtime-unit"],
+  "plan_item_ids": ["PI-owner-state"],
+  "coverage_effect": "implementation",
+  "goal_constraints": {
+    "scope": ["Goal DAG runtime、skills 和测试"],
+    "non_goals": ["部署", "发布"],
+    "constraints": ["保留用户已有改动", "结果证据可复核"]
+  },
+  "side_effect_policy": {
+    "deploy": "forbidden",
+    "external_write": "forbidden"
+  },
+  "verification_requirements": {
+    "done_when": ["Owner 可复用也可安全换 Agent"],
+    "verification_ids": ["runtime-unit"],
+    "goal_gates": [
+      {
+        "id": "runtime-unit",
+        "stage": "unit",
+        "description": "runtime 单元测试通过",
+        "required": true
+      }
+    ],
+    "completion": {
+      "all_tasks_completed": true,
+      "plan_coverage_100": true,
+      "required_gates_passed": true,
+      "blocking_findings_zero": true,
+      "diff_in_scope": true
+    }
+  },
+  "dependency_result_refs": [],
+  "result_path": "/absolute/goal/results/T1/attempt-2-<uuid>.json",
+  "result_contract": "WORKER_RESULT_V4",
+  "evidence_artifact_paths": {
+    "diff-scope-audit": null,
+    "source-coverage-audit": null
+  },
+  "evidence_artifact_contracts": {
+    "diff-scope-audit": null,
+    "source-coverage-audit": null
+  },
+  "runtime_profile": null
+}
+```
+
+字段说明（owner 模式相关）：
+
+- `executor_spawn_name`：per-attempt reservation token（形如 `runtime-...-g2_a2_<hex>`），仅用作 executor_id / reservation token 绑定，绝不是 Agent 工具 spawn 的 name。Agent Spawn name = `owner-<owner_id>`（稳定，跨 attempt 不变，作 SendMessage 二次寻址句柄）。coordinator 以 `owner-<owner_id>` 为 Agent 名 spawn；`executor_spawn_name` 仅作 executor_id bind。
+- `owner_exec`：owner 命名子代理执行环境（仅 owner 模式 binding 非空，普通 executor binding 省略）。`agent_type` = `owner-<owner_id>`（L1 hook owner-acl-hook.py 按此写前硬 deny）；`worktree_path` = owner sparse worktree 物理路径（L2 物理隔离）；`owner_branch` = `dev_{owner_id}`（物理载体，对应 registry worktree_binding.owner_branch）；`owned_modules_glob` = registry.owners[].owned_modules 的 glob 形式。
+- `writable_paths`：派生自 registry.owners[].owned_modules（经 owner-verify-plan 机械复核），与 `goal_constraints.scope` 取交集；worker 只写两者交集。
+
+固定 audit task 的 binding 会把对应路径/contract 改为非空。`source-coverage-audit` worker 先把逐 block proposal 写到指定路径，再运行：
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs source-audit <plan_path> <state_path> <task_id> <reservation_token> <classification_path>
+node <plugin-root>/scripts/goal-dag.mjs diff-audit <plan_path> <state_path> <task_id> <reservation_token>
+```
+
+`source-audit` 生成 `SOURCE_COVERAGE_AUDIT_V1`；`diff-audit` 生成 `DIFF_SCOPE_AUDIT_V1`。只采用 stdout 返回的精确 artifact ref/digest。
+
+#### OWNER_CHECKPOINT_V1
+
+```json
+{
+  "contract": "OWNER_CHECKPOINT_V1",
+  "task_id": "T1",
+  "owner_id": "runtime-core",
+  "owner_generation": 2,
+  "reservation_token": "<uuid>",
+  "progress": "已完成 reservation 状态机，正在补 source fencing 测试",
+  "decisions": ["Owner 身份与 executor_id 分离"],
+  "invariants": ["迟到结果必须匹配 generation、attempt、token 和 source revision"],
+  "risks": ["并发 rotate 需要 state lock"],
+  "important_symbols": ["reserveCommand", "reconcileCommand"],
+  "next_steps": ["补充并发测试", "运行 runtime-unit"]
+}
+```
+
+先原子写 checkpoint_path，再运行：
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs checkpoint <plan_path> <state_path> <task_id> <reservation_token> <checkpoint_path>
+```
+
+#### WORKER_RESULT_V4
+
+```json
+{
+  "contract": "WORKER_RESULT_V4",
+  "status": "completed",
+  "task_id": "T1",
+  "logical_id": "runtime.owner-state",
+  "role": "work",
+  "owner_id": "runtime-core",
+  "owner_generation": 2,
+  "executor_id": "<state 中的真实 executor_id>",
+  "reservation_token": "<uuid>",
+  "attempt": 2,
+  "source_revision": 3,
+  "changed_files": ["tooling/goal-dag/goal-dag.ts"],
+  "blocking_findings": [],
+  "evidence": [
+    {
+      "verification_id": "runtime-unit",
+      "outcome": "passed",
+      "summary": "运行 `python -m unittest tests.test_goal_dag_cli`，exit 0，全部用例通过",
+      "artifact_ref": "/absolute/goal/artifacts/T1-attempt-2-runtime-unit.log",
+      "artifact_digest": "<artifact sha256>"
+    }
+  ],
+  "diff_self_check": "pass",
+  "scope_request": null,
+  "summary": "完成 Owner 状态机与 source fencing 测试",
+  "owner_updates": {
+    "decisions": ["Owner 身份与 executor_id 分离"],
+    "invariants": ["finish 必须匹配 generation、attempt、token 和 source revision"],
+    "risks": []
+  }
+}
+```
+
+每条 evidence 都必须同时包含 `artifact_ref` 与 `artifact_digest`；没有独立 artifact 时两者均为 null，长日志则写入对应 artifact。`completed` 必须覆盖全部 verification_ids。`source-coverage-audit` 与 `diff-scope-audit` 只允许出现在独立 verify/audit binding 中，passed evidence 必须引用 runtime 生成的固定 audit artifact，并提供非空 ref 与 digest。
+
+#### needs_repair
+
+需要扩域时保持 changed_files 为空，并返回精确 scope_request：
+
+```json
+{
+  "contract": "WORKER_RESULT_V4",
+  "status": "needs_repair",
+  "task_id": "T1",
+  "logical_id": "runtime.owner-state",
+  "role": "work",
+  "owner_id": "runtime-core",
+  "owner_generation": 2,
+  "executor_id": "<executor_id>",
+  "reservation_token": "<uuid>",
+  "attempt": 2,
+  "source_revision": 3,
+  "changed_files": [],
+  "blocking_findings": [],
+  "evidence": [],
+  "diff_self_check": "scope_exception",
+  "scope_request": {
+    "paths": ["tooling/goal-dag/build.mjs"],
+    "reason": "生成器也必须同步 runtime",
+    "required_for_done_when": "分发脚本包含新命令",
+    "suggested_owner": "runtime-core",
+    "split_hints": ["更新生成器"],
+    "overlap_hints": ["goal-dag runtime bundle"]
+  },
+  "summary": "当前写域不足，未越界修改",
+  "owner_updates": {
+    "decisions": [],
+    "invariants": [],
+    "risks": ["生成器与源文件必须同步"]
+  }
+}
+```
+
+所有终态先原子写入 binding 给出的 result_path，再返回相同 JSON。

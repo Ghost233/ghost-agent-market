@@ -16,17 +16,30 @@ Claude Code 没有 Codex 原生 Goal 外循环，因此明确使用 `lifecycle.c
 
 `$subagent-coordination` 不是 Claude Code 插件 skill 的显式调用语法，不能据此启动。执行方式固定为 `subagent`。用户明确只规划时返回 coverage 与 DAG；否则持续推进执行。
 
-本控制器只写 Goal/DAG 协调元数据并调度执行单元，**绝不直接修改业务文件**（`src/`、`test/`、`scripts/` 等实现产物），不暂存、提交或推送代码。所有正式实施、审查和验证都必须是 DAG task，由 worker 子代理完成。worker spawn 失败（含 503 通道错误、Agent 异常退出）时，按 `needs_repair` 停下并在 scope_request 注明通道/模型问题，等用户修复后用续跑命令恢复——**禁止主线程兜底自己 Edit/Write 业务文件**；主线程仅可写 `.ghost-agent-workflow/` 下的协调元数据（goal/plan/state/capsule/results/owners）。
+本控制器只写 Goal/DAG 协调元数据并调度执行单元，**绝不直接修改业务文件**（`src/`、`test/`、`scripts/` 等实现产物），不暂存、提交或推送代码。所有正式实施、审查和验证都必须是 DAG task，由 worker 子代理完成。worker spawn 失败（含 503 通道错误、Agent 异常退出）时，按 `needs_repair` 停下并在 scope_request 注明通道/模型问题，等用户修复后用续跑命令恢复——**禁止主线程兜底自己 Edit/Write 业务文件**；主线程对 `.ghost-agent-workflow/` 下协调元数据（goal/plan/state/capsule/registry/results/owners）的**读与写一律经 goal-dag 命令**（`status`/`reserve`/`apply-delta`/`finish`/`owner-list` 等），**严禁直接 Read/Edit/Write 这些 json 文件**（见「守住主线程 context」映射表）。
 
 Claude Code 子代理按任务难度选 **model alias**（`opus`/`sonnet`/`haiku`）spawn，**禁止填 `claude-*` 完整 model id**（如 `claude-opus-4-8`），也不指定 thinking/reasoning/effort。alias 经 `ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL` 映射到本地实际模型；完整 id 绕过该映射直送上游通道，会因通道不可用（503 / `No available channel`）失败。难度选档：架构、跨模块审查、安全、迁移 → `opus`；常规实现、verify → `sonnet`；只读检索、grep、状态查询 → `haiku`。**自检**：spawn 后若 Agent 返回 503 / 通道错误，立即回看刚发出的 Agent 工具 input 是否误填了 `claude-*` 完整 id——若是，改回对应难度 alias 重发同一 binding，不换路径、不放弃 task、不自行兜底执行。Codex 固定 `gpt-5.6-sol/medium`，这是有意的平台差异。
 
 ## 守住主线程 context（防雪球）
 
-主线程（controller）只持有协调元数据，业务源码与产物一律在 worker 子代理 context 内处理。这样主 context 不随业务膨胀，单 session token 有界。
+主线程（controller）只持有协调元数据，业务源码与产物一律在 worker 子代理 context 内处理。主 context 不随业务膨胀，单 session token 有界。
 
-- **禁读业务源码全文**：不得 `Read` `src/`、`test/`、`scripts/` 等业务文件整篇。需核对业务时经 `Explore` 子代理或 `grep` 取摘要回传，不把源码拉进主 context。
-- **禁改业务文件**：业务实现只由 worker 经 DAG task 完成（见「公开入口与平台边界」）。主线程仅写 `.ghost-agent-workflow/`；改任何文件前自确认目标是协调元数据而非业务产物，否则回 worker。
-- **大文件用 grep 定位**：即便 `.ghost-agent-workflow/` 内大文件（plan/state/capsule）也用 `grep`/`status`/`reconcile` 取切片，不整篇 `Read`。
+**核心纪律：controller 的信息一律从 goal-dag 命令取，不从 Read 文件取。** 任何查看/改动协调元数据的冲动，先按下表用对应命令；表中没有的需求委派 worker 子代理，绝不自己 Read/Edit 文件。
+
+| controller 需求 | 用这个命令（禁 Read 文件） |
+|---|---|
+| goal/plan 进度、task 状态计数、coverage%、next_action、owners generation/status | `goal-dag status <plan> <state>` |
+| 下一动作、active reservations（轻量） | `goal-dag reconcile <plan> <state>` |
+| owner 全表 / 覆盖域 / lifecycle | `goal-dag owner-list` / `owner-query` |
+| 拿 task binding spawn worker | `goal-dag reserve`（输出完整 TASK_BINDING_V4 + task_id/owner_generation/executor_spawn_name/reservation_token） |
+| 改 plan（失败/范围变/coverage pending） | `goal-dag apply-delta`（**禁 Edit plan.json**） |
+| 收口裁决 | `goal-dag finish` |
+| registry 写（add/split） | `owner-add`/`owner-split`（`--plan` + AskUserQuestion 确认） |
+
+明确禁止：
+
+- **Read/Edit/Write 协调元数据 json**：`plan.json`/`state.json`/`capsule.json`/`registry.json`/`source-blocks.json`/`coverage.json`/`goal.json`/`goal-state.json` 一律经上表命令，不直接动文件（glm 易把「可写协调元数据」误解为 Edit plan.json —— 禁止）。
+- **Read/Edit 业务源码**（`src/`、`test/`、`scripts/` 等实现产物）：需核对业务时经 `Explore` 子代理或 `grep` 取摘要回传，不把源码拉进主 context；改动只能由 worker 经 DAG task 完成。
 - **worker 结果只取结论**：收 worker 结果只读 result/summary/evidence 与 artifact ref，不要求 worker 回吐源码片段。
 
 ## worker 失败退避与续跑
@@ -40,7 +53,7 @@ worker spawn 失败（503 / `No available channel` / Agent 异常退出）时按
 
 同一业务文件被反复改 **>3 次**仍不收敛，说明方案而非执行有问题：停下该闭包，回 `parallel-task-planner` 重判（出 `DAG_DELTA_V1` 拆分或换方案），不在主线程或单 worker 硬磨。
 
-首次创建 Goal 时读取 [references/goal-contract.md](references/goal-contract.md)。进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。需要初始计划或局部修订时调用内部 `parallel-task-planner`，不得自行拼造 coverage、plan 或 delta。
+本控制器与 worker 的契约、模板（GOAL_CONTRACT_V1、Reservation 恢复矩阵、TASK_BINDING_V4 等）见本 SKILL.md 末尾「## 契约与模板」节（已内联，不再 Read references）。需要初始计划或局部修订时调用内部 `parallel-task-planner`，不得自行拼造 coverage、plan 或 delta。
 
 ## 本地 Goal 定位
 
@@ -178,3 +191,148 @@ node <plugin-root>/scripts/goal-dag.mjs worktree-create     <registry.json> <fea
 node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back <registry.json> <feature_branch> <owner_id>
 node <plugin-root>/scripts/goal-dag.mjs worktree-remove     <registry.json> <owner_id> [--force]
 ```
+
+## 契约与模板
+
+> 以下契约原存于 `references/`，现已内联于本节，controller 触发本 skill 即见，无需再 Read references 文件。
+
+### Reservation 恢复契约
+
+只在 coordinator 已运行 `status` 与 `reconcile` 后参考本节。runtime 的 active reservation、Owner Capsule 与 attempt 唯一路径是事实；executor 会话状态只用于选择恢复动作。
+
+#### 定义
+
+- **orphan reservation**：state 为 reserved/running，但无法证明一个健康 executor 正持有同一 goal、owner generation、task、attempt 与 reservation token，且 canonical result 尚不存在。
+- **orphan executor**：已创建 executor，但 state 没有把它绑定到当前 reservation，或 reservation 已被 reclaim/替换。
+- **canonical result**：binding 给出的 `results/<task_id>/attempt-<attempt>-<reservation_token>.json`。同一 task 的任何其他路径都不是该 attempt 的结果。
+- **canonical spawn identity**：reserve action 与 binding 同时下发的 `executor_spawn_name`。spawn-before-bind 恢复只接受这个精确名字；协调器不得推导或改写。**owner 模型例外**：owner 命名子代理的 Agent spawn name 固定为 `owner-<owner_id>`（稳定，跨 attempt 不变，作 SendMessage 二次寻址句柄）；此时 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）退化为 per-attempt executor_id / reservation token，仅用于 `bind`，绝不当 Agent spawn name。
+- **canonical recovery binding**：`status`/`reconcile.active_reservations[]` 在 runtime 锁内从当前 plan/state 重建的完整 `TASK_BINDING_V4`。它与最初 reserve binding 等价，是崩溃恢复时唯一允许重新 bind/send 的输入。
+
+Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task 身份、权限或完成状态；只信 Owner/Capsule、binding、state 与 canonical result。
+
+`abandon` 只回滚 `reserved_unbound + spawn_executor`（Owner 尚无已绑定 executor）的 reservation；`reclaim` 处理 running/lost，以及 `reserved_unbound + reuse_executor` 的已绑定复用目标确认丢失这一安全例外，并把已知 executor 记入 `stale_executors: stop_pending`。两者都会清空 Capsule active task/checkpoint；旧 checkpoint 只保留历史。reclaim 后必须停止物理 executor，再 `confirm-stale-executor`，否则不得 reserve/refresh。
+
+#### 恢复矩阵
+
+| 观测状态 | 必须动作 |
+|---|---|
+| `reserved_unbound` + `spawn_executor`，未发现匹配 executor，result 不存在 | 用同一 token `abandon`，再由后续 reserve 产生新 attempt；不得把聊天记忆当作已 spawn 证据。 |
+| spawn-before-bind：发现唯一、健康且精确匹配 `executor_spawn_name` 的 executor，state 仍 reserved | 使用 recovery item 的同一 token 与 canonical binding 执行 `bind`；无法唯一证明身份时先停止 runtime 尚未知的 orphan executor，再 `abandon`。 |
+| `reserved_unbound` + `reuse_executor`，目标健康 | 核验 recovery item 的 `executor_id` 仍是 Owner 已绑定 executor，使用同一 token `bind`，再发送该 item 的 canonical binding。 |
+| `reserved_unbound` + `reuse_executor`，复用目标确认丢失 | 以同一 token `reclaim`；runtime 清除 Owner binding 并把该 executor 写入 stop-pending ledger，随后 stop → `confirm-stale-executor`。不得 abandon 后继续复用死 id，也不得 rotate generation。 |
+| bind-before-send：`running_bound` + `wait_or_redeliver` 且 executor 匹配，但消息未送达 | 向同一 executor 重发 recovery item 的 canonical binding。executor 丢失时先 `reclaim`，再停止返回的 executor_id，确认停止后 `confirm-stale-executor`。 |
+| result-written-before-finish：canonical result 已存在，state 仍 reserved/running | 校验 task、owner、generation、attempt、token、source revision 与 result_path 后立即 `finish`；executor 是否已结束不影响裁决。 |
+| reserved/running，executor 健康且 result 尚不存在 | 继续等待；运行中、上下文压缩或暂时无输出都不是 orphan。 |
+| canonical result 字段不匹配或证据不可复核 | 不调用 finish；保留原始文件供审计，reclaim 或生成 repair delta。 |
+| reservation 已 reclaim/替换后旧 result 到达 | 按 attempt/token/source revision fencing 拒绝，不移动到新路径、不人工合并。 |
+| task 为 failed/blocked/needs_repair | 保留 attempt result，交 planner 生成局部 delta；不影响无关 running Owner。 |
+| 无 active/ready task，但 required effect pair 仍为 pending | 生成追加 `DAG_DELTA_V1`，不得 finalize。 |
+| `source_status: source_changed` 且仍有 active reservation | `source_drift_drain`：停止 reserve；健康 executor finish；丢失 executor reclaim → stop → confirm。active/stale 清零后才 `goal-refresh`。 |
+| audit binding 下发 artifact path/contract | worker 只在精确 `evidence_artifact_paths` 写 proposal/运行 runtime audit，并在 evidence 同时返回 `artifact_ref` 与 `artifact_digest`。 |
+| owner 模型恢复：per-owner worktree 重连 | `owner-list` 列出 registry active owner，逐 owner 校验 worktree 存在 + `dev_{owner_id}` 绑定 + sparse 范围；executor 健康则 `SendMessage({to: owner-<owner_id>})` 重连，executor 丢失则 `abandon` + 重新以 `owner-<owner_id>` spawn，worktree 丢失则按 `feature_branch` 重建。 |
+
+#### 顺序不变量
+
+1. 每次进入都运行 `status`，再 `reconcile`。
+2. 完成上表的恢复动作后才运行 `reserve`。
+3. 分发只使用 `reserve.actions[]` 或 `status`/`reconcile.active_reservations[]` 返回的完整 canonical binding；禁止依赖聊天记忆或自行重算。非 owner executor 使用精确 `executor_spawn_name` spawn；owner 命名子代理以 `owner-<owner_id>` 为 Agent spawn name，`executor_spawn_name` 仅作 executor_id 用于 `bind`。每次 bind/send 都保持 attempt、token、result_path 与 artifact paths 不变。
+4. worker 先原子写 canonical result；coordinator 再 `finish`。
+5. `finish` 后重新 reconcile；`reclaim` 后必须 stop + `confirm-stale-executor`，stale 列表清零后才 reserve。
+6. 只有 runtime 证明 coverage 100%、所有有效 task resolved 且 gate 通过时，coordinator 才运行 finalize；Codex 随后完成 native bridge，Claude Code 则确认本地 completed。
+
+最终协调摘要可使用：
+
+```json
+{
+  "contract": "GOAL_DAG_RESULT_V1",
+  "status": "completed | active | needs_user_review",
+  "goal_id": "<goal_id>",
+  "executor_mode": "subagent",
+  "plan_path": "<绝对 plan 路径>",
+  "revision": 2,
+  "evidence_refs": ["<attempt 唯一 result_ref>"],
+  "summary": "<本地 DAG 状态>"
+}
+```
+
+### GOAL_CONTRACT_V1 契约
+
+仅在 `subagent-coordination` 创建或校验 Claude Code 本地 Goal 时参考本节。`goal.json`、`goal-state.json`、`coverage.json`、`plan.json` 与 `state.json` 必须位于同一目录。
+
+#### GOAL_CONTRACT_V1
+
+```json
+{
+  "contract": "GOAL_CONTRACT_V1",
+  "goal_id": "runtime-owner-reuse--4cc8a51d904e",
+  "execution_platform": "claude_code",
+  "workspace": {
+    "root": "/absolute/workspace/root"
+  },
+  "lifecycle": {
+    "controller": "local_fallback",
+    "native_goal": null
+  },
+  "source": {
+    "path": "/absolute/path/to/plan.md",
+    "digest": "<plan.md sha256>",
+    "revision": 1
+  },
+  "objective": "完整执行计划且计划项覆盖率达到 100%",
+  "scope": ["Goal、DAG runtime、skills 和测试"],
+  "constraints": ["保留用户已有改动", "所有结果必须可复核"],
+  "non_goals": ["部署", "发布"],
+  "execution": {
+    "mode": "subagent",
+    "max_concurrency": 3,
+    "reuse_policy": "owner_affinity"
+  },
+  "verification_gates": [
+    {
+      "id": "runtime-unit",
+      "stage": "unit",
+      "description": "runtime 单元测试通过",
+      "required": true
+    },
+    {
+      "id": "workflow-smoke",
+      "stage": "smoke",
+      "description": "真实 Goal DAG smoke 通过",
+      "required": true
+    },
+    {
+      "id": "source-coverage-audit",
+      "stage": "pre-execution",
+      "description": "独立 verify task 逐项分类 SOURCE_BLOCKS_V1，证明 source 没有遗漏且 required effects 已映射到 DAG",
+      "required": true
+    },
+    {
+      "id": "diff-scope-audit",
+      "stage": "final",
+      "description": "由独立 review/verify task 核对实际工作区差异均位于 Goal 授权 scope，并保存可复核 artifact",
+      "required": true
+    }
+  ],
+  "side_effects": {
+    "deploy": "forbidden",
+    "external_write": "forbidden"
+  },
+  "completion": {
+    "plan_coverage_100": true,
+    "all_tasks_completed": true,
+    "required_gates_passed": true,
+    "blocking_findings_zero": true,
+    "diff_in_scope": true
+  }
+}
+```
+
+Claude Code 没有 native Goal identity。默认 local instance digest 定义为 `SHA-256(UTF-8(source.path + "\n" + source.digest))`；`goal_id` 和目录名都必须包含其至少前 12 位小写 hex，推荐形态为 `<可读-slug>--<digest-prefix>`。slug 要归一化并裁剪，使完整 id 匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,95}`；没有可用 slug 时使用 `goal`。同一 source path+digest 的普通首次调用默认恢复已有 instance，不得覆盖目录；恢复前还要核对当前调用的 objective、execution mode、constraints 与 side-effect policy，任何差异都必须停止并要求显式新实例。若用户要并行或重复执行完全相同的 source，必须显式提供稳定 `instance_key`，改用 `SHA-256(UTF-8(source.path + "\n" + source.digest + "\n" + instance_key))`。短前缀碰撞到不同契约时逐步延长同一 digest 前缀。续跑只接受 runtime 返回的绝对 `goal.json` 路径，并精确校验 `goal_id`、source path 与持久化 digest。
+
+首次 `goal-validate` 会根据绝对 `workspace.root` 捕获排除 `.ghost-agent-workflow/` 的 `WORKTREE_BASELINE_V1`，并从当前 source 生成逐个非空行的 `SOURCE_BLOCKS_V1`。两者的绝对 ref 与 SHA-256 digest 只由 runtime 写入 `goal-state.json`；planner 与 worker 只能消费绑定，不得重建。
+
+#### Gate 与约束合并
+
+按顺序保留仓库强制 gate、加入计划验收、再加入插件调用参数明确追加的测试。相同语义使用稳定 id。固定 required gate `source-coverage-audit` 与 `diff-scope-audit` 都不得删除：前者只能由所有 work task 的独立 verify/audit 祖先覆盖，并用 runtime 生成的 `SOURCE_COVERAGE_AUDIT_V1` 证明每个 source block 已映射或有明确 non-requirement 理由；后者只能由独立 `review` 或 `verify` audit task 覆盖，并用 runtime 对 baseline 与当前真实工作区的扫描生成 `DIFF_SCOPE_AUDIT_V1`。两类 passed evidence 都必须携带 binding 指定的非空 `artifact_ref` 与 `artifact_digest`。其它 required gate 也必须由至少一个 task 的 `satisfies_goal_gates` 覆盖，并由对应 `WORKER_RESULT_V4.evidence` 提交可复核证据。
+
+把 scope、constraints、non_goals 与 side_effects 原样下发到每次 `TASK_BINDING_V4`。任何 task 都不得越过它们；需要扩域时返回 `needs_repair`，由 planner 生成 delta。
