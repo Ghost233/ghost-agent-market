@@ -13,7 +13,7 @@ whole owner-registry chain — keep it identical in every skill / hook / audit):
   L3  worktree-merge-back    — per-owner scope audit (diff feature..owner; any
                                file outside owned_modules fails the merge)
 
-Registry source (R9): owner worktrees are sparse checkouts that omit
+Registry source resolution: owner worktrees are sparse checkouts that omit
 .ghost-agent-workflow, so this hook never reads cwd-local. It resolves the MAIN
 workspace (walk up from cwd to .ghost-agent-workflow, else CLAUDE_PROJECT_DIR)
 and always reads that workspace's registry.json — so L1 holds whether the
@@ -45,34 +45,78 @@ def emit_deny(reason: str) -> None:
     sys.stdout.write("\n")
 
 
-def glob_to_regex(pattern: str) -> str:
-    out = ["^"]
+def _glob_segment_regex(segment: str) -> str:
+    """Compile one slash-free segment, mirroring goal-dag.mjs globSegmentRegex:
+    '*'/'?' single-char wildcards, '[...]' classes with '[!...]' negation,
+    '{a,b}' alternation. A bare '*' is [^/]* (segment-scoped); only a whole
+    '**' segment is a cross-segment wildcard (handled by glob_to_regex)."""
+    expr = []
     i = 0
-    while i < len(pattern):
-        c = pattern[i]
+    n = len(segment)
+    while i < n:
+        c = segment[i]
         if c == "*":
-            if i + 1 < len(pattern) and pattern[i + 1] == "*":
-                out.append(".*")
-                i += 2
-                if i < len(pattern) and pattern[i] == "/":
-                    i += 1
-                continue
-            out.append("[^/]*")
+            expr.append("[^/]*")
             i += 1
         elif c == "?":
-            out.append("[^/]")
+            expr.append("[^/]")
             i += 1
         elif c == "[":
-            j = pattern.find("]", i + 1)
+            j = segment.find("]", i + 1)
             if j == -1:
-                out.append("\\[")
+                expr.append("\\[")
                 i += 1
             else:
-                out.append(pattern[i : j + 1])
+                contents = segment[i + 1 : j]
+                # mjs: a leading '!' negates the class -> '[^...]'
+                inner = "^" + contents[1:] if contents.startswith("!") else contents
+                expr.append("[" + inner + "]")
                 i = j + 1
+        elif c == "{":
+            j = segment.find("}", i + 1)
+            body = segment[i + 1 : j] if j != -1 else None
+            alternatives = body.split(",") if body is not None else []
+            # mjs: legal alternation needs >=2 non-empty options, no '{','}','/'.
+            if (
+                j != -1
+                and len(alternatives) >= 2
+                and all(alt != "" for alt in alternatives)
+                and not any(ch in body for ch in "{}/")
+            ):
+                expr.append("(?:" + "|".join(re.escape(alt) for alt in alternatives) + ")")
+                i = j + 1
+            else:
+                # Unbalanced/invalid brace — mjs rejects it before storage; here
+                # fall back to a literal so the hook never mis-matches.
+                expr.append("\\{" if j == -1 else "\\{" + re.escape(body) + "\\}")
+                i = (j + 1) if j != -1 else i + 1
         else:
-            out.append(re.escape(c))
+            expr.append(re.escape(c))
             i += 1
+    return "".join(expr)
+
+
+def glob_to_regex(pattern: str) -> str:
+    """Compile an owned_modules glob to a regex with the SAME semantics as the
+    goal-dag.mjs glob engine (globRegex + globSegmentRegex) used by L3 scope
+    audit. L1 (this hook) and L3 must agree, or a write can be falsely denied
+    in-scope or falsely allowed out-of-scope.
+
+    Compiled segment-by-segment (split on '/') so '**' matches zero-or-more
+    COMPLETE slash-free segments — not a greedy '.*'. A non-final '**/' yields
+    '(?:[^/]+/)*'; a final '**' yields '(?:[^/]+(?:/|$))*'. Within a segment,
+    '*'/'?' are single-char wildcards and '[...]'/  '{a,b}' work as in mjs.
+    """
+    out = ["^"]
+    segments = pattern.split("/")
+    last = len(segments) - 1
+    for idx, seg in enumerate(segments):
+        if seg == "**":
+            out.append("(?:[^/]+(?:/|$))*" if idx == last else "(?:[^/]+/)*")
+        else:
+            out.append(_glob_segment_regex(seg))
+            if idx < last:
+                out.append("/")
     out.append("$")
     return "".join(out)
 
@@ -104,7 +148,7 @@ def main_workspace_root(payload: dict) -> Path:
 
     Owner worktrees are sparse checkouts that deliberately omit
     ``.ghost-agent-workflow`` (see goal-dag.mjs WORKTREE_BASELINE), so reading the
-    registry from ``cwd`` would miss it and the hook would fail-open. Per R9 we
+    registry from ``cwd`` would miss it and the hook would fail-open. We therefore
     resolve the main workspace by (in order):
 
       1. walk up from the agent cwd to the nearest ancestor containing
@@ -137,9 +181,7 @@ def load_owner_modules(registry_path: Path, owner_id: str) -> list[str] | None:
         return None
     for owner in registry.get("owners", []):
         if owner.get("owner_id") == owner_id and owner.get("lifecycle") == "active":
-            modules = list(owner.get("owned_modules", []))
-            modules.extend(owner.get("interfaces", []))
-            return modules
+            return list(owner.get("owned_modules", []))
     return None
 
 

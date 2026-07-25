@@ -1481,6 +1481,14 @@ function parseRegistryOwnerStored(value: unknown, index: number): RegistryOwner 
     true,
   );
   ensureUnique(depends, `owners[${index}].depends_on_owners`);
+  // Enforce interfaces ⊆ owned_modules on the stored/load path too, mirroring
+  // parseRegistryOwnerInput, so the invariant holds regardless of how the
+  // registry was produced (owner-split, manual edit, external write).
+  for (const iface of interfaces) {
+    if (!ownedModules.some((pattern) => pathsOverlap(iface, pattern))) {
+      fail(`owners[${index}].interfaces entry "${iface}" must be within owned_modules`);
+    }
+  }
   const historyRaw = source.history;
   if (!Array.isArray(historyRaw)) fail(`owners[${index}].history must be an array`);
   const history = historyRaw.map((entry, hIndex) =>
@@ -5777,6 +5785,7 @@ function ownerAddCommand(registryArgument: string, ownerDefArgument: string, pla
       writeTransaction(registryPath, [[registryPath, nextRegistry]]);
     }
     return {
+      contract: "OWNER_ADD_PLAN_V1" as const,
       status: (planOnly ? "plan" : "added") as const,
       would_add: {
         owner_id: newOwner.owner_id,
@@ -5785,6 +5794,7 @@ function ownerAddCommand(registryArgument: string, ownerDefArgument: string, pla
         interfaces: newOwner.interfaces,
         depends_on_owners: newOwner.depends_on_owners,
       },
+      new_owners: [newOwner.owner_id],
       registry_version: registry.registry_version,
     };
   });
@@ -5880,6 +5890,20 @@ function ownerSplitCommand(
     const retainedInterfaces = parent.interfaces.filter(
       (pattern) => !claimed.some((claim) => pathsOverlap(pattern, claim)),
     );
+    // interfaces ⊆ owned_modules is a documented hard invariant. After the
+    // parent's modules shrink, a retained interface whose host module was
+    // claimed by a child would drift outside retainedModules. Detect and fail
+    // explicitly instead of silently producing an active owner with an
+    // out-of-domain interface.
+    for (const iface of retainedInterfaces) {
+      if (!retainedModules.some((pattern) => pathsOverlap(iface, pattern))) {
+        fail(
+          `owner-split: parent interface "${iface}" would fall outside retained ` +
+            `owned_modules after split; assign it to a child via ` +
+            `split_spec.new_owners[].interfaces, or retain its module on the parent`,
+        );
+      }
+    }
     const nextParent: RegistryOwner = {
       ...parent,
       owned_modules: retainedModules,
@@ -5903,6 +5927,7 @@ function ownerSplitCommand(
       writeTransaction(registryPath, [[registryPath, nextRegistry]]);
     }
     return {
+      contract: "OWNER_SPLIT_PLAN_V1" as const,
       status: (planOnly ? "plan" : "split") as const,
       parent_owner_id: parentOwnerId,
       parent_would_lifecycle: nextParent.lifecycle,
@@ -5912,6 +5937,7 @@ function ownerSplitCommand(
         functional_domain: child.functional_domain,
         owned_modules: child.owned_modules,
         interfaces: child.interfaces,
+        depends_on_owners: child.depends_on_owners,
       })),
     };
   });

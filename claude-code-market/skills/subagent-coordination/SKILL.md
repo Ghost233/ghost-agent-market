@@ -103,10 +103,10 @@ node <plugin-root>/scripts/goal-dag.mjs rotate-owner <plan_path> <state_path> <o
 node <plugin-root>/scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
 ```
 
-- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 名称，用完整 binding 创建后台 Agent；不创建启动握手回合，不指定 model 或思考参数。取得 agentId 后立即 `bind`。
+- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 Agent 名称（仅适用非 owner 普通 executor；owner 命名子代理的 spawn name 见下文「owner 多代理 fan-out」），用完整 binding 创建后台 Agent；不创建启动握手回合，不指定 model 或思考参数。取得 agentId 后立即 `bind`。
 - `reuse_executor`：确认目标是当前 Goal/Owner 的 idle 健康 Agent；先 `bind`，再用 `SendMessage({to: agentId})` 发送原样 binding。
 - `reserved_unbound + spawn_executor` 无匹配 executor 时 `abandon`。复用目标或 running Agent 确认丢失时以当前 token `reclaim`，停止返回的 executor，确认停止后 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。
-- 物理 Agent 丢失后默认保持同一逻辑 Owner/generation；只有污染、重复失败或 Capsule 语义需要隔离时才 `rotate-owner`。owner 模型的 owner_affinity 复用 + 命名子代理完成后不回收，是承重机制（支撑 SendMessage 多次寻址与记忆汇总），不是可选性能优化；仅跨 Goal 才不复用。
+- 物理 Agent 丢失后默认保持同一逻辑 Owner/generation；只有污染、重复失败或 Capsule 语义需要隔离时才 `rotate-owner`。owner 模型的 owner_affinity 复用 + 命名子代理完成后不回收，是承重机制（支撑 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询），不是可选性能优化；记忆汇总 via SendMessage 是可选增强，不影响承重。仅跨 Goal 才不复用。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs bind <plan_path> <state_path> <task_id> <reservation_token> <agent_id>
@@ -114,7 +114,7 @@ node <plugin-root>/scripts/goal-dag.mjs bind <plan_path> <state_path> <task_id> 
 
 ## 结果、推进与完成
 
-低频回收后台 Agent 仅限非 owner 的普通 executor；owner 命名子代理完成后不回收（承重机制，支撑 SendMessage 多次寻址与记忆汇总）。running 不是失败。worker 必须先原子写 binding 指定的 attempt 唯一 result，再结束。只接受 task、Owner generation、attempt、token、source revision、result path 与 audit artifact 全部匹配的结果；迟到或旧 revision 结果只保留审计。
+低频回收后台 Agent 仅限非 owner 的普通 executor；owner 命名子代理完成后不回收（承重机制，支撑 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询；记忆汇总 via SendMessage 是可选增强）。running 不是失败。worker 必须先原子写 binding 指定的 attempt 唯一 result，再结束。只接受 task、Owner generation、attempt、token、source revision、result path 与 audit artifact 全部匹配的结果；迟到或旧 revision 结果只保留审计。
 
 结果出现后立即运行 `finish`，再从 reconcile/reserve 继续，不等待无关并行兄弟：
 
@@ -140,13 +140,13 @@ node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <
 
 ## owner 多代理 fan-out（per-owner worktree 物理隔离）
 
-当 Goal 涉及多个 owner 且要求严格文件隔离时，按 feature 分支 fan-out（不依赖实验性 agent teams，用原生命名子代理 + SendMessage + 共享 Task 板）：
+当 Goal 涉及多个 owner 且要求严格文件隔离时，按 feature 分支 fan-out（不依赖实验性 agent teams，用原生命名子代理 + SendMessage + 共享 Task 板）。**入口前置**：首次判断 Goal 需要 owner 隔离时，controller 先确认 `.ghost-agent-workflow/owners/registry.json` 是否存在；不存在则跑 `owner-init`（一次性仓库级 setup），再进入下面的 `owner-query`——若直接 owner-query 而 registry 缺失会 fail。
 
-1. 规划阶段调 `owner-query` 判断覆盖；`can_cover=false` 时先 `owner-add --plan`/`owner-split --plan` 拿方案，**以 AskUserQuestion 列给用户确认后**才正式 add/split（不可跳过，见 owner-registry「变更 owner 必须先经用户确认」），再产 plan 并 `owner-verify-plan` 复核。owner 数据随仓库提交存档（见 owner-registry「数据存档」）。
-2. 对每个参与 owner 先建 worktree：`worktree-create <feature_branch> <owner_id>` 产出 sparse worktree（分支 `dev_{owner_id}`，仅含 `owned_modules`，1 owner = 1 worktree，重复创建即拒）。三映射：Agent spawn name = `owner-<owner_id>`（逻辑身份，作 SendMessage 二次寻址句柄）↔ registry.owners[].owner_id ↔ worktree_binding.owner_branch = `dev_{owner_id}`（物理载体）。
+1. 规划阶段调 `owner-query` 判断覆盖；`can_cover=false` 时先 `owner-add --plan`/`owner-split --plan` 拿方案，**以 AskUserQuestion 列给用户确认后**才正式 add/split（不可跳过，见 owner-registry「变更 owner 必须先经用户确认」），再产 plan 并 `owner-verify-plan` 复核。owner 数据随仓库提交存档（见 owner-registry「归档 owner 数据」）。
+2. 对每个参与 owner 先建 worktree：`worktree-create <registry.json> <feature_branch> <owner_id>` 产出 sparse worktree（分支 `dev_{owner_id}`，仅含 `owned_modules`，1 owner = 1 worktree，重复创建即拒）。三映射：Agent spawn name = `owner-<owner_id>`（逻辑身份，作 SendMessage 二次寻址句柄）↔ registry.owners[].owner_id ↔ worktree_binding.owner_branch = `dev_{owner_id}`（物理载体）。
 3. 以 `owner-<owner_id>` 为 Agent spawn name spawn 命名子代理（`isolation: worktree`）；该名稳定、跨 attempt 不变，是 SendMessage 二次寻址与记忆汇总的句柄。runtime 下发的 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）仅作 per-attempt executor_id / reservation token，用于 `bind`，绝不当 Agent spawn name。写隔离三层缺一不可：L1 = 项目级 owner-acl PreToolUse hook（`owner-acl-hook.py`，按 `agent_type=owner-<owner_id>` 映射 owner 模块，越界写 `permissionDecision:"deny"` 硬拒）；L2 = sparse worktree 物理隔离；L3 = `worktree-merge-back` 已内置 per-owner scope audit（diff feature..owner 逐文件比 `owned_modules`，越界即 fail）。
-4. worker 经 `WORKER_RESULT_V4.owner_updates` 回写 per-Goal Owner Capsule；worker 绝不写 `owners/<id>/memory.md`（会触发 L3 scope audit 越界 fail，且违反 worker 写白名单）。收口时由本 controller（subagent-coordination）在**主工作区**调 `owner-note` 写 `owners/<id>/memory.md` 与 `requirements/`（主工作区路径，随仓库提交），把跨 Goal 关键 decisions/invariants 沉淀为 registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总标注为「可选增强，平台前提验证后启用」；当前默认 controller 据 `owner_updates` + merge-back diff 自写 owner-note。
-5. 各 owner 完成且 owner-scope 通过后，多 owner 的 merge-back 经 registry state lock **串行**执行，不得并发对同一 feature 分支。逐 owner `worktree-merge-back <feature_branch> <owner_id>` 用 `--no-ff` 合回 feature 分支，并已内置 L3 per-owner scope audit（越界即 fail——越界意味 registry 被绕过，须排查 owner 定义而非手工解冲突；`owned_modules` 全表互斥 ⇒ 理论零冲突）。每个 merge 后 `git checkout` 回主工作区原分支（仅文档声明，runtime 改动另议）。**所有 owner 全部 merge-back 完成后才进入 finalize，不得提前。**
+4. worker 经其结果契约的 `owner_updates` 字段（WORKER_RESULT_V4）回写 per-Goal Owner Capsule；worker 绝不写 `owners/<id>/memory.md`（会触发 L3 scope audit 越界 fail，且违反 worker 写白名单）。收口时由本 controller（subagent-coordination）在**主工作区**调 `owner-note` 写 `owners/<id>/memory.md` 与 `requirements/`（主工作区路径，随仓库提交），把跨 Goal 关键 decisions/invariants 沉淀为 registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总是「可选增强，平台前提验证后启用」，不影响「不回收」的承重性；当前默认 controller 据 `owner_updates` + owner worktree diff（`diff feature..dev_{owner_id}`，merge-back 前后均可用，即 L3 scope audit 同一 diff）自写 owner-note。
+5. 各 owner 完成且 owner-scope 通过后，多 owner 的 merge-back 经 registry state lock **串行**执行，不得并发对同一 feature 分支。逐 owner `worktree-merge-back <registry.json> <feature_branch> <owner_id>` 用 `--no-ff` 合回 feature 分支，并已内置 L3 per-owner scope audit（越界即 fail——越界意味 registry 被绕过，须排查 owner 定义而非手工解冲突；`owned_modules` 全表互斥 ⇒ 理论零冲突）。每个 merge 后 `git checkout` 回主工作区原分支（仅文档声明，runtime 改动另议）。**所有 owner 全部 merge-back 完成后才进入 finalize，不得提前。**
 6. 全部 merge-back 完成后运行 `finalize`（须在所有 owner 的 merge-back 之后）；finalize 成功后交用户测试，`worktree-remove <owner_id>` 清理。owner 间依赖由 registry `depends_on_owners` 声明，经 SendMessage 协调时序。
 
 ```text

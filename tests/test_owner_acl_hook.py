@@ -101,6 +101,78 @@ class OwnerAclHookTests(unittest.TestCase):
             self.assertIsNotNone(denied)
             self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
 
+    def test_brace_and_negation_glob_align_with_runtime(self) -> None:
+        # {a,b} brace 与 [!x] 否定类须与 goal-dag.mjs globSegmentRegex 同语义：
+        # 否则 L1 hook 会假阴性阻断 in-scope 写，或假阳性放行越界写。
+        env = {**os.environ, "GOAL_DAG_EXECUTION_PLATFORM": "claude_code"}
+        with self.workspace_with_owner() as (workspace_root, registry_path):
+            br_def = registry_path.parent / "brace-def.json"
+            br_def.write_text(json.dumps({
+                "owner_id": "brace_owner", "functional_domain": "brace",
+                "owned_modules": ["src/{api,chat}/**", "src/x/[!y]/z.ts"],
+                "interfaces": [], "depends_on_owners": [],
+            }), encoding="utf-8")
+            subprocess.run(
+                ["node", str(GD), "owner-add", str(registry_path), str(br_def)],
+                check=True, capture_output=True, env=env,
+            )
+            # {api,chat} 覆盖 src/api 与 src/chat：in-scope 放行
+            self.assertIsNone(self.run_hook({
+                "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/api/sub/a.ts")},
+            }))
+            self.assertIsNone(self.run_hook({
+                "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/chat/a.ts")},
+            }))
+            # {api,chat} 不覆盖 src/other：deny（修复前 brace 被当字面量 -> 假阴性阻断 in-scope）
+            denied = self.run_hook({
+                "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/other/a.ts")},
+            })
+            self.assertIsNotNone(denied)
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+            # [!y] 排除 y 段：src/x/y/z.ts 越界 deny（修复前 [!y] 当字面类匹配 y -> 假阳性放行）
+            denied_y = self.run_hook({
+                "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/x/y/z.ts")},
+            })
+            self.assertIsNotNone(denied_y)
+            self.assertEqual(denied_y["hookSpecificOutput"]["permissionDecision"], "deny")
+            # [!y] 放行非 y 段：src/x/a/z.ts
+            self.assertIsNone(self.run_hook({
+                "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/x/a/z.ts")},
+            }))
+
+    def test_double_star_glob_aligns_with_runtime(self) -> None:
+        # ** 须按完整段匹配（镜像 goal-dag.mjs globRegex），不得用贪婪 .* 跨部分段：
+        # 否则 L1 hook 与 L3 scope audit 分歧（hook 假阳性放行 / merge-back 才 deny）。
+        env = {**os.environ, "GOAL_DAG_EXECUTION_PLATFORM": "claude_code"}
+        with self.workspace_with_owner() as (workspace_root, registry_path):
+            mid_def = registry_path.parent / "midstar-def.json"
+            mid_def.write_text(json.dumps({
+                "owner_id": "midstar_owner", "functional_domain": "mid",
+                "owned_modules": ["lib/**/proto/*.proto"], "interfaces": [], "depends_on_owners": [],
+            }), encoding="utf-8")
+            subprocess.run(
+                ["node", str(GD), "owner-add", str(registry_path), str(mid_def)],
+                check=True, capture_output=True, env=env,
+            )
+            # ** 匹配整段 a：lib/a/proto/x.proto in-scope 放行
+            self.assertIsNone(self.run_hook({
+                "agent_type": "owner-midstar_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "lib/a/proto/x.proto")},
+            }))
+            # ** 不得跨部分段：lib/Xproto/x.proto 缺独立 proto 段 -> 越界 deny
+            # （修复前 hook 用 .* 会假阳性放行 lib/Xproto/x.proto，与 mjs/L3 不一致）
+            denied = self.run_hook({
+                "agent_type": "owner-midstar_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "lib/Xproto/x.proto")},
+            })
+            self.assertIsNotNone(denied)
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_non_owner_agent_is_allowed(self) -> None:
         with self.workspace_with_owner() as (workspace_root, _):
             self.assertIsNone(self.run_hook({

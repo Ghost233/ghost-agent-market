@@ -104,7 +104,9 @@ class OwnerRegistryCliTests(unittest.TestCase):
                 "--plan",
             )
             self.assertEqual(plan["status"], "plan")
+            self.assertEqual(plan["contract"], "OWNER_ADD_PLAN_V1")
             self.assertEqual(plan["would_add"]["owner_id"], "proto_owner")
+            self.assertEqual(plan["new_owners"], ["proto_owner"])
             listed = self.run_json("owner-list", registry_path)
             self.assertEqual(listed["owners"], [])
 
@@ -123,8 +125,10 @@ class OwnerRegistryCliTests(unittest.TestCase):
             })
             plan = self.run_json("owner-split", registry_path, "chat_owner", spec, "--plan")
             self.assertEqual(plan["status"], "plan")
+            self.assertEqual(plan["contract"], "OWNER_SPLIT_PLAN_V1")
             self.assertEqual(plan["parent_would_lifecycle"], "active")
             self.assertEqual([c["owner_id"] for c in plan["new_owners"]], ["topbar_owner"])
+            self.assertEqual(plan["new_owners"][0]["depends_on_owners"], ["chat_owner"])
             listed = self.run_json("owner-list", registry_path)
             ids = {o["owner_id"] for o in listed["owners"]}
             self.assertEqual(ids, {"chat_owner"})
@@ -259,6 +263,26 @@ class OwnerRegistryCliTests(unittest.TestCase):
             rejected = self.run_cli("owner-split", registry_path, "chat_owner", spec_path)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("not within parent", rejected.stderr)
+
+    def test_owner_split_rejects_interface_drifting_outside_retained(self) -> None:
+        # interfaces ⊆ owned_modules 是硬不变量。split 缩父域后，若某 retained
+        # interface 的宿主模块被 child 认领，它会漂移到 retainedModules 外。
+        # 必须显式 fail，不得产出 active owner 持越界 interface。
+        with self.registry_workspace() as (workspace_root, registry_path):
+            self.init_registry(registry_path, workspace_root)
+            self.add_owner(registry_path, "ab_owner",
+                           ["src/a/**", "src/b/**"], interfaces=["src/b/iface.ts"])
+            spec_path = self.write_json(registry_path.parent / "drift.json", {
+                "reason": "认领 src/b/sub",
+                "new_owners": [{
+                    "owner_id": "bsub_owner", "functional_domain": "bsub",
+                    "owned_modules": ["src/b/sub/**"], "interfaces": [],
+                    "depends_on_owners": ["ab_owner"],
+                }],
+            })
+            rejected = self.run_cli("owner-split", registry_path, "ab_owner", spec_path)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("would fall outside retained", rejected.stderr)
 
     def commit_in_worktree(self, worktree_path: Path, files: dict[str, str]) -> None:
         for rel, content in files.items():

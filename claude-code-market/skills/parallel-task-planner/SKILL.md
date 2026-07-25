@@ -29,7 +29,7 @@ coverage 是完成判定的一部分，不是说明文档。DAG 无 ready/runnin
 
 - 用稳定 `owner_id` 表示 Goal 生命周期内的领域责任，不表示永久 Agent。
 - 把共享代码边界、长期不变量和连续决策放入同一 Owner；work、review、verify 使用不同 Owner。
-- 一个 Owner 可连续承担多个 task，但同一时刻只运行一个。`owner_affinity` 复用 + 命名子代理完成后不回收，是 owner 模型的承重机制（支持 SendMessage 多次寻址 / 记忆汇总），不是可选性能优化；Owner Capsule 是持久真相源。仅跨 Goal 才不复用，同一 Goal 内命名子代理稳定存活以承接二次寻址。
+- 一个 Owner 可连续承担多个 task，但同一时刻只运行一个。`owner_affinity` 复用 + 命名子代理完成后不回收，是 owner 模型的承重机制（支持 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询；记忆汇总 via SendMessage 是可选增强），不是可选性能优化；Owner Capsule 是持久真相源。仅跨 Goal 才不复用，同一 Goal 内命名子代理稳定存活以承接二次寻址。
 - 每个 task 只产生一个可验收结果。`work.writable_paths` 必须包含于 Owner 写域；review/verify 写域为空。
 - `depends_on` 只表达数据依赖；写域或运行资源冲突写入 `resource_locks`。
 - 为每个 `verification_id` 保留 Goal gate 的完整 description；覆盖 Goal gate 时同时写 `satisfies_goal_gates`。

@@ -8,7 +8,7 @@ user-invocable: false
 
 ## 边界
 
-只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源。Owner 模型下，命名子代理（Agent 名 = `owner-<owner_id>`）的 owner_affinity 复用与会话记忆是承重机制（支撑 SendMessage 多次寻址与记忆汇总），不是可选性能优化；仅跨 Goal 才不复用。「低频回收后台 Agent」仅指非 owner 的普通 executor。
+只执行一个 binding。逻辑 Owner 与 Capsule 是持久真相源。Owner 模型下，命名子代理（Agent 名 = `owner-<owner_id>`）的 owner_affinity 复用是承重机制（支撑 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询；会话记忆/记忆汇总 via SendMessage 是可选增强），不是可选性能优化；仅跨 Goal 才不复用。「低频回收后台 Agent」仅指非 owner 的普通 executor。
 
 不得创建或委派其他执行单元。不得修改 goal/coverage/plan/state/capsule，不得直接编辑 `capsule.json`，不得暂存、提交、推送或扩大 Goal。不得写 `owners/<id>/memory.md` 或 `requirements/`（controller owner-note 职责；worker 写入违反写白名单并触发 L3 per-owner scope audit 越界 fail）。协调元数据只允许写 binding 指定的 checkpoint_path、attempt 唯一 result_path，以及固定 audit binding 中非空的精确 `evidence_artifact_paths`（source proposal/runtime audit artifact）；其它 runtime 路径不可写。
 

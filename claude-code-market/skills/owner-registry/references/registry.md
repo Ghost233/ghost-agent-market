@@ -64,6 +64,7 @@
 
 ```json
 {
+  "contract": "OWNER_ADD_PLAN_V1",
   "would_add": {
     "owner_id": "api_owner",
     "functional_domain": "API 接入",
@@ -87,6 +88,24 @@
 ```
 
 输出 `OWNER_COVERAGE_QUERY_V1`：`covered[{module,owner_id}]`、`gaps[]`（未被任何 owner 覆盖的模块）、`split_candidates[]`（模块跨度≥4 的 owner）、`can_cover`（`gaps` 为空则 true）。
+
+```json
+{
+  "contract": "OWNER_COVERAGE_QUERY_V1",
+  "text": "日志上传",
+  "covered": [
+    {"module": "src/proto/log_upload.proto", "owner_id": "proto_owner"},
+    {"module": "src/api/user.ts", "owner_id": "api_owner"}
+  ],
+  "gaps": ["src/feature/new/**"],
+  "split_candidates": [
+    {"parent": "chat_owner", "reason": "模块跨度较大(5 条)"}
+  ],
+  "can_cover": false
+}
+```
+
+`split_candidates[]` 每项为 `{parent, reason}`（`parent` 即待拆 owner_id）；`can_cover=false` 表示需求有未被覆盖的模块，需先 `owner-add`/`owner-split` 再规划。
 
 ## SPLIT_SPEC_INPUT（owner-split 输入）
 
@@ -113,6 +132,7 @@
 
 ```json
 {
+  "contract": "OWNER_SPLIT_PLAN_V1",
   "parent_would_retain": ["src/chat/**"],
   "parent_would_lifecycle": "active",
   "new_owners": [
@@ -131,11 +151,4 @@
 
 ## 平台差异
 
-owner-worktree 物理隔离 + PreToolUse 写权限钉位依赖 Claude Code 的 `isolation:worktree` frontmatter 与 hook `agent_type` 上下文。Codex/Kimi 不具备等价能力，故 owner 体系仅 claude 端实现；codex/kimi 继续用共享 workspace + `tasksConflict` 逻辑互斥。
-
-```text
-node <plugin-root>/scripts/goal-dag.mjs owner-init        <registry.json> <workspace_root>
-node <plugin-root>/scripts/goal-dag.mjs owner-add         <registry.json> <owner-def.json> [--plan]
-node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan <registry.json> <plan.json>
-node <plugin-root>/scripts/goal-dag.mjs owner-note        <registry.json> <owner_id> <note.json>
-```
+owner-worktree 物理隔离 + PreToolUse 写权限钉位依赖 Claude Code 平台能力（`isolation:worktree` frontmatter + hook `agent_type` 上下文）。完整平台差异说明与写隔离三层（L1/L2/L3）见 owner-registry/SKILL.md「边界」节。
