@@ -1,10 +1,11 @@
 # Claude Code Market
 
-这个目录提供 Claude Code 可安装插件，包含四个 skill：
+这个目录提供 Claude Code 可安装插件，包含五个 skill：
 
 - `parallel-task-planner`
 - `subagent-coordination`
 - `subagent-goal-worker`
+- `owner-registry`（Claude Code 专属内部 skill）
 - `git-commit`
 
 Claude Code 没有 Codex 原生 `/goal`、`get_goal` 或 `update_goal` 生命周期，因此明确使用 `lifecycle.controller: local_fallback`。默认本地实例由 source 绝对路径+digest 的 SHA-256 短摘要定位；相同输入默认恢复同一实例，若要重复或并行执行完全相同的 source，必须显式提供稳定的新 instance key，且不得覆盖已有目录。首次运行使用平台的显式 skill 调用：
@@ -25,7 +26,7 @@ Claude Code 没有 Codex 原生 `/goal`、`get_goal` 或 `update_goal` 生命周
 
 `subagent-coordination` 是唯一公开控制器，内部调用 planner 并分发 worker；执行模式固定为 `subagent`。首次建图和每次 delta 修订后显示 runtime 生成的完整 DAG；只有 task、coverage、gate、revision 或 `next_action` 实质变化时才显示状态快照，无变化的等待不重复播报。逻辑 Owner 持久保存领域决策和检查点；Claude Code Agent 仅做软亲和复用，可通过 generation 安全替换。正确性只依赖持久 coverage、DAG state、Capsule、checkpoint 和 attempt-scoped result，不依赖 Agent 会话记忆。不同 Goal 不复用 Agent。
 
-Claude Code Owner 的 `runtime_profile` 为 `null`，执行单元使用平台默认配置；skill 不向 Agent 传模型或思考强度。`.ghost-agent-workflow/` 是本地 runtime state，不应提交，请将它加入使用项目的 `.gitignore`。
+Claude Code Owner 的 `runtime_profile` 为 `null`，执行单元使用平台选择的配置。Owner delivery 当前采用最小闭环：`owner-bind-goal` 固定 Goal 投影，registry-first `worktree-create`/`worktree-commit`/`worktree-merge-back` 更新物理状态，再由 `owner-delivery-reconcile` 同步 Goal；这些命令不是跨 Git/JSON 的原子 API，也没有完整 crash-intent journal。`.ghost-agent-workflow/` 同时包含可归档数据和临时状态：`owners/registry.json`、Owner `memory.md` 与 `requirements/` 应随仓库提交；仅 runtime worktrees、lock、临时文件及 runtime transaction 文件应忽略。不要把整个 `.ghost-agent-workflow/` 加入根 `.gitignore`；`owner-init` 会维护该目录下的细粒度忽略规则，并在根规则阻止归档时报告 `archive_warning`。
 
 ## 安装
 

@@ -15,7 +15,7 @@ owner 之间**严格文件隔离**：每个 owner 的 `owned_modules` + `interfa
 本 skill 是 Claude Code `parallel-task-planner`（覆盖检查）与 `subagent-coordination`（fan-out/merge-back）自动调用的内部能力，不是公开入口。写隔离由三层共同保证（全链统一编号）：
 
 - **L1 = PreToolUse hook**（`owner-acl-hook.py`）：写前按 `agent_type` 硬 deny 越界写。
-- **L2 = sparse worktree 物理隔离**：每个 owner 的 worktree sparse checkout 仅含 `owned_modules`，依赖 Claude Code 的 `isolation:worktree` frontmatter。
+- **L2 = sparse visibility superset（非授权边界）**：runtime 在 `.ghost-agent-workflow/worktrees/<goal>/<owner>` 创建唯一物理 worktree，并把 glob 保守投影为可见目录；它只减少暴露面，最终写授权仍由 L1/L3 的 exact matcher 决定。投影为空、退化到仓库根或无法安全映射时拒绝创建。
 - **L3 = worktree-merge-back per-owner scope audit**：已实现于 `goal-dag.mjs`，合并时 `diff feature..owner` 逐文件比对 `owned_modules`，越界即 `fail`。
 
 Codex/Kimi 平台不具备等价能力，故仅 claude 端实现 owner 体系，codex/kimi 继续用共享 workspace + `tasksConflict` 逻辑互斥。这是有意的平台差异。
@@ -46,39 +46,41 @@ node <plugin-root>/scripts/goal-dag.mjs owner-init <registry.json> <workspace_ro
 
 1. `owner-init` 初始化 registry **[controller]**
 2. `owner-query` 覆盖检查（只读）**[planner]**：`can_cover=false` 则进入下一步
-3. `can_cover=false` → `owner-add`/`owner-split --plan` 拿方案 + AskUserQuestion **[controller 确认]** 后落盘
+3. `can_cover=false` → `owner-add`/`owner-split --plan` 取得包含 `registry_digest`、`proposal_digest` 与 `confirmation_scope=anti_accidental_and_toctou_only` 的方案；controller 用 AskUserQuestion 展示方案，用户确认后以同一 `proposal_digest` 执行 `--confirm` 落盘
 4. planner 产 plan：`owners[].id` 引用 registry active owner，`writable_paths` 派生自 `owned_modules` **[planner]**
 5. `owner-verify-plan` 机械复核（只读）**[planner]**
-6. `worktree-create` 切 per-owner worktree **[controller]**
+6. `owner-bind-goal` 先冻结 required work Owner 的 `pending` delivery 投影，再逐个执行 `worktree-create`；每次创建后运行 `owner-delivery-reconcile`，仅在 worktree identity、base 与 scope 未漂移时推进到 `active` **[controller]**
 7. 命名子代理开发，Agent spawn name = `owner-<owner_id>` **[worker]**
-8. controller 收口，`owner-note` 沉淀跨 Goal 记忆 **[controller]**
-9. `worktree-merge-back`（`--no-ff` 合并 + L3 scope audit）**[controller]**
-10. `finalize` → 交用户测 → `worktree-remove` 清理 per-owner worktree（释放 1 owner=1 worktree 槽位）**[controller]**
+8. controller 收口，先 `worktree-commit` seal，再 reconcile 到 `sealed` 并执行 `worktree-merge-back` **[controller]**
+9. merge 后 reconcile 到 `merged`；此后才允许 final diff audit 与 `finalize` **[controller]**
+10. `finalize` 后可 `worktree-remove` 清理 per-owner worktree；删除后的 reconcile 必须保留已证明的 `merged` 状态 **[controller]**
 
 ## 三大生命周期操作
 
 1. **查询覆盖**（planner 规划前必跑，只读）：把需求涉及的模块交给 `owner-query`，得到 `covered`/`gaps`/`split_candidates`/`can_cover`。`can_cover=false` 时先 `owner-add`/`owner-split` 再规划。
 2. **新增 owner**：`owner-add` 注册新功能域 owner。新 owner 的 `owned_modules`/`interfaces` 与全表现有 owner 不相交，否则 runtime 拒绝。
-3. **分裂 owner**：`owner-split` 把父 owner 的部分模块拆给一个或多个新 owner。父保留未被认领的模块；若全部被认领则 lifecycle 置 `retired`。父置 `retired` 前，controller 须先对其 `status=active` 的 worktree 跑 `worktree-merge-back`/`worktree-remove` 释放槽位（见 registry.md）。拆出的子 owner 须各自落在父域内且互斥。
+3. **分裂 owner**：`owner-split` 把父 owner 的部分模块拆给一个或多个新 owner。父保留未被认领的模块；若全部被认领则 lifecycle 置 `retired` 并作为只读 tombstone 保留审计历史。父置 `retired` 前，controller 须先对其 live worktree 跑完整 commit/merge/remove 主链释放槽位。拆出的子 owner 须各自落在父域内且互斥。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs owner-list  <registry.json>
-node <plugin-root>/scripts/goal-dag.mjs owner-add   <registry.json> <owner-def.json> [--plan]
+node <plugin-root>/scripts/goal-dag.mjs owner-add   <registry.json> <owner-def.json> --plan|--confirm <proposal_digest>
 node <plugin-root>/scripts/goal-dag.mjs owner-query <registry.json> <requirement.json>
-node <plugin-root>/scripts/goal-dag.mjs owner-split <registry.json> <parent_owner_id> <split-spec.json> [--plan]
+node <plugin-root>/scripts/goal-dag.mjs owner-split <registry.json> <parent_owner_id> <split-spec.json> --plan|--confirm <proposal_digest>
 ```
 
 ## 变更 owner 必须先经用户确认（硬约束，不可跳过）
 
 `owner-add` 与 `owner-split` 会改写跨 Goal 的 owner 拓扑，影响面广且不可逆，故由用户拍板——**执行前必须**：
 
-1. 先跑 dry-run 拿方案：`owner-add ... --plan` / `owner-split ... --plan`（输出 `would_add`/`parent_would_retain`/`parent_would_lifecycle`/`new_owners`，不落盘）。
+1. 先跑 dry-run：`owner-add ... --plan` / `owner-split ... --plan`。输出除候选变化外还包含 `registry_digest`、`proposal_digest` 和 `confirmation_scope: anti_accidental_and_toctou_only`。
 2. 把方案以 **AskUserQuestion** 列给用户确认：新增/拆出的 owner_id、functional_domain、owned_modules、interfaces、（split 的）父 owner 保留域与 lifecycle 变化、与现有 owner 的互斥校验结果。
-3. **用户明确确认后**，才执行不带 `--plan` 的正式命令落盘。
+3. **用户明确确认后**，执行 `owner-add ... --confirm <proposal_digest>` 或 `owner-split ... --confirm <proposal_digest>`。runtime 在 registry lock 内重读输入与 registry 并重算 digest；参数或 registry 漂移、错误 digest及成功后的重放都会失败。
+
+`proposal_digest` 只能绑定所展示的 proposal 与当时 registry 状态，提供防误操作和 TOCTOU 保护；它**不能证明 AskUserQuestion 确实发生、回答者身份或人类批准**。human confirmation 仍是 controller 必须遵守的流程约束，不能把 digest 描述为可信审批票据。
 
 **禁止跳过确认直接 add/split。** 即便 planner/worker 经 `needs_repair.scope_request` 建议分裂，也必须由 controller 走上述确认流程，不得自动执行。`owner-query`/`owner-list`/`owner-verify-plan` 只读，无需确认；`owner-note` 由 controller 在主工作区写入（见「owner 记忆」节）。
 
-该约束由 owner-acl hook 在 runtime 硬强制：不带 `--plan` 的 `owner-add`/`owner-split` 命令（落盘形式）会被 PreToolUse hook 直接 `deny`，任何 agent（含主线程 controller）都无法绕过——必须先 `--plan` 暴露方案。`--plan` dry-run 放行。
+hook 只对命令形态做硬门禁：Owner mutation 必须是单一直接命令，且只能使用 `--plan` 或格式正确的 `--confirm <proposal_digest>`；复合 shell、混合 flag 和无确认参数命令均拒绝。proposal 与 registry freshness 的最终校验由 runtime 在 registry lock 内完成。
 
 ## 归档 owner 数据（随仓库提交）
 
@@ -96,25 +98,30 @@ node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan <registry.json> <plan.
 
 ## 绑定 per-owner worktree（物理隔离）
 
-每个 owner 至多一个 live worktree：分支 `dev_{owner_id}`，从 feature 分支切出，sparse checkout 仅含 `owned_modules`。1 owner = 1 worktree，重复创建即 `fail`。`worktree-create`/`worktree-merge-back`/`worktree-remove` 由 subagent-coordination 分别在 fan-out、合并与 finalize 后清理阶段调用。
+每个 owner 至多一个 live worktree；runtime 使用由 feature branch、owner_id 与 base OID 派生的唯一 `owner_<owner_id>_<digest>` 分支，并在 `.ghost-agent-workflow/worktrees/<digest>/<owner_id>` 建立 worktree。sparse checkout 只暴露 `owned_modules` 的保守目录投影。1 owner = 1 live worktree，重复创建即 `fail`。
 
 **三映射**（逻辑身份 ↔ 物理载体）：
 
-- Agent spawn name = `owner-<owner_id>` ↔ `registry.owners[].owner_id`（逻辑身份）↔ `worktree_binding.owner_branch = dev_{owner_id}`（物理载体）。
+- Agent spawn name = `owner-<owner_id>` ↔ `registry.owners[].owner_id`（逻辑身份）↔ runtime 派生的 `worktree_binding.owner_branch`（物理载体）。
 - spawn name `owner-<owner_id>` 即 SendMessage 二次寻址句柄（稳定，跨 attempt 不变）。
 - runtime 的 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）跨 attempt 会变、不稳定，仅作 per-attempt executor_id / reservation token 用于 worktree bind，不能当 Agent spawn name。controller 以 `owner-<owner_id>` 为 Agent 名 spawn；`executor_spawn_name` 作 executor_id bind。
 
 ```text
-node <plugin-root>/scripts/goal-dag.mjs worktree-create     <registry.json> <feature_branch> <owner_id>
-node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back <registry.json> <feature_branch> <owner_id>
-node <plugin-root>/scripts/goal-dag.mjs worktree-remove     <registry.json> <owner_id> [--force]
+node <plugin-root>/scripts/goal-dag.mjs worktree-create      <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-commit      <registry.json> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back  <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-remove      <registry.json> <owner_id> [--force]
+node <plugin-root>/scripts/goal-dag.mjs owner-bind-goal      <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>
+node <plugin-root>/scripts/goal-dag.mjs owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json>
 ```
+
+`worktree-create`/`worktree-commit`/`worktree-merge-back` 当前仍是 registry-first 命令，并非跨 Goal、registry 与 Git 的原子 Goal-aware API。controller 先用 `owner-bind-goal` 冻结 `pending` delivery，再创建 worktree 并 reconcile 到 `active`；每次 commit/merge 后继续 reconcile。reconcile 必须验证 active Owner、scope、worktree identity、base、状态单调性以及 committed/merged OID ancestry；delta 新增的 live writable Owner 会在下一次 reconcile 以 `pending` 纳入 delivery，创建 worktree 后方可执行。当前没有完整的 Git/JSON crash-intent journal；无法由现有 OID 证明的崩溃窗口必须 fail closed 并请求人工修复，文档不得声称任意 Git 后、JSON 前故障都可自动恢复。
 
 ## 沉淀 owner 记忆
 
 每次需求沉淀到 `.ghost-agent-workflow/owners/<owner_id>/requirements/<UTC-ts>-<slug>.md`（原文+决策+验收）与 rolling `memory.md`，跨需求可追溯。用 `owner-note` 原子追加（`kind=requirement` 同时落独立需求文档 + memory 滚动条目；`kind=memory` 仅追加 memory）。
 
-**归属**：`owner-note` 由 **controller（subagent-coordination）在主工作区**写 `owners/<id>/memory.md` + `requirements/`（主工作区路径，随仓库提交）。worker **绝不**写 `memory.md`（会触发 L3 scope audit 越界 `fail` + 违反 worker 写白名单）。worker 经其结果契约的 `owner_updates` 字段（WORKER_RESULT_V4）回写 per-Goal Capsule；controller 收口时把关键 decisions/invariants 经 `owner-note` 沉淀为跨 Goal registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总是「可选增强，平台前提验证后启用」，不影响「命名子代理不回收」的承重性（承重靠 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询）；当前默认 controller 据 `owner_updates` + owner worktree diff（`diff feature..dev_{owner_id}`，merge-back 前后均可用，即 L3 scope audit 同一 diff）自写 owner-note。
+**归属**：`owner-note` 由 **controller（subagent-coordination）在主工作区**写 `owners/<id>/memory.md` + `requirements/`（主工作区路径，随仓库提交）。worker **绝不**写 `memory.md`（会触发 L3 scope audit 越界 `fail` + 违反 worker 写白名单）。worker 经其结果契约的 `owner_updates` 字段（WORKER_RESULT_V4）回写 per-Goal Capsule；controller 收口时把关键 decisions/invariants 经 `owner-note` 沉淀为跨 Goal registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总是「可选增强，平台前提验证后启用」，不影响「命名子代理不回收」的承重性（承重靠 SendMessage 跨 attempt 稳定寻址做任务分发/状态查询）；当前默认 controller 据 `owner_updates` + runtime 登记的 feature/owner branch diff（merge-back 前后均可用，即 L3 scope audit 同一 diff）自写 owner-note。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <note.json>
@@ -130,7 +137,7 @@ node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <n
 
 ### 功能域 Owner 注册表契约
 
-仅在创建、校验或变更 `OWNERS_REGISTRY_V1`，或准备 owner-add/owner-split/owner-query/owner-verify-plan/owner-note 输入时参考本节。配套命令由 `scripts/goal-dag.mjs` 提供：`owner-init`/`owner-list`/`owner-add [--plan]`/`owner-query`/`owner-split [--plan]`/`owner-verify-plan`/`owner-note`/`worktree-create`/`worktree-merge-back`/`worktree-remove`。
+仅在创建、校验或变更 `OWNERS_REGISTRY_V1`，或准备 owner mutation/query/verification/note 输入时参考本节。配套命令由 `scripts/goal-dag.mjs` 提供：`owner-init`/`owner-list`/`owner-add --plan|--confirm`/`owner-query`/`owner-split --plan|--confirm`/`owner-verify-plan`/`owner-note`/`owner-bind-goal`/`owner-delivery-reconcile`/`worktree-create`/`worktree-commit`/`worktree-merge-back`/`worktree-remove`。
 
 #### OWNERS_REGISTRY_V1
 
@@ -171,8 +178,8 @@ node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <n
 - `interfaces`：独占共享文件（proto/api/interface），须落在同 owner 的 `owned_modules` 内；同样全表不相交。
 - `depends_on_owners`：声明的 owner 须存在于 registry。
 - `lifecycle`：`active` | `split` | `retired`。
-- `history`：事件流水，`event` ∈ {`created`,`split`,`split_from`,`retired`,`worktree_created`,`worktree_merged`,`worktree_removed`}。
-- `worktree_binding`：`null` 或 `{feature_branch, owner_branch, worktree_path, status, created_at}`；`owner_branch` 形如 `dev_{owner_id}`，`status` ∈ {`active`,`merged`,`removed`}。同一 owner 至多一个 `status=active` 的 binding。
+- `history`：事件流水，`event` ∈ {`created`,`split`,`split_from`,`retired`,`worktree_created`,`worktree_committed`,`worktree_merged`,`worktree_removed`}。
+- `worktree_binding`：`null` 或 `{feature_branch, owner_branch, worktree_path, status, created_at, base_oid, committed_oid, committed_at, merged_oid, merged_at}`；`owner_branch` 由 runtime 按 feature/base/owner 唯一派生，`status` ∈ {`active`,`sealed`,`merged`,`removed`}。同一 owner 至多一个 live（`active`/`sealed`）binding。
 
 #### OWNER_DEF_INPUT（owner-add 输入）
 
@@ -281,4 +288,4 @@ node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <n
 
 #### 平台差异
 
-owner-worktree 物理隔离 + PreToolUse 写权限钉位依赖 Claude Code 平台能力（`isolation:worktree` frontmatter + hook `agent_type` 上下文）。完整平台差异说明与写隔离三层（L1/L2/L3）见本 SKILL.md「边界」节。
+owner-worktree visibility + PreToolUse 写权限钉位依赖 Claude Code 的 hook `agent_type` 上下文与宿主让 Agent 在 runtime 已创建 worktree 中执行的能力；不得再请求 Agent `isolation` 创建第二个 worktree。宿主不能进入该路径时返回 `unsupported`/`needs_repair`，禁止退回主 checkout。完整平台差异说明与写隔离三层（L1/L2/L3）见本 SKILL.md「边界」节。

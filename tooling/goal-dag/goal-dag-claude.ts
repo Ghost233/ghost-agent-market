@@ -1,4 +1,3 @@
-// Generated from tooling/goal-dag/goal-dag-claude.ts. Do not edit directly.
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -14,436 +13,436 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const COMPILED_PLATFORM = "claude_code";
+type ExecutionPlatform = "codex" | "claude_code";
+type ExecutorMode = "subagent";
+type TaskRole = "work" | "review" | "verify";
+type CoverageEffect = "implementation" | "verification" | "audit";
+type SafetyStatus = "parallel_safe" | "sequential_only" | "needs_user_review";
+type TaskStatus =
+  | "pending"
+  | "reserved"
+  | "running"
+  | "completed"
+  | "blocked"
+  | "failed"
+  | "needs_repair"
+  | "superseded";
+type WorkerTerminalStatus = "completed" | "blocked" | "failed" | "needs_repair";
+type OwnerRuntimeStatus = "unbound" | "idle" | "reserved" | "running";
+type GoalController = "codex_native" | "local_fallback";
+type NativeSyncStatus = "not_started" | "not_required" | "pending" | "confirmed";
+
+type WorkerProfile = {
+  model: string;
+  reasoning_effort: string;
+};
+
+type GoalGate = {
+  id: string;
+  stage: string;
+  description: string;
+  required: boolean;
+};
+
+type GoalContract = {
+  contract: "GOAL_CONTRACT_V1";
+  goal_id: string;
+  execution_platform: ExecutionPlatform;
+  workspace: {
+    root: string;
+  };
+  source: {
+    path: string;
+    digest: string;
+    revision: number;
+  };
+  objective: string;
+  scope: string[];
+  non_goals: string[];
+  constraints: string[];
+  lifecycle: {
+    controller: GoalController;
+    native_goal: {
+      thread_id: string;
+      created_at: number;
+    } | null;
+  };
+  execution: {
+    mode: ExecutorMode;
+    max_concurrency: number;
+    reuse_policy: "owner_affinity";
+  };
+  verification_gates: GoalGate[];
+  side_effects: {
+    deploy: "forbidden" | "explicitly_authorized";
+    external_write: "forbidden" | "explicitly_authorized";
+  };
+  completion: {
+    all_tasks_completed: true;
+    plan_coverage_100: true;
+    required_gates_passed: true;
+    blocking_findings_zero: true;
+    diff_in_scope: true;
+  };
+};
+
+type GoalState = {
+  contract: "GOAL_STATE_V1";
+  goal_digest: string;
+  status: "active" | "completed";
+  controller: GoalController;
+  native_goal: GoalContract["lifecycle"]["native_goal"];
+  worktree_baseline: {
+    ref: string;
+    digest: string;
+  };
+  source_blocks: {
+    ref: string;
+    digest: string;
+  };
+  active_plan_path: string | null;
+  completion_evidence: string[];
+  completed_at: string | null;
+  native_sync: {
+    status: NativeSyncStatus;
+    completion_token: string | null;
+    objective_digest: string;
+    confirmed_at: string | null;
+  };
+  owner_delivery: OwnerDelivery | null;
+};
+
+type WorktreeSnapshotEntry = {
+  path: string;
+  status: string;
+  mode: string | null;
+  content_digest: string | null;
+  index_entries: Array<{
+    mode: string;
+    object_id: string;
+    stage: number;
+  }>;
+};
+
+type WorktreeBaselineV1 = {
+  contract: "WORKTREE_BASELINE_V1";
+  workspace_root: string;
+  head_oid: string;
+  entries: WorktreeSnapshotEntry[];
+};
+
+type RequiredPlanItem = {
+  id: string;
+  description: string;
+  source_refs: string[];
+  required_effects: CoverageEffect[];
+};
+
+type PlanCoverage = {
+  contract: "PLAN_COVERAGE_V1";
+  source_path: string;
+  source_digest: string;
+  source_revision: number;
+  plan_path: string;
+  plan_digest: string;
+  plan_revision: number;
+  required_plan_items: RequiredPlanItem[];
+};
+
+type OwnerDefinition = {
+  id: string;
+  role: TaskRole;
+  responsibility: string;
+  writable_paths: string[];
+  worker_context: string;
+  runtime_profile: WorkerProfile | null;
+  reuse_policy: "owner_affinity";
+};
+
+type RegistryOwnerLifecycle = "active" | "split" | "retired";
+type RegistryWorktreeStatus = "active" | "sealed" | "merged" | "removed";
+type RegistryHistoryEvent =
+  | "created"
+  | "split"
+  | "split_from"
+  | "retired"
+  | "worktree_created"
+  | "worktree_committed"
+  | "worktree_merged"
+  | "worktree_removed";
+
+type RegistryOwnerHistory = {
+  at: string;
+  event: RegistryHistoryEvent;
+  reason: string | null;
+  child_ids: string[] | null;
+  parent: string | null;
+};
+
+type RegistryWorktreeBinding = {
+  feature_branch: string;
+  owner_branch: string;
+  worktree_path: string;
+  status: RegistryWorktreeStatus;
+  created_at: string;
+  base_oid: string | null;
+  committed_oid: string | null;
+  committed_at: string | null;
+  merged_oid: string | null;
+  merged_at: string | null;
+};
+
+type OwnerDeliveryEntry = {
+  owner_id: string;
+  worktree_path: string;
+  owner_branch: string;
+  base_oid: string;
+  committed_oid: string | null;
+  committed_at: string | null;
+  merged_oid: string | null;
+  merged_at: string | null;
+  status: "pending" | "active" | "sealed" | "merged";
+  owned_modules_glob: string[];
+};
+
+type OwnerDelivery = {
+  contract: "OWNER_DELIVERY_V1";
+  registry_ref: string;
+  registry_digest: string;
+  feature_branch: string;
+  base_oid: string;
+  required_owner_ids: string[];
+  owners: Record<string, OwnerDeliveryEntry>;
+  pending_intent: Record<string, unknown> | null;
+  frozen_evidence: Record<string, unknown> | null;
+};
+
+type RegistryOwner = {
+  owner_id: string;
+  functional_domain: string;
+  owned_modules: string[];
+  interfaces: string[];
+  depends_on_owners: string[];
+  lifecycle: RegistryOwnerLifecycle;
+  history: RegistryOwnerHistory[];
+  memory_docs_ref: string | null;
+  worktree_binding: RegistryWorktreeBinding | null;
+};
+
+type OwnersRegistry = {
+  contract: "OWNERS_REGISTRY_V1";
+  registry_version: number;
+  workspace_root: string;
+  updated_at: string;
+  owners: RegistryOwner[];
+};
+
+type RegistryOwnerInput = {
+  owner_id: string;
+  functional_domain: string;
+  owned_modules: string[];
+  interfaces: string[];
+  depends_on_owners: string[];
+};
+
+type TaskDefinition = {
+  id: string;
+  logical_id: string;
+  title: string;
+  role: TaskRole;
+  owner_id: string;
+  task: string;
+  depends_on: string[];
+  writable_paths: string[];
+  resource_locks: string[];
+  done_when: string[];
+  verification_ids: string[];
+  satisfies_goal_gates: string[];
+  plan_item_ids: string[];
+  coverage_effect: CoverageEffect;
+  priority: number;
+  estimated_cost: number;
+};
+
+type Plan = {
+  contract: "DAG_PLAN_V4";
+  planner: "parallel-task-planner";
+  plan_format_version: 4;
+  revision: number;
+  execution_platform: ExecutionPlatform;
+  goal_contract_path: string;
+  goal_digest: string;
+  goal_id: string;
+  plan_source: {
+    path: string;
+    digest: string;
+    revision: number;
+  };
+  coverage_path: string;
+  owners: OwnerDefinition[];
+  tasks: TaskDefinition[];
+  safety: {
+    status: SafetyStatus;
+    reasons: string[];
+  };
+};
+
+type Evidence = {
+  verification_id: string;
+  outcome: "passed" | "failed" | "not_run";
+  summary: string;
+  artifact_ref: string | null;
+  artifact_digest: string | null;
+};
+
+type ScopeRequest = {
+  paths: string[];
+  reason: string;
+  required_for_done_when: string;
+  suggested_owner: string;
+  split_hints: string[];
+  overlap_hints: string[];
+};
+
+type WorkerResultV4 = {
+  contract: "WORKER_RESULT_V4";
+  status: WorkerTerminalStatus;
+  task_id: string;
+  logical_id: string;
+  role: TaskRole;
+  owner_id: string;
+  owner_generation: number;
+  executor_id: string;
+  reservation_token: string;
+  attempt: number;
+  source_revision: number;
+  changed_files: string[];
+  evidence: Evidence[];
+  diff_self_check: "pass" | "fail" | "scope_exception";
+  blocking_findings: string[];
+  scope_request: ScopeRequest | null;
+  summary: string;
+  owner_updates: {
+    decisions: string[];
+    invariants: string[];
+    risks: string[];
+  };
+};
+
+type TaskState = {
+  status: TaskStatus;
+  attempt: number;
+  reservation_token: string | null;
+  owner_generation: number | null;
+  executor_id: string | null;
+  source_revision: number;
+  validated_source_revision: number;
+  reserved_at: string | null;
+  result_path: string | null;
+  result_ref: string | null;
+  result_digest: string | null;
+  replacement_task_id: string | null;
+  last_reclaimed_token: string | null;
+};
+
+type OwnerState = {
+  generation: number;
+  bound_executor_id: string | null;
+  status: OwnerRuntimeStatus;
+  current_task_id: string | null;
+  capsule_ref: string;
+  completed_task_ids: string[];
+  result_refs: string[];
+};
+
+type StaleExecutor = {
+  executor_id: string;
+  owner_id: string;
+  task_id: string;
+  attempt: number;
+  reservation_token: string;
+  source_revision: number;
+  status: "stop_pending";
+  reclaimed_at: string;
+};
+
+type RunState = {
+  contract: "DAG_RUN_STATE_V4";
+  plan_digest: string;
+  goal_digest: string;
+  goal_refresh_pending: boolean;
+  source_revision: number;
+  revision: number;
+  tasks: Record<string, TaskState>;
+  owners: Record<string, OwnerState>;
+  stale_executors: StaleExecutor[];
+};
+
+type OwnerCapsule = {
+  contract: "OWNER_CAPSULE_V1";
+  owner_id: string;
+  generation: number;
+  goal_digest: string;
+  source_revision: number;
+  scope: string[];
+  responsibility: string;
+  worker_context: string;
+  decisions: string[];
+  invariants: string[];
+  completed_tasks: string[];
+  result_refs: string[];
+  verification: Array<Evidence & { task_id: string; result_ref: string }>;
+  risks: string[];
+  active_task_id: string | null;
+  progress: string;
+  important_symbols: string[];
+  next_steps: string[];
+  checkpoint_ref: string | null;
+  updated_at: string;
+};
+
+type OwnerCheckpointV1 = {
+  contract: "OWNER_CHECKPOINT_V1";
+  task_id: string;
+  owner_id: string;
+  owner_generation: number;
+  reservation_token: string;
+  progress: string;
+  decisions: string[];
+  invariants: string[];
+  risks: string[];
+  important_symbols: string[];
+  next_steps: string[];
+};
+
+type SourceBlock = {
+  id: string;
+  line_start: number;
+  line_end: number;
+  text_digest: string;
+};
+
+type SourceBlocksV1 = {
+  contract: "SOURCE_BLOCKS_V1";
+  source_path: string;
+  source_digest: string;
+  source_revision: number;
+  blocks: SourceBlock[];
+};
+
+const COMPILED_PLATFORM = "__EXECUTION_PLATFORM__";
 const EXPECTED_PLATFORM = (
   COMPILED_PLATFORM.startsWith("__")
     ? process.env.GOAL_DAG_EXECUTION_PLATFORM
     : COMPILED_PLATFORM
-)                     ;
+) as ExecutionPlatform;
 if (EXPECTED_PLATFORM !== "codex" && EXPECTED_PLATFORM !== "claude_code") {
   fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex or claude_code for an unbuilt runtime");
 }
 const DIFF_SCOPE_GATE_ID = "diff-scope-audit";
 const SOURCE_COVERAGE_GATE_ID = "source-coverage-audit";
-const ROLES = new Set          (["work", "review", "verify"]);
-const TERMINAL_STATUSES = new Set                      ([
+const ROLES = new Set<TaskRole>(["work", "review", "verify"]);
+const TERMINAL_STATUSES = new Set<WorkerTerminalStatus>([
   "completed",
   "blocked",
   "failed",
@@ -459,56 +458,56 @@ const REASONING_EFFORTS = new Set([
   "max",
   "ultra",
 ]);
-const ROLE_LABELS                           = {
+const ROLE_LABELS: Record<TaskRole, string> = {
   work: "实施",
   review: "审查",
   verify: "验证",
 };
 
-function fail(message        )        {
+function fail(message: string): never {
   throw new Error(message);
 }
 
-function isRecord(value         )                                   {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requireRecord(value         , label        )                          {
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (!isRecord(value)) fail(`${label} must be an object`);
   return value;
 }
 
-function requireString(value         , label        )         {
+function requireString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     fail(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function requireNullableString(value         , label        )                {
+function requireNullableString(value: unknown, label: string): string | null {
   if (value === null) return null;
   return requireString(value, label);
 }
 
-function requirePositiveInteger(value         , label        )         {
-  if (!Number.isInteger(value) || (value          ) < 1) {
+function requirePositiveInteger(value: unknown, label: string): number {
+  if (!Number.isInteger(value) || (value as number) < 1) {
     fail(`${label} must be a positive integer`);
   }
-  return value          ;
+  return value as number;
 }
 
-function requireNonNegativeInteger(value         , label        )         {
-  if (!Number.isInteger(value) || (value          ) < 0) {
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  if (!Number.isInteger(value) || (value as number) < 0) {
     fail(`${label} must be a non-negative integer`);
   }
-  return value          ;
+  return value as number;
 }
 
 function requireStringArray(
-  value         ,
-  label        ,
+  value: unknown,
+  label: string,
   allowEmpty = true,
-)           {
+): string[] {
   if (!Array.isArray(value)) fail(`${label} must be an array`);
   const result = value.map((item, index) =>
     requireString(item, `${label}[${index}]`),
@@ -517,20 +516,20 @@ function requireStringArray(
   return result;
 }
 
-function requireBoolean(value         , label        )          {
+function requireBoolean(value: unknown, label: string): boolean {
   if (typeof value !== "boolean") fail(`${label} must be a boolean`);
   return value;
 }
 
-function ensureUnique(values          , label        )       {
-  const seen = new Set        ();
+function ensureUnique(values: string[], label: string): void {
+  const seen = new Set<string>();
   for (const value of values) {
     if (seen.has(value)) fail(`duplicate ${label}: ${value}`);
     seen.add(value);
   }
 }
 
-function requireIdentifier(value         , label        )         {
+function requireIdentifier(value: unknown, label: string): string {
   const result = requireString(value, label);
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(result)) {
     fail(`${label} is invalid: ${result}`);
@@ -538,7 +537,7 @@ function requireIdentifier(value         , label        )         {
   return result;
 }
 
-function readJson(path        )          {
+function readJson(path: string): unknown {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
@@ -547,11 +546,11 @@ function readJson(path        )          {
   }
 }
 
-function serializedJson(value         )         {
+function serializedJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function writeTextAtomic(path        , payload        )       {
+function writeTextAtomic(path: string, payload: string): void {
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(temporaryPath, payload, {
@@ -565,11 +564,11 @@ function writeTextAtomic(path        , payload        )       {
   }
 }
 
-function writeJson(path        , value         )       {
+function writeJson(path: string, value: unknown): void {
   writeTextAtomic(path, serializedJson(value));
 }
 
-function writeImmutableJson(path        , value         )                         {
+function writeImmutableJson(path: string, value: unknown): "created" | "existing" {
   const payload = serializedJson(value);
   if (existsSync(path)) {
     if (digestFile(path) === createHash("sha256").update(payload).digest("hex")) {
@@ -596,13 +595,13 @@ function writeImmutableJson(path        , value         )                       
   return "created";
 }
 
+type TransactionWrite = { path: string; payload: string; digest: string };
 
-
-function transactionPathFor(anchorPath        )         {
+function transactionPathFor(anchorPath: string): string {
   return `${anchorPath}.transaction.json`;
 }
 
-function assertTransactionTarget(anchorPath        , targetPath        )         {
+function assertTransactionTarget(anchorPath: string, targetPath: string): string {
   const root = dirname(resolve(anchorPath));
   const target = resolve(targetPath);
   const relativePath = target.slice(root.length + (root.endsWith("/") ? 0 : 1));
@@ -612,7 +611,7 @@ function assertTransactionTarget(anchorPath        , targetPath        )        
   return target;
 }
 
-function parseTransaction(value         , anchorPath        )                     {
+function parseTransaction(value: unknown, anchorPath: string): TransactionWrite[] {
   const source = requireRecord(value, "transaction journal");
   if (source.contract !== "GOAL_DAG_TRANSACTION_V1") {
     fail("transaction journal contract must equal GOAL_DAG_TRANSACTION_V1");
@@ -638,7 +637,7 @@ function parseTransaction(value         , anchorPath        )                   
   return writes;
 }
 
-function recoverTransaction(anchorPath        )          {
+function recoverTransaction(anchorPath: string): boolean {
   const journalPath = transactionPathFor(anchorPath);
   if (!existsSync(journalPath)) return false;
   const writes = parseTransaction(readJson(journalPath), anchorPath);
@@ -651,8 +650,8 @@ function recoverTransaction(anchorPath        )          {
   return true;
 }
 
-function writeTransaction(anchorPath        , entries                          )       {
-  const writes                     = entries.map(([path, value]) => {
+function writeTransaction(anchorPath: string, entries: Array<[string, unknown]>): void {
+  const writes: TransactionWrite[] = entries.map(([path, value]) => {
     const target = assertTransactionTarget(anchorPath, path);
     const payload = serializedJson(value);
     return {
@@ -685,24 +684,24 @@ function writeTransaction(anchorPath        , entries                          )
   unlinkSync(journalPath);
 }
 
-function digestFile(path        )         {
+function digestFile(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function digestJson(value         )         {
+function digestJson(value: unknown): string {
   return createHash("sha256").update(serializedJson(value)).digest("hex");
 }
 
-function mutationProposalDigest(kind        , registryDigest        , inputDigest        , proposal         )         {
+function mutationProposalDigest(kind: string, registryDigest: string, inputDigest: string, proposal: unknown): string {
   return digestJson({ kind, registry_digest: registryDigest, input_digest: inputDigest, proposal });
 }
 
-function requireConfirmationDigest(value               )         {
+function requireConfirmationDigest(value: string | null): string {
   if (value === null || !/^[0-9a-f]{64}$/u.test(value)) fail("--confirm requires a 64-character lowercase hex proposal_digest");
   return value;
 }
 
-function gitOutput(workspaceRoot        , args          , label        )         {
+function gitOutput(workspaceRoot: string, args: string[], label: string): string {
   const result = spawnSync("git", ["-C", workspaceRoot, ...args], {
     encoding: "utf8",
     shell: false,
@@ -714,17 +713,17 @@ function gitOutput(workspaceRoot        , args          , label        )        
   return result.stdout;
 }
 
-function isRuntimeWorkspacePath(path        )          {
+function isRuntimeWorkspacePath(path: string): boolean {
   return path === ".ghost-agent-workflow" || path.startsWith(".ghost-agent-workflow/");
 }
 
-function gitStatusMap(workspaceRoot        )                      {
+function gitStatusMap(workspaceRoot: string): Map<string, string> {
   const output = gitOutput(
     workspaceRoot,
     ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
     "git worktree status",
   );
-  const result = new Map                ();
+  const result = new Map<string, string>();
   for (const record of output.split("\0")) {
     if (!record) continue;
     if (record.length < 4 || record[2] !== " ") fail("git status returned malformed porcelain");
@@ -735,14 +734,14 @@ function gitStatusMap(workspaceRoot        )                      {
 }
 
 function gitIndexMap(
-  workspaceRoot        ,
-)                                                      {
+  workspaceRoot: string,
+): Map<string, WorktreeSnapshotEntry["index_entries"]> {
   const output = gitOutput(
     workspaceRoot,
     ["ls-files", "--stage", "-z"],
     "git index listing",
   );
-  const result = new Map                                                ();
+  const result = new Map<string, WorktreeSnapshotEntry["index_entries"]>();
   for (const record of output.split("\0")) {
     if (!record) continue;
     const separator = record.indexOf("\t");
@@ -768,16 +767,16 @@ function gitIndexMap(
 }
 
 function snapshotEntry(
-  workspaceRoot        ,
-  path        ,
-  status        ,
-  indexEntries                                        ,
-)                        {
+  workspaceRoot: string,
+  path: string,
+  status: string,
+  indexEntries: WorktreeSnapshotEntry["index_entries"],
+): WorktreeSnapshotEntry {
   const absolutePath = resolve(workspaceRoot, path);
   if (absolutePath !== workspaceRoot && !absolutePath.startsWith(`${workspaceRoot}/`)) {
     fail(`git worktree path escapes workspace: ${path}`);
   }
-  let stat                              ;
+  let stat: ReturnType<typeof lstatSync>;
   try {
     stat = lstatSync(absolutePath);
   } catch (error) {
@@ -786,7 +785,7 @@ function snapshotEntry(
     }
     throw error;
   }
-  let contents        ;
+  let contents: Buffer;
   let mode = stat.mode.toString(8);
   if (stat.isSymbolicLink()) contents = Buffer.from(readlinkSync(absolutePath), "utf8");
   else if (stat.isFile()) contents = readFileSync(absolutePath);
@@ -814,7 +813,7 @@ function snapshotEntry(
   };
 }
 
-function captureWorktreeSnapshot(workspaceRootArgument        )                     {
+function captureWorktreeSnapshot(workspaceRootArgument: string): WorktreeBaselineV1 {
   const workspaceRoot = resolve(workspaceRootArgument);
   const headOid = gitOutput(
     workspaceRoot,
@@ -850,9 +849,9 @@ function captureWorktreeSnapshot(workspaceRootArgument        )                 
 }
 
 function parseWorktreeBaseline(
-  value         ,
-  expectedWorkspaceRoot        ,
-)                     {
+  value: unknown,
+  expectedWorkspaceRoot: string,
+): WorktreeBaselineV1 {
   const source = requireRecord(value, "worktree baseline");
   if (source.contract !== "WORKTREE_BASELINE_V1") {
     fail("worktree baseline contract must equal WORKTREE_BASELINE_V1");
@@ -931,13 +930,13 @@ function parseWorktreeBaseline(
   return { contract: "WORKTREE_BASELINE_V1", workspace_root: root, head_oid: headOid, entries };
 }
 
-function buildSourceBlocks(goal              )                 {
+function buildSourceBlocks(goal: GoalContract): SourceBlocksV1 {
   const sourceBytes = readFileSync(goal.source.path);
   if (createHash("sha256").update(sourceBytes).digest("hex") !== goal.source.digest) {
     fail("goal source changed while source blocks were being captured");
   }
   const lines = sourceBytes.toString("utf8").split(/\r?\n/u);
-  const blocks                = [];
+  const blocks: SourceBlock[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const text = lines[index];
     if (text.trim() === "") continue;
@@ -959,7 +958,7 @@ function buildSourceBlocks(goal              )                 {
   };
 }
 
-function parseSourceBlocks(value         , goal              )                 {
+function parseSourceBlocks(value: unknown, goal: GoalContract): SourceBlocksV1 {
   const source = requireRecord(value, "source blocks");
   if (source.contract !== "SOURCE_BLOCKS_V1") {
     fail("source blocks contract must equal SOURCE_BLOCKS_V1");
@@ -981,7 +980,7 @@ function parseSourceBlocks(value         , goal              )                 {
   }
   const blocks = source.blocks.map((value, index) => {
     const item = requireRecord(value, `source blocks.blocks[${index}]`);
-    const block              = {
+    const block: SourceBlock = {
       id: requireIdentifier(item.id, `source blocks.blocks[${index}].id`),
       line_start: requirePositiveInteger(
         item.line_start,
@@ -1004,7 +1003,7 @@ function parseSourceBlocks(value         , goal              )                 {
   };
 }
 
-function sleep(milliseconds        )       {
+function sleep(milliseconds: number): void {
   Atomics.wait(
     new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
     0,
@@ -1013,17 +1012,17 @@ function sleep(milliseconds        )       {
   );
 }
 
-function processIsAlive(pid         )          {
+function processIsAlive(pid: unknown): boolean {
   if (!Number.isInteger(pid)) return true;
   try {
-    process.kill(pid          , 0);
+    process.kill(pid as number, 0);
     return true;
   } catch (error) {
     return !isRecord(error) || error.code !== "ESRCH";
   }
 }
 
-function removeStaleLock(lockPath        )          {
+function removeStaleLock(lockPath: string): boolean {
   const reaperRoot = `${lockPath}.reaper`;
   const reaperToken = randomUUID();
   const temporaryPath = `${reaperRoot}.${process.pid}.${reaperToken}.tmp`;
@@ -1077,7 +1076,7 @@ function removeStaleLock(lockPath        )          {
   }
 }
 
-function withStateLock   (statePath        , operation         )    {
+function withStateLock<T>(statePath: string, operation: () => T): T {
   const lockPath = `${statePath}.lock`;
   const token = randomUUID();
   const temporaryPath = `${lockPath}.${process.pid}.${token}.tmp`;
@@ -1115,7 +1114,7 @@ function withStateLock   (statePath        , operation         )    {
   }
 }
 
-function normalizePathPattern(value        )         {
+function normalizePathPattern(value: string): string {
   const normalized = value.replaceAll("\\", "/");
   if (isAbsolute(normalized) || /^[A-Za-z]:\//.test(normalized)) {
     fail(`path must be repository-relative: ${value}`);
@@ -1129,11 +1128,11 @@ function normalizePathPattern(value        )         {
   return result;
 }
 
-function regexEscape(value        )         {
+function regexEscape(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 }
 
-function globSegmentRegex(segment        )         {
+function globSegmentRegex(segment: string): RegExp {
   let expression = "";
   for (let index = 0; index < segment.length; index += 1) {
     const character = segment[index];
@@ -1162,7 +1161,7 @@ function globSegmentRegex(segment        )         {
   return new RegExp(`^${expression}$`, "u");
 }
 
-function globRegex(pattern        )         {
+function globRegex(pattern: string): RegExp {
   const segments = normalizePathPattern(pattern).split("/");
   let expression = "^";
   for (let index = 0; index < segments.length; index += 1) {
@@ -1179,7 +1178,7 @@ function globRegex(pattern        )         {
   return new RegExp(expression, "u");
 }
 
-function segmentMayOverlap(left        , right        )          {
+function segmentMayOverlap(left: string, right: string): boolean {
   const leftGlob = /[?*[{]/.test(left);
   const rightGlob = /[?*[{]/.test(right);
   if (!leftGlob && !rightGlob) return left === right;
@@ -1188,11 +1187,11 @@ function segmentMayOverlap(left        , right        )          {
   return true;
 }
 
-function pathsOverlap(left        , right        )          {
+function pathsOverlap(left: string, right: string): boolean {
   const a = normalizePathPattern(left).split("/");
   const b = normalizePathPattern(right).split("/");
-  const memo = new Map                 ();
-  function visit(ai        , bi        )          {
+  const memo = new Map<string, boolean>();
+  function visit(ai: number, bi: number): boolean {
     const key = `${ai}:${bi}`;
     const cached = memo.get(key);
     if (cached !== undefined) return cached;
@@ -1211,7 +1210,7 @@ function pathsOverlap(left        , right        )          {
   return visit(0, 0);
 }
 
-function patternCovers(parent        , child        )          {
+function patternCovers(parent: string, child: string): boolean {
   const normalizedParent = normalizePathPattern(parent);
   const normalizedChild = normalizePathPattern(child);
   if (normalizedParent === normalizedChild) return true;
@@ -1230,11 +1229,11 @@ function patternCovers(parent        , child        )          {
   return parentSegments.length === childSegments.length;
 }
 
-function pathMatchesPattern(path        , pattern        )          {
+function pathMatchesPattern(path: string, pattern: string): boolean {
   return globRegex(pattern).test(normalizePathPattern(path));
 }
 
-function parseGoalGate(value         , index        )           {
+function parseGoalGate(value: unknown, index: number): GoalGate {
   const source = requireRecord(value, `verification_gates[${index}]`);
   return {
     id: requireIdentifier(source.id, `verification_gates[${index}].id`),
@@ -1247,7 +1246,7 @@ function parseGoalGate(value         , index        )           {
   };
 }
 
-function parseGoal(value         , verifySourceDigest = true)               {
+function parseGoal(value: unknown, verifySourceDigest = true): GoalContract {
   const source = requireRecord(value, "goal contract");
   if (source.contract !== "GOAL_CONTRACT_V1") {
     fail("goal contract must equal GOAL_CONTRACT_V1");
@@ -1280,13 +1279,13 @@ function parseGoal(value         , verifySourceDigest = true)               {
   if (lifecycle.controller !== "codex_native" && lifecycle.controller !== "local_fallback") {
     fail("goal lifecycle.controller is invalid");
   }
-  const expectedController                 = EXPECTED_PLATFORM === "codex"
+  const expectedController: GoalController = EXPECTED_PLATFORM === "codex"
     ? "codex_native"
     : "local_fallback";
   if (lifecycle.controller !== expectedController) {
     fail(`${EXPECTED_PLATFORM} execution platform requires ${expectedController} controller`);
   }
-  let nativeGoal                                           = null;
+  let nativeGoal: GoalContract["lifecycle"]["native_goal"] = null;
   if (EXPECTED_PLATFORM === "codex") {
     const nativeGoalSource = requireRecord(lifecycle.native_goal, "goal lifecycle.native_goal");
     nativeGoal = {
@@ -1322,7 +1321,7 @@ function parseGoal(value         , verifySourceDigest = true)               {
   }
 
   const sideEffects = requireRecord(source.side_effects, "goal side_effects");
-  for (const field of ["deploy", "external_write"]         ) {
+  for (const field of ["deploy", "external_write"] as const) {
     if (sideEffects[field] !== "forbidden" && sideEffects[field] !== "explicitly_authorized") {
       fail(`goal side_effects.${field} is invalid`);
     }
@@ -1334,23 +1333,23 @@ function parseGoal(value         , verifySourceDigest = true)               {
     "required_gates_passed",
     "blocking_findings_zero",
     "diff_in_scope",
-  ]         ) {
+  ] as const) {
     if (completion[field] !== true) fail(`goal completion.${field} must equal true`);
   }
 
   return {
     contract: "GOAL_CONTRACT_V1",
     goal_id: requireIdentifier(source.goal_id, "goal_id"),
-    execution_platform: source.execution_platform                     ,
+    execution_platform: source.execution_platform as ExecutionPlatform,
     workspace: { root: resolve(workspaceRoot) },
     source: { path: resolve(sourcePath), digest: sourceDigest, revision: sourceRevision },
     objective: requireString(source.objective, "goal objective"),
     scope: requireStringArray(source.scope, "goal scope", false),
     non_goals: requireStringArray(source.non_goals, "goal non_goals"),
     constraints: requireStringArray(source.constraints, "goal constraints"),
-    lifecycle: { controller: lifecycle.controller                  , native_goal: nativeGoal },
+    lifecycle: { controller: lifecycle.controller as GoalController, native_goal: nativeGoal },
     execution: {
-      mode: execution.mode                ,
+      mode: execution.mode as ExecutorMode,
       max_concurrency: requirePositiveInteger(
         execution.max_concurrency,
         "goal execution.max_concurrency",
@@ -1359,8 +1358,8 @@ function parseGoal(value         , verifySourceDigest = true)               {
     },
     verification_gates: gates,
     side_effects: {
-      deploy: sideEffects.deploy                                          ,
-      external_write: sideEffects.external_write                                                  ,
+      deploy: sideEffects.deploy as GoalContract["side_effects"]["deploy"],
+      external_write: sideEffects.external_write as GoalContract["side_effects"]["external_write"],
     },
     completion: {
       all_tasks_completed: true,
@@ -1372,7 +1371,7 @@ function parseGoal(value         , verifySourceDigest = true)               {
   };
 }
 
-function parseRuntimeProfile(value         , label        )                       {
+function parseRuntimeProfile(value: unknown, label: string): WorkerProfile | null {
   if (EXPECTED_PLATFORM === "claude_code") {
     if (value !== null) fail(`${label} must be null on claude_code`);
     return null;
@@ -1389,10 +1388,10 @@ function parseRuntimeProfile(value         , label        )                     
   return { model, reasoning_effort: reasoningEffort };
 }
 
-function parseOwner(value         , index        )                  {
+function parseOwner(value: unknown, index: number): OwnerDefinition {
   const source = requireRecord(value, `owners[${index}]`);
   const role = requireString(source.role, `owners[${index}].role`);
-  if (!ROLES.has(role            )) fail(`owners[${index}].role is invalid: ${role}`);
+  if (!ROLES.has(role as TaskRole)) fail(`owners[${index}].role is invalid: ${role}`);
   const writablePaths = requireStringArray(
     source.writable_paths,
     `owners[${index}].writable_paths`,
@@ -1409,7 +1408,7 @@ function parseOwner(value         , index        )                  {
   }
   return {
     id: requireIdentifier(source.id, `owners[${index}].id`),
-    role: role            ,
+    role: role as TaskRole,
     responsibility: requireString(source.responsibility, `owners[${index}].responsibility`),
     writable_paths: writablePaths,
     worker_context: requireString(source.worker_context, `owners[${index}].worker_context`),
@@ -1418,7 +1417,7 @@ function parseOwner(value         , index        )                  {
   };
 }
 
-const REGISTRY_HISTORY_EVENTS                         = [
+const REGISTRY_HISTORY_EVENTS: RegistryHistoryEvent[] = [
   "created",
   "split",
   "split_from",
@@ -1429,11 +1428,11 @@ const REGISTRY_HISTORY_EVENTS                         = [
   "worktree_removed",
 ];
 
-function registryOwnerPaths(owner               )           {
+function registryOwnerPaths(owner: RegistryOwner): string[] {
   return [...owner.owned_modules, ...owner.interfaces];
 }
 
-function parseRegistryOwnerInput(value         , index        , label        )                     {
+function parseRegistryOwnerInput(value: unknown, index: number, label: string): RegistryOwnerInput {
   const source = requireRecord(value, `${label}[${index}]`);
   const ownedModules = requireStringArray(
     source.owned_modules,
@@ -1467,10 +1466,10 @@ function parseRegistryOwnerInput(value         , index        , label        )  
   };
 }
 
-function parseRegistryHistoryEntry(value         , index        , ownerLabel        )                       {
+function parseRegistryHistoryEntry(value: unknown, index: number, ownerLabel: string): RegistryOwnerHistory {
   const source = requireRecord(value, `${ownerLabel}.history[${index}]`);
   const event = requireString(source.event, `${ownerLabel}.history[${index}].event`);
-  if (!REGISTRY_HISTORY_EVENTS.includes(event                        )) {
+  if (!REGISTRY_HISTORY_EVENTS.includes(event as RegistryHistoryEvent)) {
     fail(`${ownerLabel}.history[${index}].event is invalid: ${event}`);
   }
   const childIds = source.child_ids === null || source.child_ids === undefined
@@ -1478,20 +1477,20 @@ function parseRegistryHistoryEntry(value         , index        , ownerLabel    
     : requireStringArray(source.child_ids, `${ownerLabel}.history[${index}].child_ids`, false);
   return {
     at: requireString(source.at, `${ownerLabel}.history[${index}].at`),
-    event: event                        ,
+    event: event as RegistryHistoryEvent,
     reason: requireNullableString(source.reason, `${ownerLabel}.history[${index}].reason`),
     child_ids: childIds,
     parent: requireNullableString(source.parent, `${ownerLabel}.history[${index}].parent`),
   };
 }
 
-function parseRegistryWorktreeBinding(value         , ownerLabel        )                          {
+function parseRegistryWorktreeBinding(value: unknown, ownerLabel: string): RegistryWorktreeBinding {
   const source = requireRecord(value, ownerLabel);
   const status = requireString(source.status, `${ownerLabel}.status`);
   if (status !== "active" && status !== "sealed" && status !== "merged" && status !== "removed") {
     fail(`${ownerLabel}.status is invalid: ${status}`);
   }
-  const oid = (field        )                => {
+  const oid = (field: string): string | null => {
     const value = requireNullableString(source[field], `${ownerLabel}.${field}`);
     if (value !== null && !/^[0-9a-f]{40,64}$/u.test(value)) fail(`${ownerLabel}.${field} is invalid`);
     return value;
@@ -1500,7 +1499,7 @@ function parseRegistryWorktreeBinding(value         , ownerLabel        )       
     feature_branch: requireString(source.feature_branch, `${ownerLabel}.feature_branch`),
     owner_branch: requireString(source.owner_branch, `${ownerLabel}.owner_branch`),
     worktree_path: requireString(source.worktree_path, `${ownerLabel}.worktree_path`),
-    status: status                          ,
+    status: status as RegistryWorktreeStatus,
     created_at: requireString(source.created_at, `${ownerLabel}.created_at`),
     base_oid: oid("base_oid"),
     committed_oid: oid("committed_oid"),
@@ -1510,7 +1509,7 @@ function parseRegistryWorktreeBinding(value         , ownerLabel        )       
   };
 }
 
-function parseRegistryOwnerStored(value         , index        )                {
+function parseRegistryOwnerStored(value: unknown, index: number): RegistryOwner {
   const source = requireRecord(value, `owners[${index}]`);
   const lifecycle = requireString(source.lifecycle, `owners[${index}].lifecycle`);
   if (lifecycle !== "active" && lifecycle !== "split" && lifecycle !== "retired") {
@@ -1553,7 +1552,7 @@ function parseRegistryOwnerStored(value         , index        )                
     owned_modules: ownedModules,
     interfaces,
     depends_on_owners: depends,
-    lifecycle: lifecycle                          ,
+    lifecycle: lifecycle as RegistryOwnerLifecycle,
     history,
     memory_docs_ref: requireNullableString(source.memory_docs_ref, `owners[${index}].memory_docs_ref`),
     worktree_binding: source.worktree_binding === null || source.worktree_binding === undefined
@@ -1563,11 +1562,11 @@ function parseRegistryOwnerStored(value         , index        )                
 }
 
 
-function assertOwnerDependencyGraph(owners                 , label        )       {
-  const byId = new Map(owners.map((owner) => [owner.owner_id, owner]         ));
-  const visiting = new Set        ();
-  const visited = new Set        ();
-  function visit(owner               )       {
+function assertOwnerDependencyGraph(owners: RegistryOwner[], label: string): void {
+  const byId = new Map(owners.map((owner) => [owner.owner_id, owner] as const));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  function visit(owner: RegistryOwner): void {
     if (visited.has(owner.owner_id)) return;
     if (visiting.has(owner.owner_id)) fail(`${label}: owner dependency cycle detected at ${owner.owner_id}`);
     visiting.add(owner.owner_id);
@@ -1586,7 +1585,7 @@ function assertOwnerDependencyGraph(owners                 , label        )     
   for (const owner of owners) visit(owner);
 }
 
-function parseOwnerRegistry(value         )                 {
+function parseOwnerRegistry(value: unknown): OwnersRegistry {
   const source = requireRecord(value, "registry");
   const contract = requireString(source.contract, "registry.contract");
   if (contract !== "OWNERS_REGISTRY_V1") {
@@ -1607,7 +1606,7 @@ function parseOwnerRegistry(value         )                 {
   };
 }
 
-function assertRegistryDisjoint(owners                 , label        )       {
+function assertRegistryDisjoint(owners: RegistryOwner[], label: string): void {
   for (let i = 0; i < owners.length; i += 1) {
     const aPaths = registryOwnerPaths(owners[i]);
     for (let j = i + 1; j < owners.length; j += 1) {
@@ -1625,7 +1624,7 @@ function assertRegistryDisjoint(owners                 , label        )       {
   }
 }
 
-function emptyRegistry(workspaceRoot        )                 {
+function emptyRegistry(workspaceRoot: string): OwnersRegistry {
   return {
     contract: "OWNERS_REGISTRY_V1",
     registry_version: 1,
@@ -1636,11 +1635,11 @@ function emptyRegistry(workspaceRoot        )                 {
 }
 
 function stampHistory(
-  owner               ,
-  event                      ,
-  reason               ,
-  extra                                            ,
-)       {
+  owner: RegistryOwner,
+  event: RegistryHistoryEvent,
+  reason: string | null,
+  extra?: { child_ids?: string[]; parent?: string },
+): void {
   owner.history.push({
     at: new Date().toISOString(),
     event,
@@ -1652,12 +1651,12 @@ function stampHistory(
 }
 
 function registryOwnerFromInput(
-  input                    ,
-  event                      ,
-  reason               ,
-  extra                                            ,
-)                {
-  const owner                = {
+  input: RegistryOwnerInput,
+  event: RegistryHistoryEvent,
+  reason: string | null,
+  extra?: { child_ids?: string[]; parent?: string },
+): RegistryOwner {
+  const owner: RegistryOwner = {
     owner_id: input.owner_id,
     functional_domain: input.functional_domain,
     owned_modules: input.owned_modules,
@@ -1672,14 +1671,14 @@ function registryOwnerFromInput(
   return owner;
 }
 
-function ownerMemoryDocsRef(registryPath        , ownerId        )         {
+function ownerMemoryDocsRef(registryPath: string, ownerId: string): string {
   return join(dirname(registryPath), ownerId, "memory.md");
 }
 
-function parseTask(value         , index        )                 {
+function parseTask(value: unknown, index: number): TaskDefinition {
   const source = requireRecord(value, `tasks[${index}]`);
   const role = requireString(source.role, `tasks[${index}].role`);
-  if (!ROLES.has(role            )) fail(`tasks[${index}].role is invalid: ${role}`);
+  if (!ROLES.has(role as TaskRole)) fail(`tasks[${index}].role is invalid: ${role}`);
   const title = requireString(source.title, `tasks[${index}].title`).trim();
   if (title.length > 80) fail(`tasks[${index}].title must be at most 80 characters`);
   if (!/[\u3400-\u9fff]/u.test(title)) {
@@ -1714,7 +1713,7 @@ function parseTask(value         , index        )                 {
     id: requireIdentifier(source.id, `tasks[${index}].id`),
     logical_id: requireIdentifier(source.logical_id, `tasks[${index}].logical_id`),
     title,
-    role: role            ,
+    role: role as TaskRole,
     owner_id: requireIdentifier(source.owner_id, `tasks[${index}].owner_id`),
     task: requireString(source.task, `tasks[${index}].task`),
     depends_on: requireStringArray(source.depends_on, `tasks[${index}].depends_on`),
@@ -1735,7 +1734,7 @@ function parseTask(value         , index        )                 {
       `tasks[${index}].plan_item_ids`,
       false,
     ).map((item, itemIndex) => requireIdentifier(item, `tasks[${index}].plan_item_ids[${itemIndex}]`)),
-    coverage_effect: coverageEffect                  ,
+    coverage_effect: coverageEffect as CoverageEffect,
     priority: requireNonNegativeInteger(source.priority, `tasks[${index}].priority`),
     estimated_cost: requirePositiveInteger(
       source.estimated_cost,
@@ -1744,20 +1743,20 @@ function parseTask(value         , index        )                 {
   };
 }
 
+type ParsePlanOptions = {
+  allowUncoveredRequiredGates?: boolean;
+  coverageValue?: unknown;
+  expectedPlanDigest?: string;
+  verifySourceDigest?: boolean;
+  goalValue?: unknown;
+  expectedGoalDigest?: string;
+  sourceBlocksValue?: unknown;
+  allowStaleCoverageSourceRefs?: boolean;
+  skipSourceBlockValidation?: boolean;
+  liveTaskIds?: Set<string>;
+};
 
-
-
-
-
-
-
-
-
-
-
-
-
-function liveTaskIdsFromRawState(value         )              {
+function liveTaskIdsFromRawState(value: unknown): Set<string> {
   const state = requireRecord(value, "state");
   const tasks = requireRecord(state.tasks, "state.tasks");
   return new Set(Object.entries(tasks)
@@ -1766,17 +1765,17 @@ function liveTaskIdsFromRawState(value         )              {
 }
 
 function parseCoverage(
-  value         ,
-  coveragePath        ,
-  planPath        ,
-  planDigest        ,
-  plan      ,
-  goal              ,
-  sourceBlocksValue          ,
+  value: unknown,
+  coveragePath: string,
+  planPath: string,
+  planDigest: string,
+  plan: Plan,
+  goal: GoalContract,
+  sourceBlocksValue?: unknown,
   allowStaleSourceRefs = false,
   skipSourceBlockValidation = false,
-  liveTaskIds              ,
-)               {
+  liveTaskIds?: Set<string>,
+): PlanCoverage {
   const source = requireRecord(value, "coverage");
   if (source.contract !== "PLAN_COVERAGE_V1") {
     fail("coverage contract must equal PLAN_COVERAGE_V1");
@@ -1812,7 +1811,7 @@ function parseCoverage(
       id: requireIdentifier(item.id, `coverage.required_plan_items[${index}].id`),
       description: requireString(item.description, `coverage.required_plan_items[${index}].description`),
       source_refs: sourceRefs,
-      required_effects: requiredEffects                    ,
+      required_effects: requiredEffects as CoverageEffect[],
     };
   });
   ensureUnique(items.map((item) => item.id), "coverage plan item id");
@@ -1834,7 +1833,7 @@ function parseCoverage(
       }
     }
   }
-  const coverage               = {
+  const coverage: PlanCoverage = {
     contract: "PLAN_COVERAGE_V1",
     source_path: sourcePath,
     source_digest: requireString(source.source_digest, "coverage.source_digest"),
@@ -1863,10 +1862,10 @@ function parseCoverage(
 }
 
 function parsePlan(
-  value         ,
-  planPath        ,
-  options                   = {},
-)                                                             {
+  value: unknown,
+  planPath: string,
+  options: ParsePlanOptions = {},
+): { plan: Plan; goal: GoalContract; coverage: PlanCoverage } {
   const source = requireRecord(value, "plan");
   if (source.contract !== "DAG_PLAN_V4") fail("plan contract must equal DAG_PLAN_V4");
   if (source.planner !== "parallel-task-planner") {
@@ -1920,12 +1919,12 @@ function parsePlan(
   ) {
     fail("safety.status is invalid");
   }
-  const plan       = {
+  const plan: Plan = {
     contract: "DAG_PLAN_V4",
     planner: "parallel-task-planner",
     plan_format_version: 4,
     revision: requirePositiveInteger(source.revision, "revision"),
-    execution_platform: source.execution_platform                     ,
+    execution_platform: source.execution_platform as ExecutionPlatform,
     goal_contract_path: resolve(goalPath),
     goal_digest: goalDigest,
     goal_id: goalId,
@@ -1938,7 +1937,7 @@ function parsePlan(
     owners: source.owners.map(parseOwner),
     tasks: source.tasks.map(parseTask),
     safety: {
-      status: safety.status                ,
+      status: safety.status as SafetyStatus,
       reasons: requireStringArray(safety.reasons, "safety.reasons"),
     },
   };
@@ -1964,17 +1963,17 @@ function parsePlan(
   return { plan, goal, coverage };
 }
 
-function buildAncestors(tasks                  )                           {
+function buildAncestors(tasks: TaskDefinition[]): Map<string, Set<string>> {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  const visiting = new Set        ();
-  const complete = new Set        ();
-  const ancestors = new Map                     ();
-  function visit(taskId        )              {
-    if (complete.has(taskId)) return ancestors.get(taskId)               ;
+  const visiting = new Set<string>();
+  const complete = new Set<string>();
+  const ancestors = new Map<string, Set<string>>();
+  function visit(taskId: string): Set<string> {
+    if (complete.has(taskId)) return ancestors.get(taskId) as Set<string>;
     if (visiting.has(taskId)) fail(`task dependency cycle detected at ${taskId}`);
     visiting.add(taskId);
-    const task = byId.get(taskId)                  ;
-    const result = new Set        ();
+    const task = byId.get(taskId) as TaskDefinition;
+    const result = new Set<string>();
     for (const dependencyId of task.depends_on) {
       result.add(dependencyId);
       for (const ancestorId of visit(dependencyId)) result.add(ancestorId);
@@ -1988,7 +1987,7 @@ function buildAncestors(tasks                  )                           {
   return ancestors;
 }
 
-function tasksConflict(left                , right                )          {
+function tasksConflict(left: TaskDefinition, right: TaskDefinition): boolean {
   if (left.owner_id === right.owner_id) return true;
   if (left.resource_locks.some((lock) => right.resource_locks.includes(lock))) return true;
   return left.writable_paths.some((leftPath) =>
@@ -1997,11 +1996,11 @@ function tasksConflict(left                , right                )          {
 }
 
 function validateGraph(
-  plan      ,
-  goal              ,
+  plan: Plan,
+  goal: GoalContract,
   allowUncoveredRequiredGates = false,
-  liveTaskIds              ,
-)                           {
+  liveTaskIds?: Set<string>,
+): Map<string, Set<string>> {
   ensureUnique(plan.owners.map((owner) => owner.id), "owner id");
   ensureUnique(plan.tasks.map((task) => task.id), "task id");
   ensureUnique(plan.tasks.map((task) => task.logical_id), "logical task id");
@@ -2091,11 +2090,11 @@ function validateGraph(
   return ancestors;
 }
 
-function goalStatePathFor(goalPath        )         {
+function goalStatePathFor(goalPath: string): string {
   return join(dirname(goalPath), "goal-state.json");
 }
 
-function continuationPayloadFor(goalPath        )                         {
+function continuationPayloadFor(goalPath: string): Record<string, string> {
   if (EXPECTED_PLATFORM === "codex") return {};
   return {
     continuation_prompt:
@@ -2103,16 +2102,16 @@ function continuationPayloadFor(goalPath        )                         {
   };
 }
 
-function statePathFor(planPath        )         {
+function statePathFor(planPath: string): string {
   return join(dirname(planPath), "state.json");
 }
 
 function resultPathFor(
-  planPath        ,
-  taskId        ,
-  attempt        ,
-  reservationToken        ,
-)         {
+  planPath: string,
+  taskId: string,
+  attempt: number,
+  reservationToken: string,
+): string {
   return join(
     dirname(planPath),
     "results",
@@ -2122,11 +2121,11 @@ function resultPathFor(
 }
 
 function diffScopeArtifactPathFor(
-  planPath        ,
-  taskId        ,
-  attempt        ,
-  reservationToken        ,
-)         {
+  planPath: string,
+  taskId: string,
+  attempt: number,
+  reservationToken: string,
+): string {
   return join(
     dirname(planPath),
     "artifacts",
@@ -2137,11 +2136,11 @@ function diffScopeArtifactPathFor(
 }
 
 function sourceCoverageArtifactPathFor(
-  planPath        ,
-  taskId        ,
-  attempt        ,
-  reservationToken        ,
-)         {
+  planPath: string,
+  taskId: string,
+  attempt: number,
+  reservationToken: string,
+): string {
   return join(
     dirname(planPath),
     "artifacts",
@@ -2151,21 +2150,21 @@ function sourceCoverageArtifactPathFor(
   );
 }
 
-function capsulePathFor(planPath        , ownerId        )         {
+function capsulePathFor(planPath: string, ownerId: string): string {
   return join(dirname(planPath), "owners", ownerId, "capsule.json");
 }
 
-function checkpointPathFor(planPath        , ownerId        , taskId        )         {
+function checkpointPathFor(planPath: string, ownerId: string, taskId: string): string {
   return join(dirname(planPath), "owners", ownerId, "checkpoints", `${taskId}.json`);
 }
 
-function canonicalPath(expected        , actual        , label        )         {
+function canonicalPath(expected: string, actual: string, label: string): string {
   const normalizedExpected = resolve(expected);
   if (resolve(actual) !== normalizedExpected) fail(`${label} must equal ${normalizedExpected}`);
   return normalizedExpected;
 }
 
-function parseOwnerDelivery(value         , goal              )                       {
+function parseOwnerDelivery(value: unknown, goal: GoalContract): OwnerDelivery | null {
   if (value === null || value === undefined) return null;
   const source = requireRecord(value, "goal state.owner_delivery");
   if (source.contract !== "OWNER_DELIVERY_V1") fail("owner_delivery.contract must equal OWNER_DELIVERY_V1");
@@ -2178,12 +2177,12 @@ function parseOwnerDelivery(value         , goal              )                 
   const requiredOwnerIds = requireStringArray(source.required_owner_ids, "owner_delivery.required_owner_ids");
   ensureUnique(requiredOwnerIds, "owner_delivery required owner id");
   const rawOwners = requireRecord(source.owners, "owner_delivery.owners");
-  const owners                                     = {};
+  const owners: Record<string, OwnerDeliveryEntry> = {};
   for (const ownerId of requiredOwnerIds) {
     const item = requireRecord(rawOwners[ownerId], `owner_delivery.owners.${ownerId}`);
     const status = requireString(item.status, `owner_delivery.owners.${ownerId}.status`);
     if (!["pending", "active", "sealed", "merged"].includes(status)) fail(`owner_delivery owner status is invalid: ${status}`);
-    const nullableOid = (field        ) => {
+    const nullableOid = (field: string) => {
       const result = requireNullableString(item[field], `owner_delivery.owners.${ownerId}.${field}`);
       if (result !== null && !/^[0-9a-f]{40,64}$/u.test(result)) fail(`owner_delivery ${field} is invalid`);
       return result;
@@ -2193,7 +2192,7 @@ function parseOwnerDelivery(value         , goal              )                 
       owner_branch: typeof item.owner_branch === "string" ? item.owner_branch : "", base_oid: requireString(item.base_oid, `owner_delivery.owners.${ownerId}.base_oid`),
       committed_oid: nullableOid("committed_oid"), committed_at: requireNullableString(item.committed_at, `owner_delivery.owners.${ownerId}.committed_at`),
       merged_oid: nullableOid("merged_oid"), merged_at: requireNullableString(item.merged_at, `owner_delivery.owners.${ownerId}.merged_at`),
-      status: status                                , owned_modules_glob: requireStringArray(item.owned_modules_glob, `owner_delivery.owners.${ownerId}.owned_modules_glob`),
+      status: status as OwnerDeliveryEntry["status"], owned_modules_glob: requireStringArray(item.owned_modules_glob, `owner_delivery.owners.${ownerId}.owned_modules_glob`),
     };
   }
   return { contract: "OWNER_DELIVERY_V1", registry_ref: resolve(registryRef), registry_digest: registryDigest,
@@ -2203,10 +2202,10 @@ function parseOwnerDelivery(value         , goal              )                 
 }
 
 function parseGoalState(
-  value         ,
-  goal              ,
-  options                                         = {},
-)            {
+  value: unknown,
+  goal: GoalContract,
+  options: { verifyExecutionArtifacts?: boolean } = {},
+): GoalState {
   const source = requireRecord(value, "goal state");
   if (source.contract !== "GOAL_STATE_V1") fail("goal state contract must equal GOAL_STATE_V1");
   if (source.status !== "active" && source.status !== "completed") {
@@ -2285,7 +2284,7 @@ function parseGoalState(
     fail("goal state.native_sync.status is invalid");
   }
   const nativeSync = {
-    status: nativeSyncSource.status                    ,
+    status: nativeSyncSource.status as NativeSyncStatus,
     completion_token: requireNullableString(
       nativeSyncSource.completion_token,
       "goal state.native_sync.completion_token",
@@ -2332,7 +2331,7 @@ function parseGoalState(
     contract: "GOAL_STATE_V1",
     goal_digest: requireString(source.goal_digest, "goal state.goal_digest"),
     status: source.status,
-    controller: controller                  ,
+    controller: controller as GoalController,
     native_goal: stateNativeGoal,
     worktree_baseline: { ref: resolve(baselineRef), digest: baselineDigest },
     source_blocks: { ref: resolve(sourceBlocksRef), digest: sourceBlocksDigest },
@@ -2347,17 +2346,17 @@ function parseGoalState(
   };
 }
 
-function parseTaskState(value         , task                , planPath        )            {
+function parseTaskState(value: unknown, task: TaskDefinition, planPath: string): TaskState {
   const taskId = task.id;
   const source = requireRecord(value, `state.tasks.${taskId}`);
-  const statuses = new Set            ([
+  const statuses = new Set<TaskStatus>([
     "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
   ]);
-  if (!statuses.has(source.status              )) {
+  if (!statuses.has(source.status as TaskStatus)) {
     fail(`state.tasks.${taskId}.status is invalid`);
   }
-  const result            = {
-    status: source.status              ,
+  const result: TaskState = {
+    status: source.status as TaskStatus,
     attempt: requireNonNegativeInteger(source.attempt, `state.tasks.${taskId}.attempt`),
     reservation_token: requireNullableString(
       source.reservation_token,
@@ -2462,19 +2461,19 @@ function parseTaskState(value         , task                , planPath        ) 
   return result;
 }
 
-function parseOwnerState(value         , owner                 , planPath        )             {
+function parseOwnerState(value: unknown, owner: OwnerDefinition, planPath: string): OwnerState {
   const source = requireRecord(value, `state.owners.${owner.id}`);
-  const statuses = new Set                    (["unbound", "idle", "reserved", "running"]);
-  if (!statuses.has(source.status                      )) {
+  const statuses = new Set<OwnerRuntimeStatus>(["unbound", "idle", "reserved", "running"]);
+  if (!statuses.has(source.status as OwnerRuntimeStatus)) {
     fail(`state.owners.${owner.id}.status is invalid`);
   }
-  const result             = {
+  const result: OwnerState = {
     generation: requirePositiveInteger(source.generation, `state.owners.${owner.id}.generation`),
     bound_executor_id: requireNullableString(
       source.bound_executor_id,
       `state.owners.${owner.id}.bound_executor_id`,
     ),
-    status: source.status                      ,
+    status: source.status as OwnerRuntimeStatus,
     current_task_id: requireNullableString(
       source.current_task_id,
       `state.owners.${owner.id}.current_task_id`,
@@ -2505,7 +2504,7 @@ function parseOwnerState(value         , owner                 , planPath       
   return result;
 }
 
-function parseStaleExecutor(value         , index        )                {
+function parseStaleExecutor(value: unknown, index: number): StaleExecutor {
   const source = requireRecord(value, `state.stale_executors[${index}]`);
   if (source.status !== "stop_pending") {
     fail(`state.stale_executors[${index}].status must equal stop_pending`);
@@ -2531,7 +2530,7 @@ function parseStaleExecutor(value         , index        )                {
   };
 }
 
-function parseState(value         , plan      , planPath        )           {
+function parseState(value: unknown, plan: Plan, planPath: string): RunState {
   const source = requireRecord(value, "state");
   if (source.contract !== "DAG_RUN_STATE_V4") {
     fail("state contract must equal DAG_RUN_STATE_V4");
@@ -2552,7 +2551,7 @@ function parseState(value         , plan      , planPath        )           {
   );
   if (Object.keys(rawTasks).length !== plan.tasks.length) fail("state task set does not match plan tasks");
   if (Object.keys(rawOwners).length !== plan.owners.length) fail("state owner set does not match plan owners");
-  const result           = {
+  const result: RunState = {
     contract: "DAG_RUN_STATE_V4",
     plan_digest: requireString(source.plan_digest, "state.plan_digest"),
     goal_digest: requireString(source.goal_digest, "state.goal_digest"),
@@ -2589,7 +2588,7 @@ function parseState(value         , plan      , planPath        )           {
       plan.tasks
         .filter((task) => task.owner_id === owner.id)
         .map((task) => result.tasks[task.id].result_ref)
-        .filter((value)                  => value !== null),
+        .filter((value): value is string => value !== null),
     );
     for (const resultRef of ownerState.result_refs) {
       if (!allowedResultRefs.has(resultRef)) fail(`state.owners.${owner.id}.result_refs is outside owner results`);
@@ -2617,10 +2616,10 @@ function parseState(value         , plan      , planPath        )           {
 }
 
 function newCapsule(
-  owner                 ,
-  goalDigest        ,
-  sourceRevision        ,
-)               {
+  owner: OwnerDefinition,
+  goalDigest: string,
+  sourceRevision: number,
+): OwnerCapsule {
   return {
     contract: "OWNER_CAPSULE_V1",
     owner_id: owner.id,
@@ -2646,11 +2645,11 @@ function newCapsule(
 }
 
 function loadOwnerCapsule(
-  owner                 ,
-  ownerState            ,
-  goalDigest        ,
-  sourceRevision        ,
-)               {
+  owner: OwnerDefinition,
+  ownerState: OwnerState,
+  goalDigest: string,
+  sourceRevision: number,
+): OwnerCapsule {
   const source = requireRecord(readJson(ownerState.capsule_ref), "owner capsule");
   if (source.contract !== "OWNER_CAPSULE_V1") {
     fail(`invalid owner capsule contract: ${ownerState.capsule_ref}`);
@@ -2667,12 +2666,12 @@ function loadOwnerCapsule(
   if (source.source_revision !== sourceRevision) {
     fail(`owner capsule source_revision mismatch: ${ownerState.capsule_ref}`);
   }
-  return source                           ;
+  return source as unknown as OwnerCapsule;
 }
 
-function initializeState(planPath        , plan      )           {
+function initializeState(planPath: string, plan: Plan): RunState {
   mkdirSync(join(dirname(planPath), "results"), { recursive: true });
-  const owners                             = {};
+  const owners: Record<string, OwnerState> = {};
   for (const owner of plan.owners) {
     const capsuleRef = capsulePathFor(planPath, owner.id);
     if (!existsSync(capsuleRef)) {
@@ -2719,15 +2718,15 @@ function initializeState(planPath        , plan      )           {
 }
 
 function loadPlanAndState(
-  planPath        ,
-  statePath        ,
-  options                                 = {},
-)
-
-
-
-
-  {
+  planPath: string,
+  statePath: string,
+  options: { allowSourceDrift?: boolean } = {},
+): {
+  plan: Plan;
+  goal: GoalContract;
+  coverage: PlanCoverage;
+  state: RunState;
+} {
   const rawState = readJson(statePath);
   const stateRecord = requireRecord(rawState, "state");
   const allowUncoveredRequiredGates = stateRecord.goal_refresh_pending === true;
@@ -2766,10 +2765,10 @@ function loadPlanAndState(
 }
 
 function goalStateForPlan(
-  planPath        ,
-  plan      ,
-  goal              ,
-)                                     {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+): { path: string; state: GoalState } {
   const path = goalStatePathFor(plan.goal_contract_path);
   if (!existsSync(path)) fail("goal state is not initialized; run goal-validate first");
   const rawState = readJson(path);
@@ -2782,13 +2781,13 @@ function goalStateForPlan(
   return { path, state };
 }
 
-function assertGoalMutable(planPath        , plan      , goal              )            {
+function assertGoalMutable(planPath: string, plan: Plan, goal: GoalContract): GoalState {
   const goalState = goalStateForPlan(planPath, plan, goal).state;
   if (goalState.status === "completed") fail("goal is completed and immutable");
   return goalState;
 }
 
-function goalValidateCommand(goalArgument        )       {
+function goalValidateCommand(goalArgument: string): void {
   const goalPath = resolve(goalArgument);
   const goalStatePath = goalStatePathFor(goalPath);
   const dagStatePath = join(dirname(goalPath), "state.json");
@@ -2833,7 +2832,7 @@ function goalValidateCommand(goalArgument        )       {
     const baseline = captureWorktreeSnapshot(goal.workspace.root);
     const sourceBlocksPath = join(dirname(goalPath), "source-blocks.json");
     const sourceBlocks = buildSourceBlocks(goal);
-    const state            = {
+    const state: GoalState = {
       contract: "GOAL_STATE_V1",
       goal_digest: goalDigest,
       status: "active",
@@ -2889,7 +2888,7 @@ function goalValidateCommand(goalArgument        )       {
   })}\n`);
 }
 
-function validateCommand(planArgument        )       {
+function validateCommand(planArgument: string): void {
   const planPath = resolve(planArgument);
   const statePath = statePathFor(planPath);
   const goalStatePath = join(dirname(planPath), "goal-state.json");
@@ -2905,7 +2904,7 @@ function validateCommand(planArgument        )       {
     const goalState = parseGoalState(readJson(goalStatePath), goal);
     if (goalState.status !== "active") fail("goal is already completed");
     if (goalState.goal_digest !== plan.goal_digest) fail("goal state digest mismatch");
-    let state          ;
+    let state: RunState;
     let stateCreated = false;
     if (existingStateValue !== null) {
       state = parseState(existingStateValue, plan, planPath);
@@ -2922,7 +2921,7 @@ function validateCommand(planArgument        )       {
     if (goalStateChanged) {
       goalState.active_plan_path = planPath;
     }
-    const writes                           = [];
+    const writes: Array<[string, unknown]> = [];
     if (stateCreated) writes.push([statePath, state]);
     if (goalStateChanged) writes.push([goalStatePath, goalState]);
     if (writes.length > 0) writeTransaction(statePath, writes);
@@ -2933,11 +2932,11 @@ function validateCommand(planArgument        )       {
 }
 
 function refreshGoalCommand(
-  goalArgument        ,
-  goalStateArgument        ,
-  planArgument        ,
-  stateArgument        ,
-)       {
+  goalArgument: string,
+  goalStateArgument: string,
+  planArgument: string,
+  stateArgument: string,
+): void {
   const goalPath = resolve(goalArgument);
   const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
   const planPath = resolve(planArgument);
@@ -2999,7 +2998,7 @@ function refreshGoalCommand(
       );
     }
 
-    const candidateGoal               = {
+    const candidateGoal: GoalContract = {
       ...storedGoal,
       source: {
         path: storedGoal.source.path,
@@ -3020,7 +3019,7 @@ function refreshGoalCommand(
       plan_source: { ...parsedCandidateGoal.source },
     };
     const candidatePlanDigest = digestJson(candidatePlanValue);
-    const coverageCandidate               = {
+    const coverageCandidate: PlanCoverage = {
       ...oldCoverage,
       source_path: parsedCandidateGoal.source.path,
       source_digest: parsedCandidateGoal.source.digest,
@@ -3037,7 +3036,7 @@ function refreshGoalCommand(
       allowStaleCoverageSourceRefs: true,
       liveTaskIds,
     });
-    const capsuleWrites                           = [];
+    const capsuleWrites: Array<[string, unknown]> = [];
     for (const owner of oldPlan.owners) {
       const ownerState = state.owners[owner.id];
       const capsule = loadOwnerCapsule(
@@ -3088,11 +3087,11 @@ function refreshGoalCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function compareStableStrings(left        , right        )         {
+function compareStableStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function escapeMermaidLabel(value        )         {
+function escapeMermaidLabel(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
@@ -3103,7 +3102,7 @@ function escapeMermaidLabel(value        )         {
     .replaceAll("\n", "&#10;");
 }
 
-function renderCommand(planArgument        )       {
+function renderCommand(planArgument: string): void {
   const planPath = resolve(planArgument);
   const statePath = statePathFor(planPath);
   const rendered = withStateLock(statePath, () => {
@@ -3133,7 +3132,7 @@ function renderCommand(planArgument        )       {
   process.stdout.write(rendered);
 }
 
-function dependencyResolved(taskId        , state          , visited = new Set        ())          {
+function dependencyResolved(taskId: string, state: RunState, visited = new Set<string>()): boolean {
   if (visited.has(taskId)) fail(`replacement cycle detected at ${taskId}`);
   visited.add(taskId);
   const taskState = state.tasks[taskId];
@@ -3145,10 +3144,10 @@ function dependencyResolved(taskId        , state          , visited = new Set  
 }
 
 function replacementTerminalTaskId(
-  taskId        ,
-  state          ,
-  visited = new Set        (),
-)         {
+  taskId: string,
+  state: RunState,
+  visited = new Set<string>(),
+): string {
   if (visited.has(taskId)) fail(`replacement cycle detected at ${taskId}`);
   visited.add(taskId);
   const taskState = state.tasks[taskId];
@@ -3160,12 +3159,12 @@ function replacementTerminalTaskId(
 }
 
 function logicalAncestorsFor(
-  taskId        ,
-  plan      ,
-  state          ,
-  cache = new Map                     (),
-  visiting = new Set        (),
-)              {
+  taskId: string,
+  plan: Plan,
+  state: RunState,
+  cache = new Map<string, Set<string>>(),
+  visiting = new Set<string>(),
+): Set<string> {
   const terminalId = replacementTerminalTaskId(taskId, state);
   const cached = cache.get(terminalId);
   if (cached !== undefined) return cached;
@@ -3173,7 +3172,7 @@ function logicalAncestorsFor(
   visiting.add(terminalId);
   const task = plan.tasks.find((candidate) => candidate.id === terminalId);
   if (task === undefined) fail(`logical dependency references unknown task: ${terminalId}`);
-  const result = new Set        ();
+  const result = new Set<string>();
   for (const dependencyId of task.depends_on) {
     const terminalDependencyId = replacementTerminalTaskId(dependencyId, state);
     result.add(terminalDependencyId);
@@ -3190,7 +3189,7 @@ function logicalAncestorsFor(
   return result;
 }
 
-function resultRefsForDependency(taskId        , state          , visited = new Set        ())           {
+function resultRefsForDependency(taskId: string, state: RunState, visited = new Set<string>()): string[] {
   if (visited.has(taskId)) fail(`replacement cycle detected at ${taskId}`);
   visited.add(taskId);
   const taskState = state.tasks[taskId];
@@ -3201,18 +3200,18 @@ function resultRefsForDependency(taskId        , state          , visited = new 
   return [];
 }
 
-function criticalScores(tasks                  )                      {
-  const children = new Map(tasks.map((task) => [task.id, []            ]));
+function criticalScores(tasks: TaskDefinition[]): Map<string, number> {
+  const children = new Map(tasks.map((task) => [task.id, [] as string[]]));
   const byId = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {
     for (const dependencyId of task.depends_on) children.get(dependencyId)?.push(task.id);
   }
-  const scores = new Map                ();
-  function score(taskId        )         {
+  const scores = new Map<string, number>();
+  function score(taskId: string): number {
     const cached = scores.get(taskId);
     if (cached !== undefined) return cached;
     const childScores = (children.get(taskId) ?? []).map(score);
-    const result = (byId.get(taskId)                  ).estimated_cost + Math.max(0, ...childScores);
+    const result = (byId.get(taskId) as TaskDefinition).estimated_cost + Math.max(0, ...childScores);
     scores.set(taskId, result);
     return result;
   }
@@ -3220,7 +3219,7 @@ function criticalScores(tasks                  )                      {
   return scores;
 }
 
-function activeTasks(plan      , state          )                   {
+function activeTasks(plan: Plan, state: RunState): TaskDefinition[] {
   return plan.tasks.filter((task) => {
     const status = state.tasks[task.id].status;
     return status === "reserved" || status === "running";
@@ -3228,11 +3227,11 @@ function activeTasks(plan      , state          )                   {
 }
 
 function taskReadyForReservation(
-  task                ,
-  plan      ,
-  state          ,
-  coverageFullyPlanned         ,
-)          {
+  task: TaskDefinition,
+  plan: Plan,
+  state: RunState,
+  coverageFullyPlanned: boolean,
+): boolean {
   if (state.tasks[task.id].status !== "pending") return false;
   if (!task.depends_on.every((dependencyId) => dependencyResolved(dependencyId, state))) {
     return false;
@@ -3248,7 +3247,7 @@ function taskReadyForReservation(
   );
 }
 
-function validateLiveDiffBarriers(plan      , state          )       {
+function validateLiveDiffBarriers(plan: Plan, state: RunState): void {
   const liveTasks = plan.tasks.filter((task) => state.tasks[task.id].status !== "superseded");
   const liveDiffTasks = liveTasks.filter((task) =>
     task.satisfies_goal_gates.includes(DIFF_SCOPE_GATE_ID),
@@ -3257,7 +3256,7 @@ function validateLiveDiffBarriers(plan      , state          )       {
     fail(`exactly one live ${DIFF_SCOPE_GATE_ID} task is required`);
   }
   const diffTask = liveDiffTasks[0];
-  const cache = new Map                     ();
+  const cache = new Map<string, Set<string>>();
   const descendants = liveTasks.filter((task) =>
     task.id !== diffTask.id && logicalAncestorsFor(task.id, plan, state, cache).has(diffTask.id),
   );
@@ -3269,13 +3268,13 @@ function validateLiveDiffBarriers(plan      , state          )       {
 const EXECUTOR_SPAWN_NAME_MAX_LENGTH = 64;
 
 function executorSpawnName(
-  planPath        ,
-  plan      ,
-  goal              ,
-  owner                 ,
-  ownerState            ,
-  taskState           ,
-)         {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  owner: OwnerDefinition,
+  ownerState: OwnerState,
+  taskState: TaskState,
+): string {
   const instanceIdentity = goal.lifecycle.native_goal === null
     ? {
       execution_platform: goal.execution_platform,
@@ -3307,14 +3306,14 @@ function executorSpawnName(
 }
 
 function taskBinding(
-  planPath        ,
-  plan      ,
-  goal              ,
-  state          ,
-  task                ,
-)                          {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  state: RunState,
+  task: TaskDefinition,
+): Record<string, unknown> {
   const taskState = state.tasks[task.id];
-  const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+  const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
   const ownerState = state.owners[owner.id];
   const spawnName = executorSpawnName(planPath, plan, goal, owner, ownerState, taskState);
   const goalState = goalStateForPlan(planPath, plan, goal).state;
@@ -3440,10 +3439,10 @@ function taskBinding(
 }
 
 function reserveCommand(
-  planArgument        ,
-  stateArgument        ,
-  capacityArgument         ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  capacityArgument?: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -3464,17 +3463,17 @@ function reserveCommand(
     const scores = criticalScores(plan.tasks);
     const coverageSummary = summarizeCoverage(plan, coverage, state);
     const coverageFullyPlanned =
-      (coverageSummary.uncovered_plan_item_effects            ).length === 0;
+      (coverageSummary.uncovered_plan_item_effects as string[]).length === 0;
     const ready = coverageFullyPlanned
       ? plan.tasks
         .filter((task) => taskReadyForReservation(task, plan, state, true))
         .sort((left, right) =>
-          (scores.get(right.id)          ) - (scores.get(left.id)          ) ||
+          (scores.get(right.id) as number) - (scores.get(left.id) as number) ||
           right.priority - left.priority ||
           compareStableStrings(left.id, right.id),
         )
       : [];
-    const actions                            = [];
+    const actions: Record<string, unknown>[] = [];
     for (const task of ready) {
       if (slots === 0) break;
       const ownerState = state.owners[task.owner_id];
@@ -3505,12 +3504,12 @@ function reserveCommand(
         planPath,
         plan,
         goal,
-        plan.owners.find((owner) => owner.id === task.owner_id)                   ,
+        plan.owners.find((owner) => owner.id === task.owner_id) as OwnerDefinition,
         ownerState,
         taskState,
       );
       const binding = taskBinding(planPath, plan, goal, state, task);
-      const ownerExec = binding.owner_exec                                  ;
+      const ownerExec = binding.owner_exec as Record<string, unknown> | null;
       actions.push({
         action,
         task_id: task.id,
@@ -3541,12 +3540,12 @@ function reserveCommand(
 }
 
 function bindCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  executorId        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  executorId: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -3589,12 +3588,12 @@ function bindCommand(
 }
 
 function abandonCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  reason        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  reason: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const abandonReason = requireString(reason, "reason");
@@ -3624,7 +3623,7 @@ function abandonCommand(
     taskState.result_digest = null;
     ownerState.status = ownerState.bound_executor_id === null ? "unbound" : "idle";
     ownerState.current_task_id = null;
-    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
     const capsule = interruptCapsule(
       owner,
       ownerState,
@@ -3641,7 +3640,7 @@ function abandonCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function parseEvidence(value         , index        )           {
+function parseEvidence(value: unknown, index: number): Evidence {
   const source = requireRecord(value, `worker result.evidence[${index}]`);
   if (source.outcome !== "passed" && source.outcome !== "failed" && source.outcome !== "not_run") {
     fail(`worker result.evidence[${index}].outcome is invalid`);
@@ -3681,15 +3680,15 @@ function parseEvidence(value         , index        )           {
 }
 
 function parseCheckpoint(
-  value         ,
-  task                ,
-  taskState           ,
-)                    {
+  value: unknown,
+  task: TaskDefinition,
+  taskState: TaskState,
+): OwnerCheckpointV1 {
   const source = requireRecord(value, "owner checkpoint");
   if (source.contract !== "OWNER_CHECKPOINT_V1") {
     fail("owner checkpoint contract must equal OWNER_CHECKPOINT_V1");
   }
-  const checkpoint                    = {
+  const checkpoint: OwnerCheckpointV1 = {
     contract: "OWNER_CHECKPOINT_V1",
     task_id: requireString(source.task_id, "owner checkpoint.task_id"),
     owner_id: requireString(source.owner_id, "owner checkpoint.owner_id"),
@@ -3723,12 +3722,12 @@ function parseCheckpoint(
 }
 
 function checkpointCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  checkpointArgument        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  checkpointArgument: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -3754,7 +3753,7 @@ function checkpointCommand(
       "checkpoint path",
     );
     const checkpoint = parseCheckpoint(readJson(checkpointPath), task, taskState);
-    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
     const capsule = loadOwnerCapsule(
       owner,
       ownerState,
@@ -3783,7 +3782,7 @@ function checkpointCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function parseScopeRequest(value         )               {
+function parseScopeRequest(value: unknown): ScopeRequest {
   const source = requireRecord(value, "worker result.scope_request");
   return {
     paths: requireStringArray(source.paths, "worker result.scope_request.paths", false)
@@ -3800,25 +3799,25 @@ function parseScopeRequest(value         )               {
 }
 
 function parseWorkerResult(
-  value         ,
-  task                ,
-  owner                 ,
-  taskState           ,
-)                 {
+  value: unknown,
+  task: TaskDefinition,
+  owner: OwnerDefinition,
+  taskState: TaskState,
+): WorkerResultV4 {
   const source = requireRecord(value, "worker result");
   if (source.contract !== "WORKER_RESULT_V4") {
     fail("worker result contract must equal WORKER_RESULT_V4");
   }
-  if (!TERMINAL_STATUSES.has(source.status                        )) {
+  if (!TERMINAL_STATUSES.has(source.status as WorkerTerminalStatus)) {
     fail(`worker result.status is invalid: ${String(source.status)}`);
   }
-  const status = source.status                        ;
-  const result                 = {
+  const status = source.status as WorkerTerminalStatus;
+  const result: WorkerResultV4 = {
     contract: "WORKER_RESULT_V4",
     status,
     task_id: requireString(source.task_id, "worker result.task_id"),
     logical_id: requireString(source.logical_id, "worker result.logical_id"),
-    role: requireString(source.role, "worker result.role")            ,
+    role: requireString(source.role, "worker result.role") as TaskRole,
     owner_id: requireString(source.owner_id, "worker result.owner_id"),
     owner_generation: requirePositiveInteger(source.owner_generation, "worker result.owner_generation"),
     executor_id: requireString(source.executor_id, "worker result.executor_id"),
@@ -3833,7 +3832,7 @@ function parseWorkerResult(
     evidence: Array.isArray(source.evidence)
       ? source.evidence.map(parseEvidence)
       : fail("worker result.evidence must be an array"),
-    diff_self_check: requireString(source.diff_self_check, "worker result.diff_self_check")                                     ,
+    diff_self_check: requireString(source.diff_self_check, "worker result.diff_self_check") as WorkerResultV4["diff_self_check"],
     blocking_findings: requireStringArray(
       source.blocking_findings,
       "worker result.blocking_findings",
@@ -3914,52 +3913,52 @@ function parseWorkerResult(
   return result;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+type DiffScopeAuditArtifact = {
+  contract: "DIFF_SCOPE_AUDIT_V1";
+  audit_task_id: string;
+  owner_id: string;
+  attempt: number;
+  reservation_token: string;
+  source_revision: number;
+  plan_digest: string;
+  baseline_ref: string;
+  baseline_digest: string;
+  baseline_head_oid: string;
+  current_head_oid: string;
+  current_snapshot_digest: string;
+  input_changes: Array<{
+    path: string;
+    source_digest: string;
+  }>;
+  audited_results: Array<{
+    task_id: string;
+    result_ref: string;
+    result_digest: string;
+    declared_changed_files: string[];
+  }>;
+  observed_changed_files: string[];
+  reviewed_files: Array<{
+    path: string;
+    contributors: Array<{
+      task_id: string;
+      result_ref: string;
+      result_digest: string;
+      authorized_task_patterns: string[];
+      authorized_owner_patterns: string[];
+      conclusion: "authorized";
+    }>;
+  }>;
+  net_zero_declared_files: string[];
+  scope_conclusion: "passed";
+  out_of_scope_files: string[];
+  undeclared_files: string[];
+};
 
 function requireExactKeys(
-  source                         ,
-  expected          ,
-  label        ,
-)       {
+  source: Record<string, unknown>,
+  expected: string[],
+  label: string,
+): void {
   const actual = Object.keys(source).sort(compareStableStrings);
   const sortedExpected = [...expected].sort(compareStableStrings);
   if (serializedJson(actual) !== serializedJson(sortedExpected)) {
@@ -3968,9 +3967,9 @@ function requireExactKeys(
 }
 
 function changedWorktreePaths(
-  baseline                    ,
-  current                    ,
-)           {
+  baseline: WorktreeBaselineV1,
+  current: WorktreeBaselineV1,
+): string[] {
   const baselineByPath = new Map(baseline.entries.map((item) => [item.path, item]));
   const currentByPath = new Map(current.entries.map((item) => [item.path, item]));
   return uniqueStrings([...baselineByPath.keys(), ...currentByPath.keys()])
@@ -3982,10 +3981,10 @@ function changedWorktreePaths(
 }
 
 function worktreeBaselineFor(
-  planPath        ,
-  plan      ,
-  goal              ,
-)                                                     {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+): { state: GoalState; baseline: WorktreeBaselineV1 } {
   const goalState = goalStateForPlan(planPath, plan, goal).state;
   const baseline = parseWorktreeBaseline(
     readJson(goalState.worktree_baseline.ref),
@@ -3998,13 +3997,13 @@ function worktreeBaselineFor(
 }
 
 function expectedDiffScopeAudit(
-  planPath        ,
-  plan      ,
-  goal              ,
-  state          ,
-  auditTask                ,
-  taskState           ,
-)                         {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  state: RunState,
+  auditTask: TaskDefinition,
+  taskState: TaskState,
+): DiffScopeAuditArtifact {
   const { state: goalState, baseline } = worktreeBaselineFor(planPath, plan, goal);
   const current = captureWorktreeSnapshot(goal.workspace.root);
   if (current.head_oid !== baseline.head_oid) {
@@ -4027,14 +4026,14 @@ function expectedDiffScopeAudit(
   const observedChangedFiles = allChangedFiles.filter(
     (path) => path !== canonicalSourceRelative,
   );
-  const auditedResults                                            = [];
-  const reviewedFiles                                           = [];
-  const declarations = new Map
-
-
-
-
-     ();
+  const auditedResults: DiffScopeAuditArtifact["audited_results"] = [];
+  const reviewedFiles: DiffScopeAuditArtifact["reviewed_files"] = [];
+  const declarations = new Map<string, Array<{
+    task: TaskDefinition;
+    owner: OwnerDefinition;
+    resultRef: string;
+    resultDigest: string;
+  }>>();
   const liveWorkTasks = plan.tasks
     .filter((task) => task.role === "work" && state.tasks[task.id].status !== "superseded")
     .sort((left, right) => compareStableStrings(left.id, right.id));
@@ -4048,7 +4047,7 @@ function expectedDiffScopeAudit(
     ) {
       fail(`${DIFF_SCOPE_GATE_ID} requires every live work task to have current accepted evidence: ${workTask.id}`);
     }
-    const owner = plan.owners.find((candidate) => candidate.id === workTask.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === workTask.owner_id) as OwnerDefinition;
     const workResult = parseWorkerResult(readJson(workState.result_ref), workTask, owner, workState);
     if (workResult.status !== "completed") fail(`audit input is not completed: ${workTask.id}`);
     const changedFiles = [...workResult.changed_files].sort(compareStableStrings);
@@ -4077,12 +4076,12 @@ function expectedDiffScopeAudit(
     .filter((path) => !observedChangedFiles.includes(path))
     .sort(compareStableStrings);
   for (const changedFile of observedChangedFiles) {
-    const matches = declarations.get(changedFile)
-
-
-
-
-      ;
+    const matches = declarations.get(changedFile) as Array<{
+      task: TaskDefinition;
+      owner: OwnerDefinition;
+      resultRef: string;
+      resultDigest: string;
+    }>;
     reviewedFiles.push({
       path: changedFile,
       contributors: matches.map((match) => {
@@ -4101,7 +4100,7 @@ function expectedDiffScopeAudit(
           result_digest: match.resultDigest,
           authorized_task_patterns: taskPatterns,
           authorized_owner_patterns: ownerPatterns,
-          conclusion: "authorized"         ,
+          conclusion: "authorized" as const,
         };
       }),
     });
@@ -4111,7 +4110,7 @@ function expectedDiffScopeAudit(
     audit_task_id: auditTask.id,
     owner_id: auditTask.owner_id,
     attempt: taskState.attempt,
-    reservation_token: taskState.reservation_token          ,
+    reservation_token: taskState.reservation_token as string,
     source_revision: state.source_revision,
     plan_digest: state.plan_digest,
     baseline_ref: goalState.worktree_baseline.ref,
@@ -4130,7 +4129,7 @@ function expectedDiffScopeAudit(
   };
 }
 
-function parseDiffScopeAuditArtifact(value         )                         {
+function parseDiffScopeAuditArtifact(value: unknown): DiffScopeAuditArtifact {
   const source = requireRecord(value, "diff scope audit artifact");
   requireExactKeys(source, [
     "contract", "audit_task_id", "owner_id", "attempt", "reservation_token",
@@ -4229,7 +4228,7 @@ function parseDiffScopeAuditArtifact(value         )                         {
             contributor.authorized_owner_patterns,
             "diff scope audit contributor authorized_owner_patterns",
           ).map(normalizePathPattern),
-          conclusion: "authorized"         ,
+          conclusion: "authorized" as const,
         };
       }),
     };
@@ -4276,15 +4275,15 @@ function parseDiffScopeAuditArtifact(value         )                         {
 }
 
 function bindDiffScopeArtifact(
-  planPath        ,
-  plan      ,
-  goal              ,
-  state          ,
-  task                ,
-  taskState           ,
-  result                ,
-  accepted         ,
-)       {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  state: RunState,
+  task: TaskDefinition,
+  taskState: TaskState,
+  result: WorkerResultV4,
+  accepted: boolean,
+): void {
   if (!task.verification_ids.includes(DIFF_SCOPE_GATE_ID)) return;
   const evidence = result.evidence.find((item) => item.verification_id === DIFF_SCOPE_GATE_ID);
   if (evidence === undefined) fail(`${DIFF_SCOPE_GATE_ID} evidence is missing`);
@@ -4301,7 +4300,7 @@ function bindDiffScopeArtifact(
     planPath,
     task.id,
     taskState.attempt,
-    taskState.reservation_token          ,
+    taskState.reservation_token as string,
   );
   const expectedPath = accepted ? `${candidatePath}.accepted.json` : candidatePath;
   canonicalPath(expectedPath, evidence.artifact_ref, `${DIFF_SCOPE_GATE_ID} artifact_ref`);
@@ -4323,11 +4322,11 @@ function bindDiffScopeArtifact(
 }
 
 function diffAuditCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -4371,30 +4370,30 @@ function diffAuditCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+type SourceCoverageClassification = {
+  block_id: string;
+  disposition: "mapped" | "non_requirement";
+  plan_item_ids: string[];
+  reason: string | null;
+};
 
+type SourceCoverageAuditArtifact = {
+  contract: "SOURCE_COVERAGE_AUDIT_V1";
+  audit_task_id: string;
+  owner_id: string;
+  attempt: number;
+  reservation_token: string;
+  source_path: string;
+  source_digest: string;
+  source_revision: number;
+  source_blocks_ref: string;
+  source_blocks_digest: string;
+  coverage_semantic_digest: string;
+  classifications: SourceCoverageClassification[];
+  omissions: string[];
+};
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function coverageSemanticDigest(coverage              )         {
+function coverageSemanticDigest(coverage: PlanCoverage): string {
   return digestJson({
     source_path: coverage.source_path,
     source_digest: coverage.source_digest,
@@ -4403,7 +4402,7 @@ function coverageSemanticDigest(coverage              )         {
   });
 }
 
-function parseSourceCoverageClassifications(value         )                                 {
+function parseSourceCoverageClassifications(value: unknown): SourceCoverageClassification[] {
   const source = Array.isArray(value)
     ? { classifications: value }
     : requireRecord(value, "source coverage classification proposal");
@@ -4427,7 +4426,7 @@ function parseSourceCoverageClassifications(value         )                     
         item.block_id,
         `source coverage classifications[${index}].block_id`,
       ),
-      disposition: item.disposition                                ,
+      disposition: item.disposition as "mapped" | "non_requirement",
       plan_item_ids: [...planItemIds].sort(compareStableStrings),
       reason: requireNullableString(item.reason, `source coverage classifications[${index}].reason`),
     };
@@ -4437,15 +4436,15 @@ function parseSourceCoverageClassifications(value         )                     
 }
 
 function expectedSourceCoverageAudit(
-  planPath        ,
-  plan      ,
-  goal              ,
-  coverage              ,
-  state          ,
-  task                ,
-  taskState           ,
-  proposedClassifications                                ,
-)                              {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  coverage: PlanCoverage,
+  state: RunState,
+  task: TaskDefinition,
+  taskState: TaskState,
+  proposedClassifications: SourceCoverageClassification[],
+): SourceCoverageAuditArtifact {
   const goalState = goalStateForPlan(planPath, plan, goal).state;
   const sourceBlocks = parseSourceBlocks(readJson(goalState.source_blocks.ref), goal);
   if (digestFile(goalState.source_blocks.ref) !== goalState.source_blocks.digest) {
@@ -4478,7 +4477,7 @@ function expectedSourceCoverageAudit(
     return proposed;
   });
   const coverageSummary = summarizeCoverage(plan, coverage, state);
-  const uncoveredEffects = coverageSummary.uncovered_plan_item_effects            ;
+  const uncoveredEffects = coverageSummary.uncovered_plan_item_effects as string[];
   if (uncoveredEffects.length > 0) {
     fail(`source coverage audit found unplanned required effects: ${uncoveredEffects.join(", ")}`);
   }
@@ -4487,7 +4486,7 @@ function expectedSourceCoverageAudit(
     audit_task_id: task.id,
     owner_id: task.owner_id,
     attempt: taskState.attempt,
-    reservation_token: taskState.reservation_token          ,
+    reservation_token: taskState.reservation_token as string,
     source_path: goal.source.path,
     source_digest: goal.source.digest,
     source_revision: goal.source.revision,
@@ -4499,7 +4498,7 @@ function expectedSourceCoverageAudit(
   };
 }
 
-function parseSourceCoverageAuditArtifact(value         )                              {
+function parseSourceCoverageAuditArtifact(value: unknown): SourceCoverageAuditArtifact {
   const source = requireRecord(value, "source coverage audit artifact");
   if (source.contract !== "SOURCE_COVERAGE_AUDIT_V1") {
     fail("source coverage audit artifact contract must equal SOURCE_COVERAGE_AUDIT_V1");
@@ -4507,7 +4506,7 @@ function parseSourceCoverageAuditArtifact(value         )                       
   const classifications = parseSourceCoverageClassifications(source.classifications);
   const omissions = requireStringArray(source.omissions, "source coverage audit omissions");
   if (omissions.length > 0) fail("source coverage audit omissions must be empty");
-  const artifact                              = {
+  const artifact: SourceCoverageAuditArtifact = {
     contract: "SOURCE_COVERAGE_AUDIT_V1",
     audit_task_id: requireIdentifier(source.audit_task_id, "source coverage audit_task_id"),
     owner_id: requireIdentifier(source.owner_id, "source coverage owner_id"),
@@ -4537,16 +4536,16 @@ function parseSourceCoverageAuditArtifact(value         )                       
 }
 
 function bindSourceCoverageArtifact(
-  planPath        ,
-  plan      ,
-  goal              ,
-  coverage              ,
-  state          ,
-  task                ,
-  taskState           ,
-  result                ,
-  accepted         ,
-)       {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  coverage: PlanCoverage,
+  state: RunState,
+  task: TaskDefinition,
+  taskState: TaskState,
+  result: WorkerResultV4,
+  accepted: boolean,
+): void {
   if (!task.verification_ids.includes(SOURCE_COVERAGE_GATE_ID)) return;
   const evidence = result.evidence.find((item) => item.verification_id === SOURCE_COVERAGE_GATE_ID);
   if (evidence === undefined) fail(`${SOURCE_COVERAGE_GATE_ID} evidence is missing`);
@@ -4563,7 +4562,7 @@ function bindSourceCoverageArtifact(
     planPath,
     task.id,
     taskState.attempt,
-    taskState.reservation_token          ,
+    taskState.reservation_token as string,
   );
   const expectedPath = accepted ? `${candidatePath}.accepted.json` : candidatePath;
   canonicalPath(expectedPath, evidence.artifact_ref, `${SOURCE_COVERAGE_GATE_ID} artifact_ref`);
@@ -4593,12 +4592,12 @@ function bindSourceCoverageArtifact(
 }
 
 function sourceAuditCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  classificationsArgument        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  classificationsArgument: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -4647,17 +4646,17 @@ function sourceAuditCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function uniqueStrings(values          )           {
+function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
 function interruptCapsule(
-  owner                 ,
-  ownerState            ,
-  goalDigest        ,
-  sourceRevision        ,
-  risk        ,
-)               {
+  owner: OwnerDefinition,
+  ownerState: OwnerState,
+  goalDigest: string,
+  sourceRevision: number,
+  risk: string,
+): OwnerCapsule {
   const capsule = loadOwnerCapsule(owner, ownerState, goalDigest, sourceRevision);
   capsule.generation = ownerState.generation;
   capsule.active_task_id = null;
@@ -4668,13 +4667,13 @@ function interruptCapsule(
 }
 
 function updateCapsule(
-  owner                 ,
-  ownerState            ,
-  goalDigest        ,
-  sourceRevision        ,
-  result                ,
-  resultRef        ,
-)               {
+  owner: OwnerDefinition,
+  ownerState: OwnerState,
+  goalDigest: string,
+  sourceRevision: number,
+  result: WorkerResultV4,
+  resultRef: string,
+): OwnerCapsule {
   const capsule = loadOwnerCapsule(owner, ownerState, goalDigest, sourceRevision);
   capsule.generation = ownerState.generation;
   capsule.decisions = uniqueStrings([...(capsule.decisions ?? []), ...result.owner_updates.decisions]);
@@ -4705,12 +4704,12 @@ function updateCapsule(
 }
 
 function finishCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  resultArgument        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  resultArgument: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -4722,7 +4721,7 @@ function finishCommand(
     assertGoalMutable(planPath, plan, goal);
     const task = plan.tasks.find((candidate) => candidate.id === taskId);
     if (task === undefined) fail(`unknown task: ${taskId}`);
-    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
     const taskState = state.tasks[taskId];
     const ownerState = state.owners[owner.id];
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
@@ -4838,12 +4837,12 @@ function finishCommand(
 }
 
 function rotateOwnerCommand(
-  planArgument        ,
-  stateArgument        ,
-  ownerId        ,
-  expectedGenerationArgument        ,
-  reason        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  ownerId: string,
+  expectedGenerationArgument: string,
+  reason: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -4895,20 +4894,20 @@ function rotateOwnerCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function parseDelta(value         )
-
-
-
-
-
-
-
-
-
-
-
-
-  {
+function parseDelta(value: unknown): {
+  base_plan_digest: string;
+  revision: number;
+  add_owners: OwnerDefinition[];
+  add_tasks: TaskDefinition[];
+  repairs: Array<{ task_id: string; replacement_task_id: string }>;
+  source_dispositions: Array<{
+    task_id: string;
+    action: "carry_forward" | "invalidate";
+    replacement_task_id: string | null;
+  }>;
+  coverage_update: { required_plan_items: RequiredPlanItem[] };
+  safety: Plan["safety"];
+} {
   const source = requireRecord(value, "delta");
   if (source.contract !== "DAG_DELTA_V1") fail("delta contract must equal DAG_DELTA_V1");
   if (!Array.isArray(source.add_owners)) fail("delta.add_owners must be an array");
@@ -4950,7 +4949,7 @@ function parseDelta(value         )
         `delta.coverage_update.required_plan_items[${index}].description`,
       ),
       source_refs: sourceRefs,
-      required_effects: requiredEffects                    ,
+      required_effects: requiredEffects as CoverageEffect[],
     };
   });
   ensureUnique(requiredPlanItems.map((item) => item.id), "delta coverage plan item id");
@@ -5005,17 +5004,17 @@ function parseDelta(value         )
     }),
     coverage_update: { required_plan_items: requiredPlanItems },
     safety: {
-      status: safety.status                ,
+      status: safety.status as SafetyStatus,
       reasons: requireStringArray(safety.reasons, "delta.safety.reasons"),
     },
   };
 }
 
 function applyDeltaCommand(
-  planArgument        ,
-  stateArgument        ,
-  deltaArgument        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  deltaArgument: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const deltaPath = resolve(deltaArgument);
@@ -5095,13 +5094,13 @@ function applyDeltaCommand(
       }
       if (
         disposition.action === "invalidate" &&
-        !newTaskIds.has(disposition.replacement_task_id          )
+        !newTaskIds.has(disposition.replacement_task_id as string)
       ) {
         fail(`delta invalidation replacement must be an added task: ${disposition.replacement_task_id}`);
       }
       const dispositionTask = plan.tasks.find(
         (candidate) => candidate.id === disposition.task_id,
-      )                  ;
+      ) as TaskDefinition;
       if (
         state.goal_refresh_pending &&
         (
@@ -5122,14 +5121,14 @@ function applyDeltaCommand(
         }
       }
     }
-    const nextPlan       = {
+    const nextPlan: Plan = {
       ...plan,
       revision: delta.revision,
       owners: [...plan.owners, ...delta.add_owners],
       tasks: [...plan.tasks, ...delta.add_tasks],
       safety: delta.safety,
     };
-    const nextCoverage               = {
+    const nextCoverage: PlanCoverage = {
       ...coverage,
       source_path: goal.source.path,
       source_digest: goal.source.digest,
@@ -5175,13 +5174,13 @@ function applyDeltaCommand(
     for (const disposition of delta.source_dispositions) {
       if (
         disposition.action === "invalidate" &&
-        ancestors.get(disposition.replacement_task_id          )?.has(disposition.task_id)
+        ancestors.get(disposition.replacement_task_id as string)?.has(disposition.task_id)
       ) {
         fail(`delta replacement cannot depend on invalidated task: ${disposition.replacement_task_id}`);
       }
     }
-    const writes                           = [];
-    const capsuleWrites = new Map                      ();
+    const writes: Array<[string, unknown]> = [];
+    const capsuleWrites = new Map<string, OwnerCapsule>();
     for (const owner of delta.add_owners) {
       const capsuleRef = capsulePathFor(planPath, owner.id);
       capsuleWrites.set(
@@ -5225,8 +5224,8 @@ function applyDeltaCommand(
         const oldResultRef = taskState.result_ref;
         taskState.status = "superseded";
         taskState.replacement_task_id = disposition.replacement_task_id;
-        const task = nextPlan.tasks.find((candidate) => candidate.id === disposition.task_id)                  ;
-        const owner = nextPlan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+        const task = nextPlan.tasks.find((candidate) => candidate.id === disposition.task_id) as TaskDefinition;
+        const owner = nextPlan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
         const ownerState = state.owners[task.owner_id];
         ownerState.completed_task_ids = ownerState.completed_task_ids
           .filter((completedTaskId) => completedTaskId !== disposition.task_id);
@@ -5271,7 +5270,7 @@ function applyDeltaCommand(
         task.satisfies_goal_gates.includes(SOURCE_COVERAGE_GATE_ID),
       )
       .map((task) => task.id));
-    const logicalAncestorCache = new Map                     ();
+    const logicalAncestorCache = new Map<string, Set<string>>();
     for (const task of nextPlan.tasks.filter((candidate) =>
       candidate.role === "work" && state.tasks[candidate.id].status !== "superseded" &&
       state.tasks[candidate.id].status !== "completed",
@@ -5308,8 +5307,8 @@ function applyDeltaCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function summarizeState(state          )                         {
-  const statuses               = [
+function summarizeState(state: RunState): Record<string, number> {
+  const statuses: TaskStatus[] = [
     "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
   ];
   return Object.fromEntries(statuses.map((status) => [
@@ -5319,10 +5318,10 @@ function summarizeState(state          )                         {
 }
 
 function summarizeCoverage(
-  plan      ,
-  coverage              ,
-  state          ,
-)                          {
+  plan: Plan,
+  coverage: PlanCoverage,
+  state: RunState,
+): Record<string, unknown> {
   const requiredIds = coverage.required_plan_items.map((item) => item.id);
   const liveTasks = plan.tasks.filter((task) => state.tasks[task.id].status !== "superseded");
   const requiredPairs = coverage.required_plan_items.flatMap((item) =>
@@ -5346,8 +5345,8 @@ function summarizeCoverage(
   const completed = requiredPairs.filter((pair) => completedPairs.has(pair));
   const missingPlanned = requiredPairs.filter((pair) => !plannedPairs.has(pair));
   const missingCompleted = requiredPairs.filter((pair) => !completedPairs.has(pair));
-  const missingIds = (pairs          ) => uniqueStrings(pairs.map((pair) => pair.split(":", 1)[0]));
-  const percent = (count        ) => Number(((count / requiredPairs.length) * 100).toFixed(2));
+  const missingIds = (pairs: string[]) => uniqueStrings(pairs.map((pair) => pair.split(":", 1)[0]));
+  const percent = (count: number) => Number(((count / requiredPairs.length) * 100).toFixed(2));
   return {
     contract: coverage.contract,
     source_revision: coverage.source_revision,
@@ -5365,15 +5364,15 @@ function summarizeCoverage(
 }
 
 function inspectCompletion(
-  planPath        ,
-  plan      ,
-  goal              ,
-  coverage              ,
-  state          ,
-)                                                                        {
-  const problems           = [];
-  const resultRefs           = [];
-  const passedGates = new Set        ();
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  coverage: PlanCoverage,
+  state: RunState,
+): { problems: string[]; result_refs: string[]; passed_gates: string[] } {
+  const problems: string[] = [];
+  const resultRefs: string[] = [];
+  const passedGates = new Set<string>();
   for (const task of plan.tasks) {
     const taskState = state.tasks[task.id];
     if (taskState.status === "superseded") continue;
@@ -5390,7 +5389,7 @@ function inspectCompletion(
       problems.push(`${task.id}: result digest mismatch`);
       continue;
     }
-    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
     try {
       const result = parseWorkerResult(readJson(taskState.result_ref), task, owner, taskState);
       bindDiffScopeArtifact(planPath, plan, goal, state, task, taskState, result, true);
@@ -5432,11 +5431,11 @@ function inspectCompletion(
 }
 
 function activeReservationRecords(
-  planPath        ,
-  plan      ,
-  goal              ,
-  state          ,
-)                            {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  state: RunState,
+): Record<string, unknown>[] {
   return plan.tasks
     .filter((task) => ["reserved", "running"].includes(state.tasks[task.id].status))
     .map((task) => {
@@ -5469,20 +5468,20 @@ function activeReservationRecords(
 }
 
 function nextActionFor(
-  planPath        ,
-  plan      ,
-  goal              ,
-  coverage              ,
-  state          ,
-  goalState           ,
-)         {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  coverage: PlanCoverage,
+  state: RunState,
+  goalState: GoalState,
+): string {
   if (goalState.status === "completed") {
     return goalState.native_sync.status === "pending" ? "native_completion_pending" : "completed";
   }
   if (state.goal_refresh_pending) return "needs_delta";
   const coverageSummary = summarizeCoverage(plan, coverage, state);
   const coverageFullyPlanned =
-    (coverageSummary.uncovered_plan_item_effects            ).length === 0;
+    (coverageSummary.uncovered_plan_item_effects as string[]).length === 0;
   if (!coverageFullyPlanned) return "needs_delta";
   const statuses = Object.values(state.tasks).map((task) => task.status);
   if (statuses.some((status) => status === "reserved" || status === "running")) {
@@ -5503,12 +5502,12 @@ function nextActionFor(
   const inspection = inspectCompletion(planPath, plan, goal, coverage, state);
   if (
     inspection.problems.length > 0 ||
-    (coverageSummary.incomplete_plan_item_ids            ).length > 0
+    (coverageSummary.incomplete_plan_item_ids as string[]).length > 0
   ) {
     return "repair";
   }
   if (goalState.owner_delivery !== null) {
-    const entries = goalState.owner_delivery.required_owner_ids.map((id) => goalState.owner_delivery?.owners[id]                      );
+    const entries = goalState.owner_delivery.required_owner_ids.map((id) => goalState.owner_delivery?.owners[id] as OwnerDeliveryEntry);
     if (entries.some((entry) => entry.status === "pending" || entry.status === "active")) return "owner_commit_pending";
     if (entries.some((entry) => entry.status === "sealed")) return "owner_merge_pending";
   }
@@ -5516,11 +5515,11 @@ function nextActionFor(
 }
 
 function sourceDriftPayload(
-  goal              ,
-  goalState           ,
-  plan      ,
-  state          ,
-)                          {
+  goal: GoalContract,
+  goalState: GoalState,
+  plan: Plan,
+  state: RunState,
+): Record<string, unknown> {
   if (goalState.status === "completed") return { source_status: "frozen" };
   if (!existsSync(goal.source.path)) {
     return {
@@ -5545,21 +5544,21 @@ function sourceDriftPayload(
 }
 
 function coordinatedNextAction(
-  planPath        ,
-  plan      ,
-  goal              ,
-  coverage              ,
-  state          ,
-  goalState           ,
-)         {
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  coverage: PlanCoverage,
+  state: RunState,
+  goalState: GoalState,
+): string {
   const drift = sourceDriftPayload(goal, goalState, plan, state);
   if (drift.source_status === "source_changed" || drift.source_status === "source_missing") {
-    return drift.source_drift_action          ;
+    return drift.source_drift_action as string;
   }
   return nextActionFor(planPath, plan, goal, coverage, state, goalState);
 }
 
-function reconcileCommand(planArgument        , stateArgument        )       {
+function reconcileCommand(planArgument: string, stateArgument: string): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -5582,12 +5581,12 @@ function reconcileCommand(planArgument        , stateArgument        )       {
 }
 
 function reclaimCommand(
-  planArgument        ,
-  stateArgument        ,
-  taskId        ,
-  reservationToken        ,
-  reason        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  reason: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const reclaimReason = requireString(reason, "reason");
@@ -5640,7 +5639,7 @@ function reclaimCommand(
         reclaimed_at: new Date().toISOString(),
       });
     }
-    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id)                   ;
+    const owner = plan.owners.find((candidate) => candidate.id === task.owner_id) as OwnerDefinition;
     const capsule = interruptCapsule(
       owner,
       ownerState,
@@ -5666,10 +5665,10 @@ function reclaimCommand(
 }
 
 function confirmStaleExecutorCommand(
-  planArgument        ,
-  stateArgument        ,
-  executorIdArgument        ,
-)       {
+  planArgument: string,
+  stateArgument: string,
+  executorIdArgument: string,
+): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const executorId = requireString(executorIdArgument, "executor_id");
@@ -5698,7 +5697,7 @@ function confirmStaleExecutorCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function statusCommand(planArgument        , stateArgument        )       {
+function statusCommand(planArgument: string, stateArgument: string): void {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -5716,7 +5715,7 @@ function statusCommand(planArgument        , stateArgument        )       {
       capsule_ref: state.owners[owner.id].capsule_ref,
     }]));
     const inspection = goalState.status === "completed"
-      ? { problems: []             }
+      ? { problems: [] as string[] }
       : inspectCompletion(planPath, plan, goal, coverage, state);
     return {
       goal_id: goal.goal_id,
@@ -5740,11 +5739,11 @@ function statusCommand(planArgument        , stateArgument        )       {
 }
 
 function finalizeCommand(
-  goalArgument        ,
-  goalStateArgument        ,
-  planArgument        ,
-  stateArgument        ,
-)       {
+  goalArgument: string,
+  goalStateArgument: string,
+  planArgument: string,
+  stateArgument: string,
+): void {
   const goalPath = resolve(goalArgument);
   const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
   const planPath = resolve(planArgument);
@@ -5786,7 +5785,7 @@ function finalizeCommand(
     if (plan.goal_digest !== digestFile(goalPath)) fail("finalize goal digest mismatch");
     if (plan.safety.status === "needs_user_review") fail("plan safety requires user review");
     const coverageSummary = summarizeCoverage(plan, coverage, state);
-    const uncovered = coverageSummary.uncovered_plan_item_ids            ;
+    const uncovered = coverageSummary.uncovered_plan_item_ids as string[];
     if (uncovered.length > 0) {
       fail(`required plan items are not planned: ${uncovered.join(", ")}`);
     }
@@ -5794,7 +5793,7 @@ function finalizeCommand(
     if (unresolved.length > 0) {
       fail(`goal has unresolved tasks: ${unresolved.map((task) => `${task.id}:${state.tasks[task.id].status}`).join(", ")}`);
     }
-    const incomplete = coverageSummary.incomplete_plan_item_ids            ;
+    const incomplete = coverageSummary.incomplete_plan_item_ids as string[];
     if (incomplete.length > 0) {
       fail(`required plan items are not completed: ${incomplete.join(", ")}`);
     }
@@ -5832,10 +5831,10 @@ function finalizeCommand(
 }
 
 function nativeConfirmCommand(
-  goalArgument        ,
-  goalStateArgument        ,
-  completionToken        ,
-)       {
+  goalArgument: string,
+  goalStateArgument: string,
+  completionToken: string,
+): void {
   const goalPath = resolve(goalArgument);
   const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
   const dagStatePath = join(dirname(goalPath), "state.json");
@@ -5861,7 +5860,7 @@ function nativeConfirmCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerBindGoalCommand(goalArgument        , goalStateArgument        , planArgument        , stateArgument        , registryArgument        , featureBranch        )       {
+function ownerBindGoalCommand(goalArgument: string, goalStateArgument: string, planArgument: string, stateArgument: string, registryArgument: string, featureBranch: string): void {
   const goalPath = resolve(goalArgument); const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
   const planPath = resolve(planArgument); const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path"); const registryPath = resolve(registryArgument);
   const payload = withStateLock(goalStatePath, () => withStateLock(statePath, () => withStateLock(registryPath, () => {
@@ -5873,7 +5872,7 @@ function ownerBindGoalCommand(goalArgument        , goalStateArgument        , p
     if (currentBranch !== featureBranch) fail(`main workspace must already be on feature branch ${featureBranch}`);
     const baseOid = gitOutput(goal.workspace.root, ["rev-parse", "--verify", featureBranch], "feature base oid").trim();
     const requiredOwnerIds = uniqueStrings(plan.tasks.filter((task) => task.role === "work" && task.writable_paths.length > 0).map((task) => task.owner_id));
-    const owners                                     = {};
+    const owners: Record<string, OwnerDeliveryEntry> = {};
     for (const ownerId of requiredOwnerIds) {
       const owner = findActiveOwner(registry, ownerId);
       owners[ownerId] = { owner_id: ownerId, worktree_path: "", owner_branch: "",
@@ -5887,7 +5886,7 @@ function ownerBindGoalCommand(goalArgument        , goalStateArgument        , p
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerDeliveryReconcileCommand(goalArgument        , goalStateArgument        , planArgument        , stateArgument        , registryArgument        )       {
+function ownerDeliveryReconcileCommand(goalArgument: string, goalStateArgument: string, planArgument: string, stateArgument: string, registryArgument: string): void {
   const goalPath = resolve(goalArgument); const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
   const planPath = resolve(planArgument); const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path"); const registryPath = resolve(registryArgument);
   const payload = withStateLock(goalStatePath, () => withStateLock(statePath, () => withStateLock(registryPath, () => {
@@ -5909,7 +5908,7 @@ function ownerDeliveryReconcileCommand(goalArgument        , goalStateArgument  
         base_oid: featureTip, committed_oid: null, committed_at: null,
         merged_oid: null, merged_at: null, status: "pending", owned_modules_glob: owner.owned_modules };
     }
-    const isAncestor = (ancestor        , descendant        , label        ) => {
+    const isAncestor = (ancestor: string, descendant: string, label: string) => {
       const result = spawnSync("git", ["-C", goal.workspace.root, "merge-base", "--is-ancestor", ancestor, descendant], { encoding: "utf8", shell: false });
       if (result.status !== 0) fail(label);
     };
@@ -5953,7 +5952,7 @@ function ownerDeliveryReconcileCommand(goalArgument        , goalStateArgument  
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerInitCommand(registryArgument        , workspaceRootArgument        )       {
+function ownerInitCommand(registryArgument: string, workspaceRootArgument: string): void {
   const registryPath = resolve(registryArgument);
   if (existsSync(registryPath)) fail(`registry already exists: ${registryPath}`);
   const workspaceRoot = resolve(workspaceRootArgument);
@@ -5967,7 +5966,7 @@ function ownerInitCommand(registryArgument        , workspaceRootArgument       
     "*.lock.*.tmp\n" +
     "*.tmp\n" +
     "*.transaction.json\n";
-  let archiveWarning                = null;
+  let archiveWarning: string | null = null;
   const rootGitignore = join(workspaceRoot, ".gitignore");
   if (existsSync(rootGitignore)) {
     const lines = readFileSync(rootGitignore, "utf8").split(/\r?\n/);
@@ -5994,16 +5993,16 @@ function ownerInitCommand(registryArgument        , workspaceRootArgument       
   );
 }
 
-function loadRegistryLocked(registryPath        )                 {
+function loadRegistryLocked(registryPath: string): OwnersRegistry {
   return parseOwnerRegistry(readJson(registryPath));
 }
 
-function ownerListCommand(registryArgument        )       {
+function ownerListCommand(registryArgument: string): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
     return {
-      contract: "OWNER_REGISTRY_LIST_V1"         ,
+      contract: "OWNER_REGISTRY_LIST_V1" as const,
       registry_version: registry.registry_version,
       owners: registry.owners.map((owner) => ({
         owner_id: owner.owner_id,
@@ -6019,11 +6018,11 @@ function ownerListCommand(registryArgument        )       {
 }
 
 function ownerAddCommand(
-  registryArgument        ,
-  ownerDefArgument        ,
-  mode                    ,
-  confirmation               ,
-)       {
+  registryArgument: string,
+  ownerDefArgument: string,
+  mode: "plan" | "confirm",
+  confirmation: string | null,
+): void {
   const registryPath = resolve(registryArgument);
   const ownerDefPath = resolve(ownerDefArgument);
   const payload = withStateLock(registryPath, () => {
@@ -6045,17 +6044,17 @@ function ownerAddCommand(
     const proposalDigest = mutationProposalDigest("owner-add", registryDigest, inputDigest, proposal);
     if (mode === "confirm") {
       if (requireConfirmationDigest(confirmation) !== proposalDigest) fail("proposal_digest mismatch; rerun --plan");
-      const nextRegistry                 = { ...registry, owners: nextOwners, updated_at: new Date().toISOString() };
+      const nextRegistry: OwnersRegistry = { ...registry, owners: nextOwners, updated_at: new Date().toISOString() };
       writeTransaction(registryPath, [[registryPath, nextRegistry]]);
     }
-    return { contract: "OWNER_ADD_PLAN_V1"         , status: mode === "plan" ? "plan" : "added",
+    return { contract: "OWNER_ADD_PLAN_V1" as const, status: mode === "plan" ? "plan" : "added",
       registry_digest: registryDigest, proposal_digest: proposalDigest,
       confirmation_scope: "anti_accidental_and_toctou_only", ...proposal };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerQueryCommand(registryArgument        , requirementArgument        )       {
+function ownerQueryCommand(registryArgument: string, requirementArgument: string): void {
   const registryPath = resolve(registryArgument);
   const requirementPath = resolve(requirementArgument);
   const requirement = requireRecord(readJson(requirementPath), "requirement");
@@ -6067,8 +6066,8 @@ function ownerQueryCommand(registryArgument        , requirementArgument        
   const text = requireString(requirement.text, "requirement.text");
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
-    const covered                                              = [];
-    const gaps           = [];
+    const covered: Array<{ module: string; owner_id: string }> = [];
+    const gaps: string[] = [];
     for (const modulePath of modules) {
       const candidates = registry.owners.filter((owner) =>
         owner.lifecycle === "active" &&
@@ -6084,7 +6083,7 @@ function ownerQueryCommand(registryArgument        , requirementArgument        
       .filter((owner) => owner.lifecycle === "active" && registryOwnerPaths(owner).length >= 4)
       .map((owner) => ({ parent: owner.owner_id, reason: `模块跨度较大(${registryOwnerPaths(owner).length} 条)` }));
     return {
-      contract: "OWNER_COVERAGE_QUERY_V1"         ,
+      contract: "OWNER_COVERAGE_QUERY_V1" as const,
       text,
       covered,
       gaps,
@@ -6096,12 +6095,12 @@ function ownerQueryCommand(registryArgument        , requirementArgument        
 }
 
 function ownerSplitCommand(
-  registryArgument        ,
-  parentOwnerId        ,
-  splitSpecArgument        ,
-  mode                    ,
-  confirmation               ,
-)       {
+  registryArgument: string,
+  parentOwnerId: string,
+  splitSpecArgument: string,
+  mode: "plan" | "confirm",
+  confirmation: string | null,
+): void {
   const registryPath = resolve(registryArgument);
   const splitSpecPath = resolve(splitSpecArgument);
   const spec = requireRecord(readJson(splitSpecPath), "split_spec");
@@ -6126,7 +6125,7 @@ function ownerSplitCommand(
       fail(`parent owner ${parentOwnerId} has an active worktree; merge-back or remove first`);
     }
     // Each claimed module must live within the parent's domain.
-    const claimed           = [];
+    const claimed: string[] = [];
     for (const input of inputs) {
       for (const modulePath of [...input.owned_modules, ...input.interfaces]) {
         if (!parent.owned_modules.some((pattern) => pathsOverlap(modulePath, pattern))) {
@@ -6160,7 +6159,7 @@ function ownerSplitCommand(
         );
       }
     }
-    const nextParent                = {
+    const nextParent: RegistryOwner = {
       ...parent,
       owned_modules: retainedModules,
       interfaces: retainedInterfaces,
@@ -6186,14 +6185,14 @@ function ownerSplitCommand(
     const proposalDigest = mutationProposalDigest("owner-split", registryDigest, digestFile(splitSpecPath), proposal);
     if (mode === "confirm") {
       if (requireConfirmationDigest(confirmation) !== proposalDigest) fail("proposal_digest mismatch; rerun --plan");
-      const nextRegistry                 = {
+      const nextRegistry: OwnersRegistry = {
         ...registry,
         owners: nextOwners,
         updated_at: new Date().toISOString(),
       };
       writeTransaction(registryPath, [[registryPath, nextRegistry]]);
     }
-    return { contract: "OWNER_SPLIT_PLAN_V1"         ,
+    return { contract: "OWNER_SPLIT_PLAN_V1" as const,
       status: mode === "plan" ? "plan" : "split", registry_digest: registryDigest,
       proposal_digest: proposalDigest, confirmation_scope: "anti_accidental_and_toctou_only",
       ...proposal };
@@ -6202,18 +6201,18 @@ function ownerSplitCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function sparseCheckoutDirs(modules          )           {
-  const dirs = new Set        ();
+function sparseCheckoutDirs(modules: string[]): string[] {
+  const dirs = new Set<string>();
   for (const raw of modules) {
     const modulePath = normalizePathPattern(raw);
     const segments = modulePath.split("/");
-    const projected           = [];
+    const projected: string[] = [];
     for (const segment of segments) {
       if (/[?*[{]/u.test(segment)) break;
       projected.push(segment);
     }
     if (projected.length === 0) fail(`owned module cannot be safely projected for sparse checkout: ${modulePath}`);
-    if (projected.length === segments.length && segments.length > 1 && /\.[A-Za-z0-9_-]+$/u.test(projected.at(-1)          )) projected.pop();
+    if (projected.length === segments.length && segments.length > 1 && /\.[A-Za-z0-9_-]+$/u.test(projected.at(-1) as string)) projected.pop();
     const dir = projected.join("/");
     if (!dir || dir === ".") fail(`owned module projects to repository root: ${modulePath}`);
     dirs.add(dir);
@@ -6222,7 +6221,7 @@ function sparseCheckoutDirs(modules          )           {
   return [...dirs].sort(compareStableStrings);
 }
 
-function findActiveOwner(registry                , ownerId        )                {
+function findActiveOwner(registry: OwnersRegistry, ownerId: string): RegistryOwner {
   const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
   if (owner === undefined) fail(`owner not found: ${ownerId}`);
   if (owner.lifecycle !== "active") fail(`owner ${ownerId} is not active: ${owner.lifecycle}`);
@@ -6230,10 +6229,10 @@ function findActiveOwner(registry                , ownerId        )             
 }
 
 function worktreeCreateCommand(
-  registryArgument        ,
-  featureBranch        ,
-  ownerId        ,
-)       {
+  registryArgument: string,
+  featureBranch: string,
+  ownerId: string,
+): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
@@ -6281,7 +6280,7 @@ function worktreeCreateCommand(
     registry.updated_at = new Date().toISOString();
     writeTransaction(registryPath, [[registryPath, registry]]);
     return {
-      status: "created"         ,
+      status: "created" as const,
       owner_id: ownerId,
       owner_branch: ownerBranch,
       worktree_path: worktreePath,
@@ -6292,7 +6291,7 @@ function worktreeCreateCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function worktreeCommitCommand(registryArgument        , ownerId        )       {
+function worktreeCommitCommand(registryArgument: string, ownerId: string): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
@@ -6323,16 +6322,16 @@ function worktreeCommitCommand(registryArgument        , ownerId        )       
     binding.status = "sealed"; binding.committed_oid = committedOid; binding.committed_at = new Date().toISOString();
     stampHistory(owner, "worktree_committed", dirty.length === 0 ? "no-change seal" : null);
     registry.updated_at = new Date().toISOString(); writeTransaction(registryPath, [[registryPath, registry]]);
-    return { status: "sealed"         , owner_id: ownerId, committed_oid: committedOid, changed_files: dirty.length };
+    return { status: "sealed" as const, owner_id: ownerId, committed_oid: committedOid, changed_files: dirty.length };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 function worktreeMergeBackCommand(
-  registryArgument        ,
-  featureBranch        ,
-  ownerId        ,
-)       {
+  registryArgument: string,
+  featureBranch: string,
+  ownerId: string,
+): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
@@ -6360,7 +6359,7 @@ function worktreeMergeBackCommand(
       "owner scope diff",
     );
     const changed = diffRaw.split("\0").filter((path) => path.length > 0);
-    const violations           = [];
+    const violations: string[] = [];
     for (const path of changed) {
       const normalized = normalizePathPattern(path);
       if (!owner.owned_modules.some((pattern) => pathMatchesPattern(normalized, pattern))) {
@@ -6384,7 +6383,7 @@ function worktreeMergeBackCommand(
     registry.updated_at = new Date().toISOString();
     writeTransaction(registryPath, [[registryPath, registry]]);
     return {
-      status: "merged"         ,
+      status: "merged" as const,
       owner_id: ownerId,
       feature_branch: featureBranch,
       owner_branch: ownerBranch,
@@ -6394,7 +6393,7 @@ function worktreeMergeBackCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function worktreeRemoveCommand(registryArgument        , ownerId        , force         )       {
+function worktreeRemoveCommand(registryArgument: string, ownerId: string, force: boolean): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
     const registry = loadRegistryLocked(registryPath);
@@ -6422,12 +6421,12 @@ function worktreeRemoveCommand(registryArgument        , ownerId        , force 
     stampHistory(owner, "worktree_removed", null);
     registry.updated_at = new Date().toISOString();
     writeTransaction(registryPath, [[registryPath, registry]]);
-    return { status: "removed"         , owner_id: ownerId, owner_branch: binding.owner_branch };
+    return { status: "removed" as const, owner_id: ownerId, owner_branch: binding.owner_branch };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerVerifyPlanCommand(registryArgument        , planArgument        )       {
+function ownerVerifyPlanCommand(registryArgument: string, planArgument: string): void {
   const registryPath = resolve(registryArgument);
   const planPath = resolve(planArgument);
   const payload = withStateLock(registryPath, () => {
@@ -6438,7 +6437,7 @@ function ownerVerifyPlanCommand(registryArgument        , planArgument        ) 
     const activeMap = new Map(
       registry.owners
         .filter((owner) => owner.lifecycle === "active")
-        .map((owner) => [owner.owner_id, owner]         ),
+        .map((owner) => [owner.owner_id, owner] as const),
     );
     for (let index = 0; index < ownersRaw.length; index += 1) {
       const planOwner = requireRecord(ownersRaw[index], `plan.owners[${index}]`);
@@ -6461,7 +6460,7 @@ function ownerVerifyPlanCommand(registryArgument        , planArgument        ) 
       }
     }
     return {
-      status: "verified"         ,
+      status: "verified" as const,
       plan_owners: ownersRaw.length,
       registry_active_owners: activeMap.size,
     };
@@ -6469,7 +6468,7 @@ function ownerVerifyPlanCommand(registryArgument        , planArgument        ) 
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function ownerNoteCommand(registryArgument        , ownerId        , noteArgument        )       {
+function ownerNoteCommand(registryArgument: string, ownerId: string, noteArgument: string): void {
   const registryPath = resolve(registryArgument);
   const notePath = resolve(noteArgument);
   const note = requireRecord(readJson(notePath), "note");
@@ -6500,7 +6499,7 @@ function ownerNoteCommand(registryArgument        , ownerId        , noteArgumen
     registry.updated_at = stamp;
     writeTransaction(registryPath, [[registryPath, registry]]);
     return {
-      status: "noted"         ,
+      status: "noted" as const,
       owner_id: ownerId,
       kind,
       memory_docs_ref: memoryPath,
@@ -6509,7 +6508,7 @@ function ownerNoteCommand(registryArgument        , ownerId        , noteArgumen
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function main(argv          )       {
+function main(argv: string[]): void {
   const [command, ...args] = argv;
   if (command === "goal-validate" && args.length === 1) return goalValidateCommand(args[0]);
   if (command === "goal-refresh" && args.length === 4) {

@@ -18,9 +18,9 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 
 命名子代理（Agent 名 = `owner-<owner_id>`，binding 含非空 `owner_exec`）开工前自检三项，任一不满足立即返回 `needs_repair`，不重试、不换路径绕过：
 
-1. `owner_exec.agent_type` 必须为 `owner-<owner_id>`，与 registry.owners[].owner_id 一致（L1 PreToolUse hook owner-acl-hook.py 按此写前硬 deny）。非 owner 普通 executor（无 owner_exec）跳过本节检查。
-2. 必须位于 `owner_exec.worktree_path` 指向的 sparse worktree（L2 物理隔离），且 `owner_branch` = `dev_{owner_id}` 绑定有效、sparse 范围覆盖 `owned_modules_glob`。worktree 丢失或 sparse 范围不符时返回 `needs_repair`，并在 scope_request 注明 worktree 重建需求。
-3. L1 hook 拦截写操作（deny）时，直接返回 `needs_repair`，不得换路径或重试绕过。hook 始终读主工作区 registry（owner-acl-hook.py 从 cwd 向上查找 `.ghost-agent-workflow` 根或用 `CLAUDE_PROJECT_DIR`），子代理无需关心自身 cwd 是否含 `.ghost-agent-workflow`。
+1. `owner_exec.agent_type` 必须为 `owner-<owner_id>`，与当前 Agent 的稳定身份一致。普通 executor 的 `owner_exec` 必须显式为 `null`，跳过本节 Owner 自检。
+2. 实际 cwd 必须等于 `owner_exec.worktree_path`，当前 Git branch 必须等于 `owner_exec.owner_branch`，HEAD 必须满足 `base_oid`/已登记提交的 ancestry 预期，且可见范围覆盖 `owned_modules_glob`。runtime `bind` 只验证登记信息，不验证宿主进程的实际 cwd/branch/HEAD；因此这些检查由 worker 承担。宿主无法进入既有 runtime worktree、worktree 丢失或任一检查不符时返回 `needs_repair`，不得创建第二个 worktree或退回主 checkout。
+3. Owner Agent 的 Bash 默认由 L1 hook 拒绝；文件修改只使用带结构化路径的写工具。L1 deny 时直接返回 `needs_repair`，不得换路径或通过 shell 绕过。L2 sparse 只是 visibility superset，最终授权以 L1/L3 exact matcher 为准。
 
 ## 绑定门禁
 
@@ -111,8 +111,9 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
   "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
   "owner_exec": {
     "agent_type": "owner-runtime-core",
-    "worktree_path": "/absolute/repo/.ghost-agent-workflow/worktrees/dev_runtime-core",
-    "owner_branch": "dev_runtime-core",
+    "worktree_path": "/absolute/repo/.ghost-agent-workflow/worktrees/0123456789/runtime-core",
+    "owner_branch": "owner_runtime-core_0123456789",
+    "base_oid": "<40-hex>",
     "owned_modules_glob": ["tooling/goal-dag/**"]
   },
   "writable_paths": ["tooling/goal-dag/**"],
@@ -168,7 +169,7 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 字段说明（owner 模式相关）：
 
 - `executor_spawn_name`：per-attempt reservation token（形如 `runtime-...-g2_a2_<hex>`），仅用作 executor_id / reservation token 绑定，绝不是 Agent 工具 spawn 的 name。Agent Spawn name = `owner-<owner_id>`（稳定，跨 attempt 不变，作 SendMessage 二次寻址句柄）。coordinator 以 `owner-<owner_id>` 为 Agent 名 spawn；`executor_spawn_name` 仅作 executor_id bind。
-- `owner_exec`：owner 命名子代理执行环境（仅 owner 模式 binding 非空，普通 executor binding 省略）。`agent_type` = `owner-<owner_id>`（L1 hook owner-acl-hook.py 按此写前硬 deny）；`worktree_path` = owner sparse worktree 物理路径（L2 物理隔离）；`owner_branch` = `dev_{owner_id}`（物理载体，对应 registry worktree_binding.owner_branch）；`owned_modules_glob` = registry.owners[].owned_modules 的 glob 形式。
+- `owner_exec`：字段始终存在；普通 executor 为 `null`，Owner work task 为对象，且精确包含 `agent_type`、`worktree_path`、`owner_branch`、`base_oid`、`owned_modules_glob`。它描述 registry/Goal 登记的执行环境，不证明宿主进程已进入该路径；worker 必须执行上方 cwd/branch/HEAD 自检。
 - `writable_paths`：派生自 registry.owners[].owned_modules（经 owner-verify-plan 机械复核），与 `goal_constraints.scope` 取交集；worker 只写两者交集。
 
 固定 audit task 的 binding 会把对应路径/contract 改为非空。`source-coverage-audit` worker 先把逐 block proposal 写到指定路径，再运行：

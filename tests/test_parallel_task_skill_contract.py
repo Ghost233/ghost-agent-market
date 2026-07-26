@@ -25,9 +25,18 @@ class GoalDagSkillContractTests(unittest.TestCase):
         )
 
     def reference(self, platform: str, name: str, file: str = "templates.md") -> str:
+        # Claude Code auto-loads SKILL.md; its inline contract is authoritative.
+        if platform == "claude":
+            return self.skill(platform, name)
         return (PLATFORMS[platform] / "skills" / name / "references" / file).read_text(
             encoding="utf-8"
         )
+
+    def contract_source(self, platform: str, name: str, file: str = "templates.md") -> str:
+        """Claude auto-loads SKILL.md; Codex keeps separate reference files."""
+        if platform == "claude":
+            return self.skill(platform, name)
+        return self.reference(platform, name, file)
 
     def metadata(self, platform: str, name: str) -> str:
         return (PLATFORMS[platform] / "skills" / name / "agents/openai.yaml").read_text(
@@ -55,7 +64,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
             self.assertEqual(actual_skills, expected_skills, platform)
 
     def test_owner_registry_is_claude_only_internal_skill(self) -> None:
-        # owner-registry 仅 claude 端存在（依赖 isolation:worktree + PreToolUse hook）
+        # owner-registry 仅 Claude 端存在：依赖 PreToolUse hook 与 runtime 管理的唯一 Owner worktree；不依赖平台另建 isolation worktree。
         self.assertFalse(
             (PLATFORMS["codex"] / "skills" / "owner-registry").exists(),
             "owner-registry must be claude-only",
@@ -66,8 +75,8 @@ class GoalDagSkillContractTests(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: true", metadata)
         self.assertNotIn("default_prompt:", metadata)
         self.assertIn("内部", skill)
-        registry = self.reference("claude", "owner-registry", "registry.md")
-        contract = self.json_block_after(registry, "## OWNERS_REGISTRY_V1")
+        registry = self.contract_source("claude", "owner-registry", "registry.md")
+        contract = self.json_block_after(registry, "#### OWNERS_REGISTRY_V1")
         self.assertEqual(contract["contract"], "OWNERS_REGISTRY_V1")
         self.assertIn("owned_modules", contract["owners"][0])
         self.assertIn("严格文件隔离", skill)
@@ -110,9 +119,11 @@ class GoalDagSkillContractTests(unittest.TestCase):
                 / "skills/subagent-coordination/references/goal-contract.md"
             )
             self.assertTrue(reference_path.is_file())
-            contract = self.json_block_after(
-                reference_path.read_text(encoding="utf-8"), "## GOAL_CONTRACT_V1"
+            contract_text = self.contract_source(
+                platform, "subagent-coordination", "goal-contract.md"
             )
+            heading = "### GOAL_CONTRACT_V1 契约" if platform == "claude" else "## GOAL_CONTRACT_V1"
+            contract = self.json_block_after(contract_text, heading)
             self.assertEqual(contract["execution"]["mode"], "subagent")
             self.assertEqual(contract["execution_platform"], platform if platform == "codex" else "claude_code")
             self.assertEqual(contract["workspace"]["root"], "/absolute/workspace/root")
@@ -151,7 +162,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
         self.assertNotIn('update_goal({status: "blocked"})', codex)
 
         claude = self.skill("claude", "subagent-coordination")
-        claude_contract = self.reference(
+        claude_contract = self.contract_source(
             "claude", "subagent-coordination", "goal-contract.md"
         )
         combined = f"{claude}\n{claude_contract}"
@@ -166,7 +177,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
     def test_planner_builds_effect_aware_coverage_plan_and_delta(self) -> None:
         for platform in PLATFORMS:
             skill = self.skill(platform, "parallel-task-planner")
-            template = self.reference(platform, "parallel-task-planner")
+            template = self.contract_source(platform, "parallel-task-planner")
             coverage = self.json_block_after(template, "## PLAN_COVERAGE_V1")
             plan = self.json_block_after(template, "## DAG_PLAN_V4")
             delta = self.json_block_after(template, "## DAG_DELTA_V1")
@@ -217,7 +228,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
         )
         for platform in PLATFORMS:
             skill = self.skill(platform, "subagent-coordination")
-            recovery = self.reference(platform, "subagent-coordination")
+            recovery = self.contract_source(platform, "subagent-coordination")
             for command in required_commands:
                 self.assertIn(f"goal-dag.mjs {command}", skill)
             self.assertLess(skill.index("goal-dag.mjs status"), skill.index("goal-dag.mjs reconcile"))
@@ -259,7 +270,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
     def test_worker_binding_and_result_are_fenced_and_auditable(self) -> None:
         for platform in PLATFORMS:
             skill = self.skill(platform, "subagent-goal-worker")
-            template = self.reference(platform, "subagent-goal-worker")
+            template = self.contract_source(platform, "subagent-goal-worker")
             binding = self.json_block_after(template, "## TASK_BINDING_V4")
             result = self.json_block_after(template, "## WORKER_RESULT_V4")
 
@@ -294,7 +305,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
 
     def test_platform_profiles_are_intentionally_different(self) -> None:
         codex_plan = self.reference("codex", "parallel-task-planner")
-        claude_plan = self.reference("claude", "parallel-task-planner")
+        claude_plan = self.contract_source("claude", "parallel-task-planner")
         codex_coordinator = self.skill("codex", "subagent-coordination")
         claude_coordinator = self.skill("claude", "subagent-coordination")
         self.assertIn('"model": "gpt-5.6-sol"', codex_plan)

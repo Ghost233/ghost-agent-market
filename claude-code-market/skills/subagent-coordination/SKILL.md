@@ -175,21 +175,24 @@ node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <
 
 当 Goal 涉及多个 owner 且要求严格文件隔离时，按 feature 分支 fan-out（不依赖实验性 agent teams，用原生命名子代理 + SendMessage + 共享 Task 板）。**入口前置**：首次判断 Goal 需要 owner 隔离时，controller 先确认 `.ghost-agent-workflow/owners/registry.json` 是否存在；不存在则跑 `owner-init`（一次性仓库级 setup），再进入下面的 `owner-query`——若直接 owner-query 而 registry 缺失会 fail。
 
-1. 规划阶段调 `owner-query` 判断覆盖；`can_cover=false` 时先 `owner-add --plan`/`owner-split --plan` 拿方案，**以 AskUserQuestion 列给用户确认后**才正式 add/split（不可跳过，见 owner-registry「变更 owner 必须先经用户确认」），再产 plan 并 `owner-verify-plan` 复核。owner 数据随仓库提交存档（见 owner-registry「归档 owner 数据」）。
-2. 对每个参与 owner 先建 worktree：`worktree-create <registry.json> <feature_branch> <owner_id>` 产出 sparse worktree（分支 `dev_{owner_id}`，仅含 `owned_modules`，1 owner = 1 worktree，重复创建即拒）。三映射：Agent spawn name = `owner-<owner_id>`（逻辑身份，作 SendMessage 二次寻址句柄）↔ registry.owners[].owner_id ↔ worktree_binding.owner_branch = `dev_{owner_id}`（物理载体）。
-3. 以 `owner-<owner_id>` 为 Agent spawn name spawn 命名子代理（`isolation: worktree`，model 按任务难度选 alias、禁 `claude-*` 完整 id，见「公开入口与平台边界」）；该名稳定、跨 attempt 不变，是 SendMessage 二次寻址与记忆汇总的句柄。runtime 下发的 `executor_spawn_name`（形如 `runtime-...-g2_a2_<hex>`）仅作 per-attempt executor_id / reservation token，用于 `bind`，绝不当 Agent spawn name。写隔离三层缺一不可：L1 = 项目级 owner-acl PreToolUse hook（`owner-acl-hook.py`，按 `agent_type=owner-<owner_id>` 映射 owner 模块，越界写 `permissionDecision:"deny"` 硬拒）；L2 = sparse worktree 物理隔离；L3 = `worktree-merge-back` 已内置 per-owner scope audit（diff feature..owner 逐文件比 `owned_modules`，越界即 fail）。
-4. worker 经其结果契约的 `owner_updates` 字段（WORKER_RESULT_V4）回写 per-Goal Owner Capsule；worker 绝不写 `owners/<id>/memory.md`（会触发 L3 scope audit 越界 fail，且违反 worker 写白名单）。收口时由本 controller（subagent-coordination）在**主工作区**调 `owner-note` 写 `owners/<id>/memory.md` 与 `requirements/`（主工作区路径，随仓库提交），把跨 Goal 关键 decisions/invariants 沉淀为 registry memory。命名子代理经 SendMessage 二次寻址做记忆汇总是「可选增强，平台前提验证后启用」，不影响「不回收」的承重性；当前默认 controller 据 `owner_updates` + owner worktree diff（`diff feature..dev_{owner_id}`，merge-back 前后均可用，即 L3 scope audit 同一 diff）自写 owner-note。
-5. 各 owner 完成且 owner-scope 通过后，多 owner 的 merge-back 经 registry state lock **串行**执行，不得并发对同一 feature 分支。逐 owner `worktree-merge-back <registry.json> <feature_branch> <owner_id>` 用 `--no-ff` 合回 feature 分支，并已内置 L3 per-owner scope audit（越界即 fail——越界意味 registry 被绕过，须排查 owner 定义而非手工解冲突；`owned_modules` 全表互斥 ⇒ 理论零冲突）。每个 merge 后 `git checkout` 回主工作区原分支（仅文档声明，runtime 改动另议）。**所有 owner 全部 merge-back 完成后才进入 finalize，不得提前。**
-6. 全部 merge-back 完成后运行 `finalize`（须在所有 owner 的 merge-back 之后）；finalize 成功后交用户测试，`worktree-remove <owner_id>` 清理。owner 间依赖由 registry `depends_on_owners` 声明，经 SendMessage 协调时序。
+1. 规划阶段调 `owner-query`；缺口先执行 `owner-add --plan`/`owner-split --plan`，向用户展示候选变化、`registry_digest` 和 `proposal_digest`。AskUserQuestion 明确确认后，以 `--confirm <proposal_digest>` 执行同一 proposal。digest 只绑定 proposal 与 registry freshness，不能证明 AskUserQuestion 或回答者身份。随后产 plan 并运行 `owner-verify-plan`。
+2. 运行 `owner-bind-goal <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>`，先为 required work Owner 冻结 `pending` delivery；再执行 `worktree-create <registry.json> <feature_branch> <owner_id>`，随后运行 `owner-delivery-reconcile`，验证 worktree identity/base/scope 后推进到 `active`。runtime worktree 是唯一载体；L2 只是 visibility superset。delta 若新增 live writable Owner，下一次 reconcile 会把它以 `pending` 纳入，创建并再次 reconcile 后才能 dispatch。
+3. 以 `owner-<owner_id>` 为 Agent spawn name，让它直接在 canonical `owner_exec.worktree_path` 工作；不得创建第二个 isolation worktree或退回主 checkout。普通 task 的 `owner_exec` 为 `null`；Owner work task 包含 `agent_type`、`worktree_path`、`owner_branch`、`base_oid`、`owned_modules_glob`。runtime `bind` 不验证宿主进程的实际 cwd/branch/HEAD，worker 必须自检；宿主不支持既有路径或校验失败时返回 `unsupported`/`needs_repair`。Owner Bash 默认 deny。
+4. worker 通过 `owner_updates` 回写 per-Goal Capsule；controller 在主工作区用 `owner-note` 沉淀 registry memory，worker 不写 registry memory。
+5. work task accepted 后按 `status.next_action` 推进：`owner_commit_pending` 时逐 Owner 调 `worktree-commit <registry.json> <owner_id>` 后 reconcile；`owner_merge_pending` 时串行调 `worktree-merge-back <registry.json> <feature_branch> <owner_id>` 后再次 reconcile。commit 必须先于 merge，clean/branch/OID/exact scope 任一门禁失败都停止。
+6. 所有 required Owner merged 后才运行 merge 后的 `diff-scope-audit`，再运行 `finalize`；成功后才能 `worktree-remove`。worktree 命令当前仍是 registry-first 旧 surface，由 bind+reconcile 同步 Goal，不是跨 Git/JSON 的原子命令，也没有完整 crash-intent journal。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs owner-list           <registry.json>
 node <plugin-root>/scripts/goal-dag.mjs owner-query         <registry.json> <requirement.json>
 node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan   <registry.json> <plan.json>
 node <plugin-root>/scripts/goal-dag.mjs owner-note          <registry.json> <owner_id> <note.json>
-node <plugin-root>/scripts/goal-dag.mjs worktree-create     <registry.json> <feature_branch> <owner_id>
-node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back <registry.json> <feature_branch> <owner_id>
-node <plugin-root>/scripts/goal-dag.mjs worktree-remove     <registry.json> <owner_id> [--force]
+node <plugin-root>/scripts/goal-dag.mjs owner-bind-goal      <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>
+node <plugin-root>/scripts/goal-dag.mjs owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json>
+node <plugin-root>/scripts/goal-dag.mjs worktree-create      <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-commit      <registry.json> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back  <registry.json> <feature_branch> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs worktree-remove      <registry.json> <owner_id> [--force]
 ```
 
 ## 契约与模板
@@ -229,7 +232,7 @@ Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task
 | 无 active/ready task，但 required effect pair 仍为 pending | 生成追加 `DAG_DELTA_V1`，不得 finalize。 |
 | `source_status: source_changed` 且仍有 active reservation | `source_drift_drain`：停止 reserve；健康 executor finish；丢失 executor reclaim → stop → confirm。active/stale 清零后才 `goal-refresh`。 |
 | audit binding 下发 artifact path/contract | worker 只在精确 `evidence_artifact_paths` 写 proposal/运行 runtime audit，并在 evidence 同时返回 `artifact_ref` 与 `artifact_digest`。 |
-| owner 模型恢复：per-owner worktree 重连 | `owner-list` 列出 registry active owner，逐 owner 校验 worktree 存在 + `dev_{owner_id}` 绑定 + sparse 范围；executor 健康则 `SendMessage({to: owner-<owner_id>})` 重连，executor 丢失则 `abandon` + 重新以 `owner-<owner_id>` spawn，worktree 丢失则按 `feature_branch` 重建。 |
+| owner 模型恢复：per-owner worktree 重连 | `owner-list` 列出 registry active owner，逐 owner 校验 worktree 存在、runtime 登记的唯一 owner branch、base OID 与 sparse 范围；executor 健康则 `SendMessage({to: owner-<owner_id>})` 重连，executor 丢失则 `abandon` + 重新以 `owner-<owner_id>` spawn。worktree 丢失或 OID 无法证明时不得静默重建或降级到主 checkout，进入 `needs_repair`。 |
 
 #### 顺序不变量
 

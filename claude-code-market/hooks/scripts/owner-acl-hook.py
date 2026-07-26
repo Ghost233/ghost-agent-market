@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Owner ACL PreToolUse hook (Claude Code).
 
-Denies file writes by an owner subagent outside its owned_modules. The active
-owner is identified by `agent_type` (the subagent frontmatter name, shaped
-`owner-<owner_id>`). Non-owner agents are allowed through (fail-open).
+Denies file writes by an owner subagent outside its owned_modules and denies
+Owner Bash entirely. The active owner is identified by `agent_type` (the
+subagent frontmatter name, shaped `owner-<owner_id>`). Non-owner agents are
+allowed through, while any identified Owner with missing/malformed registry,
+unknown/inactive identity, or an unresolved target fails closed.
 
 Isolation layers (defense in depth; the L1/L2/L3 numbering is shared across the
 whole owner-registry chain — keep it identical in every skill / hook / audit):
-  L1  this hook (PreToolUse) — hard deny at write time, keyed on agent_type
-  L2  sparse worktree        — out-of-module files are physically absent from
-                               the per-owner worktree (sparse checkout)
-  L3  worktree-merge-back    — per-owner scope audit (diff feature..owner; any
-                               file outside owned_modules fails the merge)
+  L1  this hook (PreToolUse) — exact structured-path ACL; Owner Bash denied
+  L2  sparse worktree        — conservative visibility superset that reduces
+                               exposure; it is not an authorization boundary
+  L3  commit/merge audit     — exact owned_modules scope audit before transport
 
 Registry source resolution: owner worktrees are sparse checkouts that omit
 .ghost-agent-workflow, so this hook never reads cwd-local. It resolves the MAIN
@@ -24,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -123,8 +125,12 @@ def glob_to_regex(pattern: str) -> str:
 
 def path_matches(rel_path: str, globs: list[str]) -> bool:
     for pattern in globs:
-        if re.match(glob_to_regex(pattern), rel_path):
-            return True
+        try:
+            if re.match(glob_to_regex(pattern), rel_path):
+                return True
+        except re.error:
+            # Registry tampering or an invalid persisted glob must fail closed.
+            return False
     return False
 
 
@@ -172,20 +178,30 @@ def main_workspace_root(payload: dict) -> Path:
     return Path(cwd) if cwd else Path.cwd()
 
 
-def load_owner_modules(registry_path: Path, owner_id: str) -> list[str] | None:
+def load_owner_record(registry_path: Path, owner_id: str) -> tuple[dict | None, str | None]:
     if not registry_path.is_file():
-        return None
+        return None, "registry missing"
     try:
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    for owner in registry.get("owners", []):
-        if owner.get("owner_id") == owner_id and owner.get("lifecycle") == "active":
-            return list(owner.get("owned_modules", []))
-    return None
+        return None, "registry malformed"
+    if not isinstance(registry, dict) or not isinstance(registry.get("owners"), list):
+        return None, "registry malformed"
+    for owner in registry["owners"]:
+        if not isinstance(owner, dict):
+            return None, "registry malformed"
+        if owner.get("owner_id") != owner_id:
+            continue
+        if owner.get("lifecycle") != "active":
+            return None, f"owner {owner_id} is inactive"
+        modules = owner.get("owned_modules")
+        if not isinstance(modules, list) or not modules or not all(isinstance(x, str) for x in modules):
+            return None, f"owner {owner_id} owned_modules is invalid"
+        return owner, None
+    return None, f"owner {owner_id} is unknown"
 
 
-def target_rel_path(payload: dict) -> str | None:
+def target_rel_path(payload: dict, execution_root: Path | None = None) -> str | None:
     tool_input = payload.get("tool_input") or {}
     if not isinstance(tool_input, dict):
         return None
@@ -197,35 +213,49 @@ def target_rel_path(payload: dict) -> str | None:
     if not raw:
         return None
     target = Path(raw)
-    root = workspace_root(payload)
+    root = execution_root or workspace_root(payload)
     try:
         rel = target.resolve().relative_to(root.resolve())
         return rel.as_posix()
-    except ValueError:
-        pass
-    if target.is_absolute():
+    except (OSError, ValueError):
         return None
-    return raw.replace("\\", "/")
 
 
-def _is_owner_mutation_without_plan(payload: dict) -> bool:
-    """True when a Bash command runs ``owner-add``/``owner-split`` without
-    ``--plan`` (the registry-writing form). The ``--plan`` dry-run is allowed.
+_SHELL_META = re.compile(r"(?:&&|\|\||[;|<>\n\r`]|\$\()")
+_CONFIRM_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
-    owner-add/owner-split rewrite the cross-Goal owner topology and are
-    irreversible, so the write form is blocked for ANY agent — the skill must
-    run ``--plan`` (exposes the proposal) and confirm via AskUserQuestion before
-    the real write. This is the hard backstop for the skill's soft constraint.
-    """
+
+def _owner_mutation_denial(payload: dict) -> str | None:
+    """Validate owner topology mutation Bash as one strict direct argv command."""
     tool_input = payload.get("tool_input") or {}
     if not isinstance(tool_input, dict):
-        return False
+        return None
     command = tool_input.get("command")
     if not isinstance(command, str):
-        return False
-    if not re.search(r"\bowner-(?:add|split)\b", command):
-        return False
-    return re.search(r"--plan\b", command) is None
+        return None
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError:
+        if "owner-" in command:
+            return "owner-add/owner-split 命令无法按严格 argv 解析。"
+        return None
+    mutation_indexes = [i for i, arg in enumerate(argv) if arg in {"owner-add", "owner-split"}]
+    if not mutation_indexes:
+        return None
+    if _SHELL_META.search(command):
+        return "owner-add/owner-split 必须是单一直接命令；禁止复合 shell、管道、重定向、命令替换或换行。"
+    if len(mutation_indexes) != 1:
+        return "owner-add/owner-split 命令必须且只能包含一个 mutation 子命令。"
+    index = mutation_indexes[0]
+    subcommand = argv[index]
+    tail = argv[index + 1 :]
+    positional_count = 2 if subcommand == "owner-add" else 3
+    if len(tail) == positional_count + 1 and tail[positional_count:] == ["--plan"]:
+        return None
+    option = tail[positional_count:]
+    if len(tail) == positional_count + 2 and len(option) == 2 and option[0] == "--confirm" and _CONFIRM_DIGEST.fullmatch(option[1]):
+        return None
+    return "owner mutation 只允许 --plan 或 --confirm <64hex>，二者互斥。"
 
 
 def main() -> int:
@@ -233,27 +263,47 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (OSError, ValueError):
         return 0  # fail-open: cannot parse, let the platform decide
-    if _is_owner_mutation_without_plan(payload):
-        emit_deny(
-            "owner-add/owner-split 改写跨 Goal owner 拓扑（不可逆）。必须先 "
-            "owner-add/owner-split --plan 拿方案，经 AskUserQuestion 由用户确认后，"
-            "再执行不带 --plan 的落盘命令。dry-run 请加 --plan。"
-        )
+    mutation_denial = _owner_mutation_denial(payload)
+    if mutation_denial is not None:
+        emit_deny(mutation_denial)
         return 0
     agent_type = payload.get("agent_type") or ""
     if not isinstance(agent_type, str) or not agent_type.startswith(OWNER_PREFIX):
         return 0  # not an owner subagent
     owner_id = agent_type[len(OWNER_PREFIX) :]
     if not owner_id:
+        emit_deny("owner agent_type 缺少 owner identity；Owner 模式 fail closed。")
         return 0
-    rel = target_rel_path(payload)
-    if rel is None:
-        return 0  # no resolvable file target (e.g. Bash) — defer to other layers
+    tool_input = payload.get("tool_input") or {}
+    if isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
+        emit_deny("Owner agent 禁止 Bash；必须使用具有结构化路径的写工具。")
+        return 0
     root = main_workspace_root(payload)
     registry_path = root / ".ghost-agent-workflow" / "owners" / "registry.json"
-    modules = load_owner_modules(registry_path, owner_id)
-    if modules is None:
-        return 0  # registry missing or owner unknown — fail-open
+    owner, registry_error = load_owner_record(registry_path, owner_id)
+    if owner is None:
+        emit_deny(f"Owner ACL 无法建立可信绑定: {registry_error}; Owner 模式 fail closed。")
+        return 0
+    binding = owner.get("worktree_binding")
+    if not isinstance(binding, dict) or binding.get("status") not in {"active", "sealed"}:
+        emit_deny(f"Owner ACL 无法建立可信 worktree binding: owner {owner_id}; Owner 模式 fail closed。")
+        return 0
+    worktree_path = binding.get("worktree_path")
+    if not isinstance(worktree_path, str) or not worktree_path:
+        emit_deny(f"Owner ACL worktree path 无效: owner {owner_id}; Owner 模式 fail closed。")
+        return 0
+    execution_root = Path(worktree_path).resolve()
+    cwd = Path(payload.get("cwd") or "").resolve()
+    try:
+        cwd.relative_to(execution_root)
+    except ValueError:
+        emit_deny(f"Owner agent cwd 不在登记 worktree 内: {cwd}; Owner 模式 fail closed。")
+        return 0
+    rel = target_rel_path(payload, execution_root)
+    if rel is None:
+        emit_deny("Owner 写操作缺少可解析的登记 worktree 内结构化路径；Owner 模式 fail closed。")
+        return 0
+    modules = list(owner["owned_modules"])
     if path_matches(rel, modules):
         return 0
     emit_deny(

@@ -62,7 +62,52 @@ class OwnerRegistryCliTests(unittest.TestCase):
             "interfaces": interfaces or [],
             "depends_on_owners": depends or [],
         })
-        return self.run_json("owner-add", registry_path, def_path)
+        proposal = self.run_json("owner-add", registry_path, def_path, "--plan")
+        return self.run_json("owner-add", registry_path, def_path, "--confirm", proposal["proposal_digest"])
+
+    def split_owner(self, registry_path: Path, parent: str, spec_path: Path) -> dict:
+        proposal = self.run_json("owner-split", registry_path, parent, spec_path, "--plan")
+        return self.run_json("owner-split", registry_path, parent, spec_path, "--confirm", proposal["proposal_digest"])
+
+    def test_owner_add_confirm_rejects_wrong_digest_and_replay(self) -> None:
+        with self.registry_workspace() as (workspace_root, registry_path):
+            self.init_registry(registry_path, workspace_root)
+            definition = self.write_json(registry_path.parent / "confirm.json", {
+                "owner_id": "confirm_owner", "functional_domain": "confirm",
+                "owned_modules": ["src/confirm/**"], "interfaces": [], "depends_on_owners": [],
+            })
+            plan = self.run_json("owner-add", registry_path, definition, "--plan")
+            self.assertRegex(plan["registry_digest"], r"^[0-9a-f]{64}$")
+            self.assertRegex(plan["proposal_digest"], r"^[0-9a-f]{64}$")
+            self.assertEqual(plan["confirmation_scope"], "anti_accidental_and_toctou_only")
+            wrong = self.run_cli("owner-add", registry_path, definition, "--confirm", "0" * 64)
+            self.assertNotEqual(wrong.returncode, 0)
+            self.assertIn("proposal_digest mismatch", wrong.stderr)
+            self.run_json("owner-add", registry_path, definition, "--confirm", plan["proposal_digest"])
+            replay = self.run_cli("owner-add", registry_path, definition, "--confirm", plan["proposal_digest"])
+            self.assertNotEqual(replay.returncode, 0)
+
+    def test_dependency_graph_and_retired_execution_are_rejected(self) -> None:
+        with self.registry_workspace() as (workspace_root, registry_path):
+            self.init_registry(registry_path, workspace_root)
+            unknown = self.write_json(registry_path.parent / "unknown-dep.json", {
+                "owner_id": "a", "functional_domain": "a", "owned_modules": ["a/**"],
+                "interfaces": [], "depends_on_owners": ["missing"],
+            })
+            rejected = self.run_cli("owner-add", registry_path, unknown, "--plan")
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("depends on unknown owner", rejected.stderr)
+            self.add_owner(registry_path, "parent", ["src/parent/**"])
+            spec = self.write_json(registry_path.parent / "retire.json", {
+                "reason": "retire", "new_owners": [{"owner_id": "child", "functional_domain": "child",
+                "owned_modules": ["src/parent/**"], "interfaces": [], "depends_on_owners": []}],
+            })
+            self.split_owner(registry_path, "parent", spec)
+            requirement = self.write_json(registry_path.parent / "retired-query.json", {"modules": ["src/parent/x"], "text": "x"})
+            self.assertEqual(self.run_json("owner-query", registry_path, requirement)["covered"][0]["owner_id"], "child")
+            rejected = self.run_cli("worktree-create", registry_path, "main", "parent")
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("is not active", rejected.stderr)
 
     def test_owner_init_creates_empty_registry(self) -> None:
         with self.registry_workspace() as (workspace_root, registry_path):
@@ -154,7 +199,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                 self.write_json(registry_path.parent / "bad.json", {
                     "owner_id": "bad_owner", "functional_domain": "x",
                     "owned_modules": ["src/proto/x.proto"], "interfaces": [], "depends_on_owners": [],
-                }),
+                }), "--plan",
             )
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("overlaps", rejected.stderr)
@@ -168,7 +213,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                 self.write_json(registry_path.parent / "dup.json", {
                     "owner_id": "api_owner", "functional_domain": "x",
                     "owned_modules": ["src/other/**"], "interfaces": [], "depends_on_owners": [],
-                }),
+                }), "--plan",
             )
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("already exists", rejected.stderr)
@@ -182,7 +227,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                     "owner_id": "api_owner", "functional_domain": "x",
                     "owned_modules": ["src/api/**"],
                     "interfaces": ["src/proto/shared.proto"], "depends_on_owners": [],
-                }),
+                }), "--plan",
             )
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("within owned_modules", rejected.stderr)
@@ -218,7 +263,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                     "interfaces": [], "depends_on_owners": ["chat_owner"],
                 }],
             })
-            payload = self.run_json("owner-split", registry_path, "chat_owner", spec_path)
+            payload = self.split_owner(registry_path, "chat_owner", spec_path)
             self.assertEqual(payload["status"], "split")
             self.assertEqual(payload["parent_owner_id"], "chat_owner")
             self.assertEqual(payload["parent_would_lifecycle"], "active")
@@ -243,11 +288,13 @@ class OwnerRegistryCliTests(unittest.TestCase):
                      "owned_modules": ["src/chat/dialog/**"], "interfaces": [], "depends_on_owners": []},
                 ],
             })
-            payload = self.run_json("owner-split", registry_path, "chat_owner", spec_path)
+            payload = self.split_owner(registry_path, "chat_owner", spec_path)
             self.assertEqual(payload["parent_would_lifecycle"], "retired")
             self.assertEqual(payload["parent_would_retain"], [])
             listed = self.run_json("owner-list", registry_path)
-            self.assertFalse(any(o["owner_id"] == "chat_owner" for o in listed["owners"]))
+            parent = next(o for o in listed["owners"] if o["owner_id"] == "chat_owner")
+            self.assertEqual(parent["lifecycle"], "retired")
+            self.assertEqual(parent["owned_modules"], [])
 
     def test_owner_split_rejects_module_outside_parent(self) -> None:
         with self.registry_workspace() as (workspace_root, registry_path):
@@ -260,7 +307,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                     "owned_modules": ["src/api/**"], "interfaces": [], "depends_on_owners": [],
                 }],
             })
-            rejected = self.run_cli("owner-split", registry_path, "chat_owner", spec_path)
+            rejected = self.run_cli("owner-split", registry_path, "chat_owner", spec_path, "--plan")
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("not within parent", rejected.stderr)
 
@@ -280,7 +327,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
                     "depends_on_owners": ["ab_owner"],
                 }],
             })
-            rejected = self.run_cli("owner-split", registry_path, "ab_owner", spec_path)
+            rejected = self.run_cli("owner-split", registry_path, "ab_owner", spec_path, "--plan")
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("would fall outside retained", rejected.stderr)
 
@@ -312,7 +359,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.init_registry(registry_path, workspace_root)
             self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
             payload = self.run_json("worktree-create", registry_path, "dev_feature", "proto_owner")
-            self.assertEqual(payload["owner_branch"], "dev_proto_owner")
+            self.assertRegex(payload["owner_branch"], r"^owner_proto_owner_[0-9a-f]{10}$")
             self.assertEqual(payload["sparse_dirs"], ["src/proto"])
             worktree = Path(payload["worktree_path"])
             # sparse: only src/proto materialized, src/api absent
@@ -337,6 +384,8 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
             created = self.run_json("worktree-create", registry_path, "dev_feature", "proto_owner")
             self.commit_in_worktree(Path(created["worktree_path"]), {"src/proto/log.proto": "log\n"})
+            sealed = self.run_json("worktree-commit", registry_path, "proto_owner")
+            self.assertEqual(sealed["status"], "sealed")
             merged = self.run_json("worktree-merge-back", registry_path, "dev_feature", "proto_owner")
             self.assertEqual(merged["status"], "merged")
             self.assertEqual(merged["changed_files"], 1)
@@ -359,7 +408,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             # bypass sparse to plant an out-of-scope file
             subprocess.run(["git", "-C", str(worktree), "sparse-checkout", "disable"], check=True)
             self.commit_in_worktree(worktree, {"src/api/leak.ts": "leak\n"})
-            rejected = self.run_cli("worktree-merge-back", registry_path, "dev_feature", "proto_owner")
+            rejected = self.run_cli("worktree-commit", registry_path, "proto_owner")
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("outside owned_modules", rejected.stderr)
 
@@ -384,6 +433,37 @@ class OwnerRegistryCliTests(unittest.TestCase):
             listed = self.run_json("owner-list", registry_path)
             proto = next(o for o in listed["owners"] if o["owner_id"] == "proto_owner")
             self.assertEqual(proto["worktree_status"], "removed")
+
+    def test_worktree_commit_rejects_cross_scope_rename_and_branch_before_base(self) -> None:
+        with self.registry_workspace() as (workspace_root, registry_path):
+            (workspace_root / "src/proto/base.proto").parent.mkdir(parents=True, exist_ok=True)
+            (workspace_root / "src/proto/base.proto").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(workspace_root), "add", "-A"], check=True)
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "-c", "user.name=t", "-c", "user.email=t@e.invalid",
+                 "commit", "-q", "-m", "init"], check=True,
+            )
+            parent_oid = subprocess.run(
+                ["git", "-C", str(workspace_root), "rev-parse", "HEAD^"],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            subprocess.run(["git", "-C", str(workspace_root), "checkout", "-q", "-b", "dev_feature"], check=True)
+            self.init_registry(registry_path, workspace_root)
+            self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
+            created = self.run_json("worktree-create", registry_path, "dev_feature", "proto_owner")
+            worktree = Path(created["worktree_path"])
+            subprocess.run(["git", "-C", str(worktree), "sparse-checkout", "disable"], check=True)
+            (worktree / "src/api").mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["git", "-C", str(worktree), "mv", "src/proto/base.proto", "src/api/base.proto"], check=True,
+            )
+            renamed = self.run_cli("worktree-commit", registry_path, "proto_owner")
+            self.assertNotEqual(renamed.returncode, 0)
+            self.assertIn("outside owned_modules", renamed.stderr)
+            subprocess.run(["git", "-C", str(worktree), "reset", "--hard", parent_oid], check=True)
+            behind = self.run_cli("worktree-commit", registry_path, "proto_owner")
+            self.assertNotEqual(behind.returncode, 0)
+            self.assertIn("no longer descends from base_oid", behind.stderr)
 
     def test_owner_verify_plan_checks_writable_within_owned_modules(self) -> None:
         with self.registry_workspace() as (workspace_root, registry_path):

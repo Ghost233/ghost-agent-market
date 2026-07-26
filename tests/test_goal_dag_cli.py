@@ -2028,31 +2028,64 @@ class GoalDagCliTests(unittest.TestCase):
             payload = self.run_json("reserve", plan_path, state_path, 1, script=CLAUDE_SCRIPT)
             self.assertIsNone(payload["actions"][0]["binding"]["runtime_profile"])
 
-    def test_published_drivers_exactly_match_built_typescript_source(self) -> None:
-        source_path = ROOT / "tooling/goal-dag/goal-dag.ts"
+    def test_published_drivers_exactly_match_platform_typescript_sources(self) -> None:
+        sources = {
+            "codex": ROOT / "tooling/goal-dag/goal-dag.ts",
+            "claude_code": ROOT / "tooling/goal-dag/goal-dag-claude.ts",
+        }
         builder = """
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 const source = readFileSync(process.argv[1], "utf8");
 const template = [
-  "// Generated from tooling/goal-dag/goal-dag.ts. Do not edit directly.",
+  `// Generated from ${process.argv[2]}. Do not edit directly.`,
   stripTypeScriptTypes(source, { mode: "strip" }).replace(/[ \\t]+$/gm, ""),
 ].join("\\n");
-process.stdout.write(JSON.stringify({
-  codex: template.replaceAll("__EXECUTION_PLATFORM__", "codex"),
-  claude_code: template.replaceAll("__EXECUTION_PLATFORM__", "claude_code"),
-}));
+process.stdout.write(template.replaceAll("__EXECUTION_PLATFORM__", process.argv[3]));
 """
+        for platform, source_path in sources.items():
+            source_ref = source_path.relative_to(ROOT).as_posix()
+            built = subprocess.run(
+                [
+                    "node", "--input-type=module", "-e", builder,
+                    str(source_path), source_ref,
+                    "codex" if platform == "codex" else "claude_code",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            published = CODEX_SCRIPT if platform == "codex" else CLAUDE_SCRIPT
+            self.assertEqual(built.stdout, published.read_text(encoding="utf-8"))
+    def test_build_wiring_preserves_published_drivers_and_codex_baseline(self) -> None:
+        before = {
+            CODEX_SCRIPT: CODEX_SCRIPT.read_bytes(),
+            CLAUDE_SCRIPT: CLAUDE_SCRIPT.read_bytes(),
+        }
         built = subprocess.run(
-            ["node", "--input-type=module", "-e", builder, str(source_path)],
+            ["node", str(ROOT / "tooling/goal-dag/build.mjs")],
             capture_output=True,
             text=True,
             check=False,
         )
         self.assertEqual(built.returncode, 0, built.stderr)
-        expected = json.loads(built.stdout)
-        self.assertEqual(expected["codex"], CODEX_SCRIPT.read_text(encoding="utf-8"))
-        self.assertEqual(expected["claude_code"], CLAUDE_SCRIPT.read_text(encoding="utf-8"))
+        for path, content in before.items():
+            self.assertEqual(path.read_bytes(), content, str(path))
+        self.assertEqual(
+            hashlib.sha256(CODEX_SCRIPT.read_bytes()).hexdigest(),
+            "b7230a764b74378a18c72115cc6b008eb7ff85ed490f21fdab4cd3f90ef90e18",
+        )
+        self.assertTrue(
+            CLAUDE_SCRIPT.read_text(encoding="utf-8").startswith(
+                "// Generated from tooling/goal-dag/goal-dag-claude.ts. Do not edit directly."
+            )
+        )
+        self.assertTrue(
+            CODEX_SCRIPT.read_text(encoding="utf-8").startswith(
+                "// Generated from tooling/goal-dag/goal-dag.ts. Do not edit directly."
+            )
+        )
 
 
 if __name__ == "__main__":

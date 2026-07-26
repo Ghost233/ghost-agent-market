@@ -15,6 +15,18 @@ GD = ROOT / "claude-code-market/scripts/goal-dag.mjs"
 
 
 class OwnerAclHookTests(unittest.TestCase):
+    def add_owner(self, registry_path: Path, def_path: Path, env: dict) -> None:
+        planned = subprocess.run(
+            ["node", str(GD), "owner-add", str(registry_path), str(def_path), "--plan"],
+            check=True, capture_output=True, text=True, env=env,
+        )
+        proposal_digest = json.loads(planned.stdout)["proposal_digest"]
+        subprocess.run(
+            ["node", str(GD), "owner-add", str(registry_path), str(def_path),
+             "--confirm", proposal_digest],
+            check=True, capture_output=True, env=env,
+        )
+
     @contextmanager
     def workspace_with_owner(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -32,10 +44,14 @@ class OwnerAclHookTests(unittest.TestCase):
                 "owner_id": "proto_owner", "functional_domain": "proto",
                 "owned_modules": ["src/proto/**"], "interfaces": [], "depends_on_owners": [],
             }), encoding="utf-8")
-            subprocess.run(
-                ["node", str(GD), "owner-add", str(registry_path), str(def_path)],
-                check=True, capture_output=True, env=env,
-            )
+            self.add_owner(registry_path, def_path, env)
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            registry["owners"][0]["worktree_binding"] = {
+                "feature_branch": "feature", "owner_branch": "owner-proto", "worktree_path": str(workspace_root),
+                "status": "active", "created_at": "2026-07-26T00:00:00Z", "base_oid": "0" * 40,
+                "committed_oid": None, "committed_at": None, "merged_oid": None, "merged_at": None,
+            }
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
             yield workspace_root, registry_path
 
     def run_hook(self, payload: dict, extra_env: dict | None = None) -> dict | None:
@@ -75,8 +91,11 @@ class OwnerAclHookTests(unittest.TestCase):
     def test_r9_out_of_scope_denied_when_cwd_is_worktree(self) -> None:
         # owner worktree 的 sparse checkout 不含 .ghost-agent-workflow；hook 须
         # 经 CLAUDE_PROJECT_DIR 回主工作区读 registry（R9），否则 fail-open。
-        with self.workspace_with_owner() as (workspace_root, _), tempfile.TemporaryDirectory() as wt_dir:
+        with self.workspace_with_owner() as (workspace_root, registry_path), tempfile.TemporaryDirectory() as wt_dir:
             worktree_root = Path(wt_dir)  # 模拟 owner worktree：无 .ghost-agent-workflow
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            registry["owners"][0]["worktree_binding"]["worktree_path"] = str(worktree_root)
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
             output = self.run_hook({
                 "agent_type": "owner-proto_owner", "cwd": str(worktree_root),
                 "tool_input": {"file_path": str(worktree_root / "src/proto/log.proto")},
@@ -94,6 +113,10 @@ class OwnerAclHookTests(unittest.TestCase):
         with self.workspace_with_owner() as (workspace_root, _):
             nested = workspace_root / "worktrees" / "proto"
             nested.mkdir(parents=True)
+            registry_path = workspace_root / ".ghost-agent-workflow" / "owners" / "registry.json"
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            registry["owners"][0]["worktree_binding"]["worktree_path"] = str(nested)
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
             denied = self.run_hook({
                 "agent_type": "owner-proto_owner", "cwd": str(nested),
                 "tool_input": {"file_path": str(nested / "src/api/leak.ts")},
@@ -112,10 +135,15 @@ class OwnerAclHookTests(unittest.TestCase):
                 "owned_modules": ["src/{api,chat}/**", "src/x/[!y]/z.ts"],
                 "interfaces": [], "depends_on_owners": [],
             }), encoding="utf-8")
-            subprocess.run(
-                ["node", str(GD), "owner-add", str(registry_path), str(br_def)],
-                check=True, capture_output=True, env=env,
-            )
+            self.add_owner(registry_path, br_def, env)
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            brace = next(owner for owner in registry["owners"] if owner["owner_id"] == "brace_owner")
+            brace["worktree_binding"] = {
+                "feature_branch": "feature", "owner_branch": "owner-brace", "worktree_path": str(workspace_root),
+                "status": "active", "created_at": "2026-07-26T00:00:00Z", "base_oid": "0" * 40,
+                "committed_oid": None, "committed_at": None, "merged_oid": None, "merged_at": None,
+            }
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
             # {api,chat} 覆盖 src/api 与 src/chat：in-scope 放行
             self.assertIsNone(self.run_hook({
                 "agent_type": "owner-brace_owner", "cwd": str(workspace_root),
@@ -155,10 +183,15 @@ class OwnerAclHookTests(unittest.TestCase):
                 "owner_id": "midstar_owner", "functional_domain": "mid",
                 "owned_modules": ["lib/**/proto/*.proto"], "interfaces": [], "depends_on_owners": [],
             }), encoding="utf-8")
-            subprocess.run(
-                ["node", str(GD), "owner-add", str(registry_path), str(mid_def)],
-                check=True, capture_output=True, env=env,
-            )
+            self.add_owner(registry_path, mid_def, env)
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            midstar = next(owner for owner in registry["owners"] if owner["owner_id"] == "midstar_owner")
+            midstar["worktree_binding"] = {
+                "feature_branch": "feature", "owner_branch": "owner-midstar", "worktree_path": str(workspace_root),
+                "status": "active", "created_at": "2026-07-26T00:00:00Z", "base_oid": "0" * 40,
+                "committed_oid": None, "committed_at": None, "merged_oid": None, "merged_at": None,
+            }
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
             # ** 匹配整段 a：lib/a/proto/x.proto in-scope 放行
             self.assertIsNone(self.run_hook({
                 "agent_type": "owner-midstar_owner", "cwd": str(workspace_root),
@@ -180,9 +213,8 @@ class OwnerAclHookTests(unittest.TestCase):
                 "tool_input": {"file_path": str(workspace_root / "src/api/leak.ts")},
             }))
 
-    def test_blocks_owner_mutation_without_plan(self) -> None:
-        # owner-add/owner-split 落盘（无 --plan）必须经 --plan + AskUserQuestion；
-        # hook 对任何 agent（含主线程 controller）硬拦，防跳过确认直接改 registry。
+    def test_blocks_owner_mutation_without_confirmation(self) -> None:
+        # Topology mutation accepts only a direct --plan or digest-bound --confirm command.
         with self.workspace_with_owner() as (workspace_root, _):
             reg = workspace_root / ".ghost-agent-workflow" / "owners" / "registry.json"
             denied = self.run_hook({
@@ -191,8 +223,7 @@ class OwnerAclHookTests(unittest.TestCase):
             })
             self.assertIsNotNone(denied)
             self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
-            self.assertIn("AskUserQuestion", denied["hookSpecificOutput"]["permissionDecisionReason"])
-            # split 落盘同样拦
+            self.assertIn("--confirm", denied["hookSpecificOutput"]["permissionDecisionReason"])
             denied_split = self.run_hook({
                 "agent_type": "general-purpose", "cwd": str(workspace_root),
                 "tool_input": {"command": f"node {GD} owner-split {reg} parent spec.json"},
@@ -211,7 +242,28 @@ class OwnerAclHookTests(unittest.TestCase):
                 "agent_type": "general-purpose", "cwd": str(workspace_root),
                 "tool_input": {"command": f"node {GD} owner-split {reg} parent spec.json --plan"},
             }))
-            # 无关 Bash 放行
+            digest = "a" * 64
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-add {reg} /tmp/def.json --confirm {digest}"},
+            }))
+            for suffix in [
+                "--plan && touch /tmp/pwn",
+                "--plan | sh",
+                "--plan; true",
+                "--plan\ntrue",
+                "--plan > /tmp/out",
+                "--confirm $(printf a)",
+                "--confirm `printf a`",
+                "--plan --confirm " + digest,
+                "--confirm bad",
+            ]:
+                denied = self.run_hook({
+                    "agent_type": "general-purpose", "cwd": str(workspace_root),
+                    "tool_input": {"command": f"node {GD} owner-add {reg} /tmp/def.json {suffix}"},
+                })
+                self.assertIsNotNone(denied, suffix)
+            # unrelated Bash remains unaffected for non-owner agents
             self.assertIsNone(self.run_hook({
                 "agent_type": "general-purpose", "cwd": str(workspace_root),
                 "tool_input": {"command": "git status && ls"},
@@ -224,19 +276,65 @@ class OwnerAclHookTests(unittest.TestCase):
                 "tool_input": {"file_path": str(workspace_root / "src/api/leak.ts")},
             }))
 
-    def test_unknown_owner_fails_open(self) -> None:
+    def test_relative_traversal_and_wrong_cwd_fail_closed(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, registry_path):
+            traversal = self.run_hook({
+                "agent_type": "owner-proto_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": "src/proto/../../../outside/secret"},
+            })
+            self.assertIsNotNone(traversal)
+            self.assertEqual(traversal["hookSpecificOutput"]["permissionDecision"], "deny")
+            with tempfile.TemporaryDirectory() as other:
+                denied = self.run_hook({
+                    "agent_type": "owner-proto_owner", "cwd": other,
+                    "tool_input": {"file_path": str(Path(other) / "src/proto/log.proto")},
+                }, extra_env={"CLAUDE_PROJECT_DIR": str(workspace_root)})
+            self.assertIsNotNone(denied)
+            self.assertIn("cwd", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_quoted_mutation_and_malformed_registry_glob_fail_closed(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, registry_path):
+            denied = self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"command": f"node {GD} owner-''add {registry_path} def.json"},
+            })
+            self.assertIsNotNone(denied)
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            registry["owners"][0]["owned_modules"] = ["src/[z-a]/x"]
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
+            denied = self.run_hook({
+                "agent_type": "owner-proto_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/a/x")},
+            })
+            self.assertIsNotNone(denied)
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_owner_bash_is_denied(self) -> None:
         with self.workspace_with_owner() as (workspace_root, _):
-            self.assertIsNone(self.run_hook({
+            denied = self.run_hook({
+                "agent_type": "owner-proto_owner", "cwd": str(workspace_root),
+                "tool_input": {"command": "printf leak > src/api/leak.ts"},
+            })
+            self.assertIsNotNone(denied)
+            self.assertIn("禁止 Bash", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_unknown_owner_fails_closed(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, _):
+            denied = self.run_hook({
                 "agent_type": "owner-ghost", "cwd": str(workspace_root),
                 "tool_input": {"file_path": str(workspace_root / "anywhere.ts")},
-            }))
+            })
+            self.assertIsNotNone(denied)
+            self.assertIn("unknown", denied["hookSpecificOutput"]["permissionDecisionReason"])
 
-    def test_missing_registry_fails_open(self) -> None:
+    def test_missing_registry_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            self.assertIsNone(self.run_hook({
+            denied = self.run_hook({
                 "agent_type": "owner-proto_owner", "cwd": directory,
                 "tool_input": {"file_path": str(Path(directory) / "x.ts")},
-            }))
+            })
+            self.assertIsNotNone(denied)
+            self.assertIn("registry missing", denied["hookSpecificOutput"]["permissionDecisionReason"])
 
 
 if __name__ == "__main__":
