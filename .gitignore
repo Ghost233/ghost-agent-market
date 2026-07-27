@@ -6,3 +6,9 @@ __pycache__/
 *.log
 tmp/
 dist/
+
+**/.claude/worktrees
+**/.claude/workflows
+**/.claude/settings.local.json
+.claude/settings.local.json
+.claude/settings.local.json.fake*
