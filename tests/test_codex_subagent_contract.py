@@ -48,18 +48,18 @@ class CodexWorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(tool, self.coordinator)
         self.assertIn('model: "gpt-5.6-sol"', self.coordinator)
-        self.assertIn('reasoning_effort: "medium"', self.coordinator)
+        self.assertIn('reasoning_effort: "high"', self.coordinator)
         self.assertIn('fork_turns: "none"', self.coordinator)
         self.assertIn('agent_type: "worker"', self.coordinator)
         self.assertIn("executor_spawn_name", self.coordinator)
-        self.assertIn("TASK_BINDING_V4", self.coordinator)
+        self.assertIn("TASK_BINDING_V5", self.coordinator)
         self.assertNotIn("SUBAGENT_BOOTSTRAP_V1", self.coordinator)
         self.assertNotIn("SUBAGENT_READY_V1", self.coordinator)
         self.assertIn("default_prompt:", self.coordinator_metadata)
         self.assertIn("allow_implicit_invocation: false", self.coordinator_metadata)
         self.assertIn("/goal 每轮使用 $subagent-coordination", combined)
 
-    def test_owner_affinity_is_soft_and_fenced(self) -> None:
+    def test_owner_affinity_is_permanent_and_fenced(self) -> None:
         combined = "\n".join(
             (
                 self.coordinator,
@@ -77,20 +77,32 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "rotate-owner",
             "不同 Goal 不复用",
             "会话记忆和复用只是性能优化",
-            "不表示永久 Agent",
+            "仓库级永久",
+            "同一模块的 work、review、verify",
+            "approved Registry",
+            "不能新建 review/repair Owner",
         ):
             self.assertIn(invariant, combined)
 
-    def test_worker_checkpoints_and_returns_v4_result(self) -> None:
+    def test_worker_checkpoints_and_returns_v5_result(self) -> None:
         combined = f"{self.worker}\n{self.worker_reference}"
-        for contract in ("TASK_BINDING_V4", "OWNER_CHECKPOINT_V1", "WORKER_RESULT_V4"):
+        for contract in ("TASK_BINDING_V5", "OWNER_CHECKPOINT_V1", "WORKER_RESULT_V5"):
             self.assertIn(contract, combined)
         for field in (
             "owner_capsule_ref",
+            "persistent_owner_capsule_ref",
+            "owner_registry",
+            "owner_scope_patterns",
+            "readable_paths",
+            "searchable_paths",
+            "owner_scope_excludes",
+            "published_artifact_directory",
+            "dependency_inputs",
+            "workspace_change_seq",
             "result_path",
             "source_revision",
             "plan_item_ids",
-            "coverage.{ref,digest,semantic_digest}",
+            "semantic_digest",
             "evidence_artifact_paths",
             "artifact_digest",
         ):
@@ -161,14 +173,18 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn('model: "gpt-5.3-codex-spark"', self.git_commit)
         self.assertIn('reasoning_effort: "xhigh"', self.git_commit)
         self.assertIn("multi_agent_v1:gpt-5.3-codex-spark/xhigh", combined)
-        self.assertIn('model: "gpt-5.6-terra"', self.git_commit)
-        self.assertIn('reasoning_effort: "medium"', self.git_commit)
-        self.assertIn("spawn_agent:gpt-5.6-terra/medium", combined)
+        self.assertIn('model: "gpt-5.6-sol"', self.git_commit)
+        self.assertIn('reasoning_effort: "high"', self.git_commit)
+        self.assertIn("spawn_agent:gpt-5.6-sol/high", combined)
+        self.assertNotIn("gpt-5.6-terra", combined)
         self.assertNotIn("create_thread", self.git_commit)
         self.assertNotIn("list_projects", self.git_commit)
         self.assertNotIn("wait_threads", self.git_commit)
         self.assertNotIn("gpt-5.6-luna", self.git_commit)
         self.assertIn("主线程复核", self.git_commit)
+        self.assertIn("DELIVERY_MANIFEST_V1", self.git_commit)
+        self.assertIn("delivery-validate", self.git_commit)
+        self.assertIn("不得读取 `git diff`", self.git_commit)
 
     def test_git_commit_has_no_dedicated_agent_config(self) -> None:
         matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
@@ -223,9 +239,9 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^0\.9\.\d+\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.0\.0\+codex\.")
         self.assertIn("/goal", manifest["description"])
-        self.assertIn("v4", manifest["description"])
+        self.assertIn("v5", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
         self.assertEqual(
             prompt,

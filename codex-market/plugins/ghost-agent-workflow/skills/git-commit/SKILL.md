@@ -13,6 +13,32 @@ description: |
 
 在当前 checkout 中提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
+
+## 永久 Owner 仓库的清单模式
+
+运行 `git rev-parse --show-toplevel` 后，首先检查仓库根的 `.ghost-agent-workflow/owners/registry.json`。文件存在时必须进入本节，并在本节结束；禁止继续执行后面的通用分析子代理和“主线程复核”流程。Registry 不存在时才使用后续旧流程。
+
+清单模式中的 Git 控制器是机械 actor，不是模块 Owner。它可以读取 Registry、runtime state、`DELIVERY_MANIFEST_V1`、`COMMIT_ATTESTATION_V1`、Git identity/status/name-only/check/hash，但不得读取 `git diff`、`git show` 的模块内容，不得搜索或语义审查模块代码，也不得替 Owner 修改提交信息或文件分组。
+
+1. 从当前已完成 Goal 的 commit-readiness evidence 取得精确 delivery manifest。若需要发现候选，只能按 runtime state 中的 accepted artifact ref 机械查找；不能按时间戳盲选。存在多个当前候选或没有候选时停止并报告。
+2. 运行：
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs delivery-validate <delivery-manifest.json>
+```
+
+只有返回 `status: valid` 才继续。该命令会重新核对当前 worktree、HEAD、Registry digest、`workspace_change_seq`、diff-scope evidence、每个 Owner attestation、敏感/runtime/未归属路径和 `git diff --check`。
+3. 机械比较 `git status --porcelain=v1 -z` 的全部可交付路径与 manifest 的 `changed_files[]`。集合不完全相等、存在脏 submodule 内部内容、调用前已有不在清单中的 staged 内容或 HEAD 改变时，在任何 Git 写入前停止。Goal/Plan/runtime 路径永远不能加入提交。
+4. 读取适用仓库指令以及 `git config user.name`、`git config user.email`。身份不符时停止。不要通过模块源码推导额外约束。
+5. 要求 manifest 的 `commit_strategy` 为 `single_atomic`，且所有 Owner attestation 已由 commit-readiness 证明同意同一个顶层 `commit_message`。多个 Owner 的文件保持各自 attestation 分组用于核验，但 Git 控制器不能自行拆分、合并或改写语义。
+6. 使用 manifest 的完整 `changed_files[]` 和共同批准的 `commit_message` 创建一个原子提交：
+   - 用完整显式路径集合 `git add -- <paths>`；不得使用 `git add .` 或 `git add -A`。
+   - 只运行 `git diff --cached --name-only`、`git diff --cached --check` 和 status，确认暂存路径集合精确相等；不得显示 cached diff 内容。
+   - 使用各 Owner 共同批准的单行 Conventional Commit message 创建提交，保留仓库要求的 trailer；控制器不得改写其语义。
+
+清单模式不启动任何通用 Git 分析代理。它报告 manifest digest、`workspace_change_seq`、Owner attestation digest、提交 hash、name-only/check 结果和剩余 status；不输出模块 diff。
+
+
 主线程是唯一 Git 写入者。子代理只读分析并返回提交建议；不得让子代理暂存、提交、修改文件或继续委派。分析前先检查本会话注册的子代理工具，只选择一个确定存在的执行路径，不用失败调用探测能力，也不运行第二个分析执行单元。提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
 ## 只读分析子代理
@@ -55,10 +81,10 @@ tools.multi_agent_v1__wait_agent:
 ```text
 agent_type: "default"
 fork_turns: "none"
-model: "gpt-5.6-terra"
-reasoning_effort: "medium"
+model: "gpt-5.6-sol"
+reasoning_effort: "high"
 task_name: "ga_git_commit_analysis_<时分秒>"
-message: <只读分析包，profile_evidence 精确等于 spawn_agent:gpt-5.6-terra/medium>
+message: <只读分析包，profile_evidence 精确等于 spawn_agent:gpt-5.6-sol/high>
 ```
 
 4. 对 v1 路径使用同一 `exec` 中的 `multi_agent_v1__wait_agent`；对直接路径使用 collaboration 的 `wait_agent` 等待终态。工具已注册但创建、初始化、等待或运行失败时，在任何 Git 写操作前停止并报告原始证据；不得切换到另一条路径、创建第二个代理或退回主线程自行分析。合法 `status: "blocked"` 同样是终态，不得再次分析。契约缺失、JSON 格式错误、仓库不一致或 profile 不一致时停止，不发送格式修复请求，不创建替代执行单元。
@@ -87,7 +113,7 @@ message: <只读分析包，profile_evidence 精确等于 spawn_agent:gpt-5.6-te
 }
 ```
 
-`profile_evidence` 只能精确等于实际所选路径对应的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-terra/medium`。不得使用 `|`、不得同时报告两个 profile。最终状态为 `blocked` 或最终分析代理失败时，在任何 Git 写操作前停止并报告原始证据。
+`profile_evidence` 只能精确等于实际所选路径对应的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-sol/high`。不得使用 `|`、不得同时报告两个 profile。最终状态为 `blocked` 或最终分析代理失败时，在任何 Git 写操作前停止并报告原始证据。
 
 ## 主线程复核
 
@@ -137,7 +163,7 @@ Co-Authored-By: Nexus <nexus@xfinite.global>
 
 主线程报告：
 
-- 最终使用的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-terra/medium` profile evidence、工具选择证据和分析警告。
+- 最终使用的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-sol/high` profile evidence、工具选择证据和分析警告。
 - 每个仓库和批次的 commit hash、提交信息与文件范围。
 - submodule 到主工程的实际提交顺序。
 - hooks 和 `git diff --cached --check` 结果。

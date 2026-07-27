@@ -52,8 +52,78 @@ class KimiGoalDagCliTests(unittest.TestCase):
             plan["coverage_path"] = str(root / "coverage.json")
             for owner in plan["owners"]:
                 owner["runtime_profile"] = None
+            for actor in plan["runtime_actors"]:
+                actor["runtime_profile"] = None
             plan_path = root / "plan.json"
             plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            owner_root = workspace_root / ".ghost-agent-workflow" / "owners"
+            owner_root.mkdir(parents=True, exist_ok=True)
+            persistent_owners = []
+            for owner in plan["owners"]:
+                if not owner["writable_paths"]:
+                    continue
+                persistent_owner = {
+                    "id": owner["id"],
+                    "generation": 1,
+                    "status": "active",
+                    "responsibility": owner["responsibility"],
+                    "scope_patterns": owner["writable_paths"],
+                    "scope_excludes": owner["excluded_paths"],
+                    "worker_context": owner["worker_context"],
+                    "runtime_profile": owner["runtime_profile"],
+                    "lineage": {
+                        "parent_owner_ids": [],
+                        "created_by_request_digest": "bootstrap",
+                    },
+                }
+                persistent_owners.append(persistent_owner)
+                capsule_path = owner_root / owner["id"] / "capsule.json"
+                capsule_path.parent.mkdir(parents=True)
+                capsule_path.write_text(
+                    json.dumps(
+                        {
+                            "contract": "OWNER_CAPSULE_V2",
+                            "owner_id": owner["id"],
+                            "generation": 1,
+                            "registry_revision": 1,
+                            "scope_patterns": owner["writable_paths"],
+                            "scope_excludes": owner["excluded_paths"],
+                            "responsibility": owner["responsibility"],
+                            "worker_context": owner["worker_context"],
+                            "inherited_from": [],
+                            "decisions": [],
+                            "invariants": [],
+                            "risks": [],
+                            "important_symbols": [],
+                            "next_steps": [],
+                            "history": [],
+                            "updated_at": "2026-07-27T00:00:00.000Z",
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            (owner_root / "registry.json").write_text(
+                json.dumps(
+                    {
+                        "contract": "OWNER_REGISTRY_V2",
+                        "workspace_root": str(workspace_root),
+                        "revision": 1,
+                        "matcher": "owner-path-expression-v2",
+                        "managed_roots": ["src/**", "tests/**"],
+                        "owners": persistent_owners,
+                        "retired_owner_ids": [],
+                        "updated_at": "2026-07-27T00:00:00.000Z",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             coverage = json.loads((FIXTURES / "coverage.json").read_text(encoding="utf-8"))
             source_blocks = []

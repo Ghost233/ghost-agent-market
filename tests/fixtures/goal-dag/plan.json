@@ -1,7 +1,7 @@
 {
-  "contract": "DAG_PLAN_V4",
+  "contract": "DAG_PLAN_V5",
   "planner": "parallel-task-planner",
-  "plan_format_version": 4,
+  "plan_format_version": 5,
   "revision": 1,
   "execution_platform": "codex",
   "goal_contract_path": "__GOAL_PATH__",
@@ -19,10 +19,11 @@
       "role": "work",
       "responsibility": "负责状态契约和页面读取逻辑",
       "writable_paths": ["src/state/**", "src/page/**"],
+      "excluded_paths": [],
       "worker_context": "保持状态类型与页面读取接口一致",
       "runtime_profile": {
         "model": "gpt-5.6-sol",
-        "reasoning_effort": "medium"
+        "reasoning_effort": "high"
       },
       "reuse_policy": "owner_affinity"
     },
@@ -31,24 +32,45 @@
       "role": "work",
       "responsibility": "负责独立状态夹具",
       "writable_paths": ["tests/fixtures/**"],
+      "excluded_paths": [],
       "worker_context": "保持夹具形状与状态契约一致",
       "runtime_profile": {
         "model": "gpt-5.6-sol",
-        "reasoning_effort": "medium"
+        "reasoning_effort": "high"
       },
       "reuse_policy": "owner_affinity"
-    },
+    }
+  ],
+  "runtime_actors": [
     {
-      "id": "flow-verification",
+      "id": "source-audit",
       "role": "verify",
-      "responsibility": "负责只读页面集成验证",
-      "writable_paths": [],
-      "worker_context": "只运行尚未被实施任务覆盖的集成检查",
+      "responsibility": "机械审计计划源覆盖",
+      "worker_context": "仅运行 source-audit 脚本",
       "runtime_profile": {
         "model": "gpt-5.6-sol",
-        "reasoning_effort": "medium"
-      },
-      "reuse_policy": "owner_affinity"
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "id": "diff-audit",
+      "role": "verify",
+      "responsibility": "机械审计最终差异",
+      "worker_context": "仅运行 diff-audit 脚本",
+      "runtime_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "id": "commit-readiness",
+      "role": "verify",
+      "responsibility": "机械生成提交就绪清单",
+      "worker_context": "仅运行 commit-readiness 脚本",
+      "runtime_profile": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high"
+      }
     }
   ],
   "tasks": [
@@ -57,7 +79,8 @@
       "logical_id": "coverage.audit-source",
       "title": "审计计划源覆盖映射",
       "role": "verify",
-      "owner_id": "flow-verification",
+      "owner_id": null,
+      "runtime_actor_id": "source-audit",
       "task": "逐块审计计划源与覆盖项映射",
       "depends_on": [],
       "writable_paths": [],
@@ -76,6 +99,7 @@
       "title": "抽离页面状态类型",
       "role": "work",
       "owner_id": "state-domain",
+      "runtime_actor_id": null,
       "task": "抽离并导出页面状态类型",
       "depends_on": ["T0"],
       "writable_paths": ["src/state/**"],
@@ -94,6 +118,7 @@
       "title": "迁移页面状态读取",
       "role": "work",
       "owner_id": "state-domain",
+      "runtime_actor_id": null,
       "task": "迁移页面对新状态类型的读取",
       "depends_on": ["T1"],
       "writable_paths": ["src/page/**"],
@@ -112,6 +137,7 @@
       "title": "更新独立状态夹具",
       "role": "work",
       "owner_id": "state-fixtures",
+      "runtime_actor_id": null,
       "task": "更新独立状态测试夹具",
       "depends_on": ["T0"],
       "writable_paths": ["tests/fixtures/**"],
@@ -129,32 +155,91 @@
       "logical_id": "state.verify-flow",
       "title": "验证页面集成流程",
       "role": "verify",
-      "owner_id": "flow-verification",
+      "owner_id": "state-domain",
+      "runtime_actor_id": null,
       "task": "只读运行页面集成 smoke",
       "depends_on": ["T2", "T3"],
       "writable_paths": [],
       "resource_locks": ["integration-runtime"],
       "done_when": ["页面集成 smoke 通过且没有 tracked diff"],
-      "verification_ids": ["integration-smoke"],
-      "satisfies_goal_gates": ["integration-smoke"],
+      "verification_ids": ["state-unit", "fixture-test", "integration-smoke"],
+      "satisfies_goal_gates": ["state-unit", "fixture-test", "integration-smoke"],
       "plan_item_ids": ["PI-integration"],
       "coverage_effect": "verification",
       "priority": 10,
       "estimated_cost": 2
     },
     {
+      "id": "T5",
+      "logical_id": "delivery.attest-state-domain",
+      "title": "审查状态模块交付",
+      "role": "review",
+      "owner_id": "state-domain",
+      "runtime_actor_id": null,
+      "task": "由状态模块 Owner 审查并发布提交证明",
+      "depends_on": ["T4"],
+      "writable_paths": [],
+      "resource_locks": ["state-delivery"],
+      "done_when": ["发布本模块 COMMIT_ATTESTATION_V1"],
+      "verification_ids": ["state-domain-attestation"],
+      "satisfies_goal_gates": [],
+      "plan_item_ids": ["PI-integration"],
+      "coverage_effect": "audit",
+      "priority": 10,
+      "estimated_cost": 1
+    },
+    {
+      "id": "T6",
+      "logical_id": "delivery.attest-state-fixtures",
+      "title": "审查夹具模块交付",
+      "role": "review",
+      "owner_id": "state-fixtures",
+      "runtime_actor_id": null,
+      "task": "由夹具模块 Owner 审查并发布提交证明",
+      "depends_on": ["T4"],
+      "writable_paths": [],
+      "resource_locks": ["fixture-delivery"],
+      "done_when": ["发布本模块 COMMIT_ATTESTATION_V1"],
+      "verification_ids": ["state-fixtures-attestation"],
+      "satisfies_goal_gates": [],
+      "plan_item_ids": ["PI-integration"],
+      "coverage_effect": "audit",
+      "priority": 10,
+      "estimated_cost": 1
+    },
+    {
       "id": "T9",
       "logical_id": "scope.audit-final-diff",
       "title": "审计最终工作树差异",
       "role": "verify",
-      "owner_id": "flow-verification",
+      "owner_id": null,
+      "runtime_actor_id": "diff-audit",
       "task": "由运行时扫描并审计最终工作树差异",
-      "depends_on": ["T4"],
+      "depends_on": ["T5", "T6"],
       "writable_paths": [],
       "resource_locks": ["diff-scope"],
       "done_when": ["最终工作树差异全部映射到已接受实施结果"],
       "verification_ids": ["diff-scope-audit"],
       "satisfies_goal_gates": ["diff-scope-audit"],
+      "plan_item_ids": ["PI-integration"],
+      "coverage_effect": "audit",
+      "priority": 10,
+      "estimated_cost": 1
+    },
+    {
+      "id": "T10",
+      "logical_id": "delivery.commit-readiness",
+      "title": "生成提交就绪清单",
+      "role": "verify",
+      "owner_id": null,
+      "runtime_actor_id": "commit-readiness",
+      "task": "机械检查提交就绪状态并生成 DELIVERY_MANIFEST_V1",
+      "depends_on": ["T9"],
+      "writable_paths": [],
+      "resource_locks": ["commit-readiness"],
+      "done_when": ["提交就绪检查全部通过"],
+      "verification_ids": ["commit-readiness"],
+      "satisfies_goal_gates": ["commit-readiness"],
       "plan_item_ids": ["PI-integration"],
       "coverage_effect": "audit",
       "priority": 10,

@@ -54,6 +54,12 @@
       "stage": "final",
       "description": "由独立 review/verify task 核对实际工作区差异均位于 Goal 授权 scope，并保存可复核 artifact",
       "required": true
+    },
+    {
+      "id": "commit-readiness",
+      "stage": "delivery",
+      "description": "机械核对 Git、Registry、Owner attestation 与当前 workspace_change_seq，并生成 DELIVERY_MANIFEST_V1",
+      "required": true
     }
   ],
   "side_effects": {
@@ -89,6 +95,6 @@ Kimi 使用 `local_fallback`：原生 `/goal` 外循环不向 skill 提供可用
 
 ## Gate 与约束合并
 
-按顺序保留仓库强制 gate、加入计划验收、再加入 skill 调用参数明确追加的测试。相同语义使用稳定 id。固定 required gate `source-coverage-audit` 与 `diff-scope-audit` 都不得删除：前者只能由所有 work task 的独立 verify/audit 祖先覆盖，并用 runtime 生成的 `SOURCE_COVERAGE_AUDIT_V1` 证明每个 source block 已映射或有明确 non-requirement 理由；后者只能由独立 `review` 或 `verify` audit task 覆盖，并用 runtime 对 baseline 与当前真实工作区的扫描生成 `DIFF_SCOPE_AUDIT_V1`。两类 passed evidence 都必须携带 binding 指定的非空 `artifact_ref` 与 `artifact_digest`。其它 required gate 也必须由至少一个 task 的 `satisfies_goal_gates` 覆盖，并由对应 `WORKER_RESULT_V4.evidence` 提交可复核证据。
+按顺序保留仓库强制 gate、加入计划验收、再加入 skill 调用参数明确追加的测试。相同语义使用稳定 id。固定 required gate `source-coverage-audit`、`diff-scope-audit` 与 `commit-readiness` 都不得删除：前者生成 `SOURCE_COVERAGE_AUDIT_V1`；中者在 Owner 验证/attestation 后扫描 baseline、真实工作区与 accepted results；末者执行 Git/敏感路径/Registry/current sequence/attestation 门禁并生成 `COMMIT_READINESS_AUDIT_V1 + DELIVERY_MANIFEST_V1`。三类 evidence 都绑定 runtime artifact，除 source coverage 外必须处于当前 `workspace_change_seq`。其它 gate 由对应 `WORKER_RESULT_V5.evidence` 证明。
 
-把 scope、constraints、non_goals 与 side_effects 原样下发到每次 `TASK_BINDING_V4`。任何 task 都不得越过它们；需要扩域时返回 `needs_repair`，由 planner 生成 delta。
+把约束原样下发到 binding。同一 Owner 精确路径漏项可在 `needs_repair` 后由 runtime 验证并重排；其他 Owner 或未归属路径才交 planner/用户治理。

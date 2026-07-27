@@ -14,6 +14,10 @@ const targets = [
     path: resolve(root, "claude-code-market/scripts/goal-dag.mjs"),
     executionPlatform: "claude_code",
   },
+  {
+    path: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"),
+    executionPlatform: "kimi",
+  },
 ];
 const source = readFileSync(sourcePath, "utf8");
 const outputTemplate = [

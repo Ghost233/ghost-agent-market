@@ -1,6 +1,6 @@
 # Reservation 恢复契约
 
-只在 coordinator 已运行 `status` 与 `reconcile` 后读取本文件。runtime 的 active reservation、Owner Capsule 与 attempt 唯一路径是事实；executor 会话状态只用于选择恢复动作。
+只在 coordinator 已运行 `status` 与 `reconcile` 后读取本文件。runtime 的 active reservation、Goal session Capsule 与 attempt 唯一路径是本次执行事实；approved Registry 与永久 `OWNER_CAPSULE_V2` 是跨 Goal Owner 事实；executor 会话状态只用于选择恢复动作。
 
 ## 定义
 
@@ -8,9 +8,9 @@
 - **orphan executor**：已创建 executor，但 state 没有把它绑定到当前 reservation，或 reservation 已被 reclaim/替换。
 - **canonical result**：binding 给出的 `results/<task_id>/attempt-<attempt>-<reservation_token>.json`。同一 task 的任何其他路径都不是该 attempt 的结果。
 - **canonical spawn identity**：reserve action 与 binding 同时下发的 `executor_spawn_name`。spawn-before-bind 恢复只接受这个精确名字；协调器不得推导或改写。
-- **canonical recovery binding**：`status`/`reconcile.active_reservations[]` 在 runtime 锁内从当前 plan/state 重建的完整 `TASK_BINDING_V4`。它与最初 reserve binding 等价，是崩溃恢复时唯一允许重新 bind/send 的输入。
+- **canonical recovery binding**：`status`/`reconcile.active_reservations[]` 在 runtime 锁内从当前 plan/state 重建的完整 `TASK_BINDING_V5`。它与最初 reserve binding 等价，是崩溃恢复时唯一允许重新 bind/send 的输入。
 
-Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task 身份、权限或完成状态；只信 Owner/Capsule、binding、state 与 canonical result。
+Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task 身份、权限或完成状态；只信 approved Registry、永久/Session Capsule、binding、state 与 canonical result。Registry digest 漂移立即停止新分发；模块 task 不得越出 binding 的 read/search/write scope。
 
 `abandon` 只回滚 `reserved_unbound + spawn_executor`（Owner 尚无已绑定 executor）的 reservation；`reclaim` 处理 running/lost，以及 `reserved_unbound + reuse_executor` 的已绑定复用目标确认丢失这一安全例外，并把已知 executor 记入 `stale_executors: stop_pending`。两者都会清空 Capsule active task/checkpoint；旧 checkpoint 只保留历史。reclaim 后必须停止物理 executor，再 `confirm-stale-executor`，否则不得 reserve/refresh。
 
@@ -27,7 +27,7 @@ Agent/执行单元复用只降低启动成本。不要从聊天记忆推断 task
 | reserved/running，executor 健康且 result 尚不存在 | 继续等待：结束本轮，平台会在 executor 完成时自动送达结果，只允许低频非阻塞 `TaskOutput` 快照，不得轮询或阻塞等待；运行中、上下文压缩或暂时无输出都不是 orphan。 |
 | canonical result 字段不匹配或证据不可复核 | 不调用 finish；保留原始文件供审计，reclaim 或生成 repair delta。 |
 | reservation 已 reclaim/替换后旧 result 到达 | 按 attempt/token/source revision fencing 拒绝，不移动到新路径、不人工合并。 |
-| task 为 failed/blocked/needs_repair | 保留 attempt result，交 planner 生成局部 delta；不影响无关 running Owner。 |
+| task 为 failed/blocked/needs_repair | 保留 attempt result，交 planner 生成局部 delta；replacement 仍绑定原模块 Owner，不影响无关 running Owner。 |
 | 无 active/ready task，但 required effect pair 仍为 pending | 生成追加 `DAG_DELTA_V1`，不得 finalize。 |
 | `source_status: source_changed` 且仍有 active reservation | `source_drift_drain`：停止 reserve；健康 executor finish；丢失 executor reclaim → stop → confirm。active/stale 清零后才 `goal-refresh`。 |
 | audit binding 下发 artifact path/contract | worker 只在精确 `evidence_artifact_paths` 写 proposal/运行 runtime audit，并在 evidence 同时返回 `artifact_ref` 与 `artifact_digest`。 |

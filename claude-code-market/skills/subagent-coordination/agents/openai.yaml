@@ -1,6 +1,6 @@
 interface:
   display_name: "Goal DAG 子代理控制器"
-  short_description: "在 Claude Code 本地规划并持续执行可恢复的子代理 v4 DAG。"
+  short_description: "在 Claude Code 本地执行永久 Owner 与 v5 DAG。"
   default_prompt: "使用 $subagent-coordination：/ghost-agent-workflow:subagent-coordination 执行 <开发文档路径>"
 
 policy:

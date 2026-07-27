@@ -1,7 +1,7 @@
 # Goal DAG v4 设计
 
 日期：2026-07-18
-更新：2026-07-20（收缩为三项 subagent-only DAG skill）
+更新：2026-07-27（引入仓库级永久模块 Owner Registry）
 
 ## 目标与不变量
 
@@ -9,14 +9,16 @@ Goal DAG v4 把一份可版本化的计划文档编译为持久 coverage 和 Own
 
 架构必须保持以下不变量：
 
-- Codex 原生 `/goal` 是持久外循环，本地 coverage、DAG、Owner、Capsule 和 result 是内循环。
+- Codex 原生 `/goal` 是持久外循环，本地 coverage、DAG、session Capsule 和 result 是临时内循环；Owner Registry 与永久 Capsule 位于 Goal 之外。
 - Codex 每个原生 Goal 轮次都显式使用 `$subagent-coordination`；插件不依赖隐式 skill 触发。
 - `subagent-coordination` 是唯一公开控制器，内部调用 `parallel-task-planner` 并分发 `subagent-goal-worker`；执行模式固定为 `subagent`。
 - 插件不调用 `create_goal`，不缩写、替换或覆盖原生 objective，也不把本地短提示写回 objective。
 - Codex 不需要用户复制 continuation prompt。只有本地终态成立后，插件才调用一次语义上的 `update_goal(status: complete)`。
 - Codex 本地 `goal_id`/目录必须包含 `threadId + createdAt` 的稳定 SHA-256 短摘要；objective 相同但 native instance 不同的 Goal 永不共用目录。
 - Claude Code 没有 Codex 原生 Goal 生命周期，必须明确使用 `local_fallback` 和平台正确的显式 skill 调用。
-- Agent 复用只是 Owner 软亲和优化。正确性只依赖磁盘上的 coverage、DAG state、Owner Capsule、checkpoint 和 attempt-scoped result。
+- Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体；同一模块的开发、资料查找、审查、修复和建议只能由该 Owner 完成。
+- Owner 新增或分裂必须先由脚本验证未来 scope 语言无冲突，再取得用户对 request/validation/next-registry digest 的明确批准。
+- Agent 复用只是 Owner 软亲和优化。正确性依赖 approved Registry、永久 Capsule 与本次 binding/state/result，而不依赖 Agent 会话记忆。
 - 当前 source revision、执行 attempt、reservation token 和 Owner generation 必须同时通过 fencing，结果才能改变当前状态。
 - `goal-validate` 必须在任何业务 task 前冻结工作区 baseline，并把 source 转换为 digest 绑定的 `SOURCE_BLOCKS_V1`。
 - coverage 按 `(plan_item_id, required_effect)` 计算；独立 source coverage audit 和真实工作区 diff audit 都必须由 runtime 生成并绑定 artifact digest。
@@ -74,10 +76,20 @@ Claude local fallback 的默认目录 suffix 是 `SHA-256(UTF-8(source absolute 
 
 ## 持久状态
 
-每个 Goal 使用独立目录：
+仓库级永久 Owner 数据独立于任何 Goal：
 
 ```text
-.ghost-agent-workflow/goals/<goal_id>/
+.ghost-agent-workflow/owners/
+├── registry.json
+├── <owner_id>/capsule.json
+├── <owner_id>/interfaces/
+└── history/
+```
+
+每个 Goal 使用可删除的独立 runtime 目录：
+
+```text
+.ghost-agent-workflow/runtime/goals/<goal_id>/
 ├── goal.json
 ├── goal-state.json
 ├── worktree-baseline.json
@@ -89,7 +101,7 @@ Claude local fallback 的默认目录 suffix 是 `SHA-256(UTF-8(source absolute 
 ├── results/
 │   └── <task_id>/
 │       └── attempt-<n>-<reservation_token>.json
-└── owners/<owner_id>/
+└── owner-sessions/<owner_id>/
     ├── capsule.json
     └── checkpoints/
 ```
@@ -107,11 +119,11 @@ Claude local fallback 的默认目录 suffix 是 `SHA-256(UTF-8(source absolute 
 | `coverage.json` | `PLAN_COVERAGE_V1`；保存 source/plan 版本、source refs 和 required effect 清单。 |
 | `plan.json` | `DAG_PLAN_V4`；保存 `coverage_path`、`source_revision`、Owner/task 拓扑和 gate 映射。 |
 | `state.json` | `DAG_RUN_STATE_V4`；保存 task attempt、reservation、Owner generation、绑定和已接受 result_ref。 |
-| `capsule.json` / checkpoint | 保存 Owner 决策、不变量、进度、风险和可恢复检查点。 |
+| session `capsule.json` / checkpoint | 保存本次 Goal 的 Owner 执行视图、进度和可恢复检查点。 |
 | audit artifact | runtime 生成的 `SOURCE_COVERAGE_AUDIT_V1` / `DIFF_SCOPE_AUDIT_V1` 及 accepted copy；由 SHA-256 绑定。 |
 | attempt result | 每次执行尝试的不可覆盖结果与证据；evidence 同时保存 artifact ref/digest，旧 attempt 保留为审计历史。 |
 
-`.ghost-agent-workflow/` 是本地 runtime state，不应提交到版本库；仓库和使用插件的项目都应将它加入 `.gitignore`。
+`.ghost-agent-workflow/owners/**` 保存 approved Registry、永久 `OWNER_CAPSULE_V2`、稳定接口和治理历史，应进入版本库；`.ghost-agent-workflow/runtime/**` 是可删除执行状态，应加入 `.gitignore`。
 
 涉及 plan、coverage、state、goal-state 或 Capsule 的多文件更新使用可回滚向前的事务 journal。每个命令必须在读取任一参与文件前恢复未完成事务；故障发生在任意写入位置时，重试先完成同一事务再解释 revision/digest。`finish` 的 accepted result 仍不可覆盖，但同一路径已有完全相同内容时按同一 attempt 幂等续提交 state/Capsule。
 
@@ -180,6 +192,8 @@ status → reconcile → reserve
 
 - `task_id`
 - `owner_id` 与 `owner_generation`
+- `owner_registry.{ref,digest}`、`persistent_owner_capsule_ref` 与 `owner_scope_patterns`
+- `readable_paths`、`searchable_paths` 与 task `writable_paths`
 - `attempt`
 - `reservation_token`
 - `source_revision`
@@ -225,13 +239,13 @@ planner 只追加必要的 replacement 或补漏 task，并随 delta 提交 cove
 7. DAG exhausted 且 required effect pairs 的 `planned < 100%`：`needs_delta`。
 8. 全部 completion invariant 已满足：`finalize`。
 
-## Owner、Capsule 与 Agent 软亲和
+## 永久模块 Owner、Capsule 与 Agent 软亲和
 
-`owner_id` 是 Goal 内稳定的逻辑责任域；`executor_id` 是可替换载体。runtime 会优先把同一 Owner 的后续 task 交给健康、idle 且 profile 匹配的 Agent，这只是降低上下文重建成本的软亲和。
+`owner_id` 是仓库级永久代码功能模块，不是 Goal 内角色；`executor_id` 是可替换载体。Plan 只能逐字绑定 approved Registry 中的 Owner metadata/scope。同一模块的 work、review、verify、research、repair 使用同一 Owner；其他 Owner 不得读取、搜索或审查其内部代码，只能消费它发布的接口或结论。runtime 会优先把同一 Owner 的后续 task 交给健康、idle 且 profile 匹配的 Agent，这只是降低上下文重建成本的软亲和。
 
 Agent 单纯丢失时对 running reservation 先 reclaim，再停止 runtime 登记的 stale physical Agent 并 `confirm-stale-executor`，之后在同一逻辑 Owner/generation 上以新 `executor_spawn_name` 换 Agent。`reserved_unbound + spawn_executor` 无匹配执行单元时用 abandon 回滚；`reserved_unbound + reuse_executor` 的既有 bound 目标确认丢失是窄例外，必须 reclaim 以清除死 binding、登记 stale ledger，再 stop→confirm，generation 保持不变。污染、重复失败或上下文压力过高且需要隔离旧 Capsule 语义时，才在 reclaim 后递增 Owner generation。新 Agent 从已清理的 Capsule、有效 checkpoint、直接 dependency result_ref 和当前 binding 恢复。
 
-因此 Agent 会话记忆是性能缓存，不是真相源。不同 Goal 不复用执行单元；独立 review 使用不同 Owner，避免实施上下文自我确认。
+因此 Agent 会话记忆是性能缓存，不是真相源。不同 Goal 不复用物理执行单元，但逻辑 Owner 与永久 Capsule 保持不变；需要冷启动复核时换 executor，不换 Owner。固定 source/diff audit 可用 scope 为空的机械 runtime actor，但它不是永久 Owner，不得形成模块语义建议。
 
 ## 终态与 native completion bridge
 

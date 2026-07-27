@@ -1,12 +1,12 @@
 # Codex Subagent Worker 契约
 
-## TASK_BINDING_V4
+## TASK_BINDING_V5
 
 协调器把 `reserve.actions[]` 或 `status`/`reconcile.active_reservations[]` 返回的完整 canonical binding 原样发送。result_path 由 runtime 首次 reserve 时按 attempt/token 唯一生成，crash recovery 不得重算或换路径。
 
 ```json
 {
-  "contract": "TASK_BINDING_V4",
+  "contract": "TASK_BINDING_V5",
   "goal_id": "runtime-owner-reuse",
   "goal_objective": "每轮使用 $subagent-coordination 完整执行计划",
   "plan_path": "/absolute/goal/plan.json",
@@ -32,15 +32,30 @@
   "display_name": "[GA][实施][执行] 实现 Owner 状态机",
   "role": "work",
   "owner_id": "runtime-core",
+  "runtime_actor_id": null,
+  "execution_subject_id": "runtime-core",
+  "execution_subject_kind": "module_owner",
   "owner_generation": 2,
   "owner_responsibility": "负责任务状态机与并发不变量",
   "owner_context": "保持 reservation、attempt、source revision 与 Capsule 更新原子",
-  "owner_capsule_ref": "/absolute/goal/owners/runtime-core/capsule.json",
-  "checkpoint_path": "/absolute/goal/owners/runtime-core/checkpoints/T1.json",
+  "owner_registry": {
+    "ref": "/workspace/.ghost-agent-workflow/owners/registry.json",
+    "digest": "<sha256>"
+  },
+  "persistent_owner_capsule_ref": "/workspace/.ghost-agent-workflow/owners/runtime-core/capsule.json",
+  "published_artifact_directory": "/workspace/.ghost-agent-workflow/owners/runtime-core/interfaces/runtime-owner-reuse/T1/attempt-2",
+  "owner_scope_patterns": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+  "owner_scope_excludes": [],
+  "owner_capsule_ref": "/workspace/.ghost-agent-workflow/runtime/goals/<goal_id>/owner-sessions/runtime-core/capsule.json",
+  "checkpoint_path": "/workspace/.ghost-agent-workflow/runtime/goals/<goal_id>/owner-sessions/runtime-core/checkpoints/T1.json",
   "reservation_token": "<uuid>",
   "attempt": 2,
   "source_revision": 3,
   "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
+  "readable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+  "readable_path_excludes": [],
+  "searchable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
+  "searchable_path_excludes": [],
   "writable_paths": ["tooling/goal-dag/**"],
   "resource_locks": ["goal-dag-runtime"],
   "done_when": ["Owner 可复用也可安全换 Agent"],
@@ -76,32 +91,37 @@
       "diff_in_scope": true
     }
   },
-  "dependency_result_refs": [],
+  "dependency_inputs": [],
   "result_path": "/absolute/goal/results/T1/attempt-2-<uuid>.json",
-  "result_contract": "WORKER_RESULT_V4",
+  "result_contract": "WORKER_RESULT_V5",
+  "workspace_change_seq": 4,
+  "reusable_evidence": {},
   "evidence_artifact_paths": {
     "diff-scope-audit": null,
-    "source-coverage-audit": null
+    "source-coverage-audit": null,
+    "commit-readiness": null
   },
   "evidence_artifact_contracts": {
     "diff-scope-audit": null,
-    "source-coverage-audit": null
+    "source-coverage-audit": null,
+    "commit-readiness": null
   },
   "runtime_profile": {
     "model": "gpt-5.6-sol",
-    "reasoning_effort": "medium"
+    "reasoning_effort": "high"
   }
 }
 ```
 
-固定 audit task 的 binding 会把对应路径/contract 改为非空。`source-coverage-audit` worker 先把逐 block proposal 写到指定路径，再运行：
+模块 task 必须逐项核对 Registry digest、永久 Capsule 与 read/search/write include/exclude；固定 actor task 使用 `owner_id: null`、非空 `runtime_actor_id`、空模块 scope 与 null 永久 Capsule，只执行机械审计，并会把对应路径/contract 改为非空。跨 Owner 的 `dependency_inputs` 只能是 `published_owner_artifact`，同 Owner 才允许 `same_owner_result`；runtime actor 只收摘要。`source-coverage-audit` worker 先把逐 block proposal 写到指定路径，再运行：
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs source-audit <plan_path> <state_path> <task_id> <reservation_token> <classification_path>
 node <plugin-root>/scripts/goal-dag.mjs diff-audit <plan_path> <state_path> <task_id> <reservation_token>
+node <plugin-root>/scripts/goal-dag.mjs commit-readiness <plan_path> <state_path> <task_id> <reservation_token>
 ```
 
-`source-audit` 生成 `SOURCE_COVERAGE_AUDIT_V1`；`diff-audit` 生成 `DIFF_SCOPE_AUDIT_V1`。只采用 stdout 返回的精确 artifact ref/digest。
+三个命令分别生成 `SOURCE_COVERAGE_AUDIT_V1`、`DIFF_SCOPE_AUDIT_V1` 与 `COMMIT_READINESS_AUDIT_V1 + DELIVERY_MANIFEST_V1`。只采用 stdout 返回的精确 artifact ref/digest。
 
 ## OWNER_CHECKPOINT_V1
 
@@ -127,16 +147,17 @@ node <plugin-root>/scripts/goal-dag.mjs diff-audit <plan_path> <state_path> <tas
 node <plugin-root>/scripts/goal-dag.mjs checkpoint <plan_path> <state_path> <task_id> <reservation_token> <checkpoint_path>
 ```
 
-## WORKER_RESULT_V4
+## WORKER_RESULT_V5
 
 ```json
 {
-  "contract": "WORKER_RESULT_V4",
+  "contract": "WORKER_RESULT_V5",
   "status": "completed",
   "task_id": "T1",
   "logical_id": "runtime.owner-state",
   "role": "work",
   "owner_id": "runtime-core",
+  "runtime_actor_id": null,
   "owner_generation": 2,
   "executor_id": "<state 中的真实 executor_id>",
   "reservation_token": "<uuid>",
@@ -160,11 +181,27 @@ node <plugin-root>/scripts/goal-dag.mjs checkpoint <plan_path> <state_path> <tas
     "decisions": ["Owner 身份与 executor_id 分离"],
     "invariants": ["finish 必须匹配 generation、attempt、token 和 source revision"],
     "risks": []
-  }
+  },
+  "published_artifacts": [
+    {
+      "contract": "OWNER_HANDOFF_V1",
+      "ref": "/workspace/.ghost-agent-workflow/owners/runtime-core/interfaces/runtime-owner-reuse/T1/attempt-2/handoff.json",
+      "digest": "<sha256>",
+      "audience": ["dependent-owner"]
+    },
+    {
+      "contract": "COMMIT_ATTESTATION_V1",
+      "ref": "/workspace/.ghost-agent-workflow/owners/runtime-core/interfaces/runtime-owner-reuse/T1/attempt-2/commit.json",
+      "digest": "<sha256>",
+      "audience": ["commit-readiness", "git-controller"]
+    }
+  ]
 }
 ```
 
-每条 evidence 都必须同时包含 `artifact_ref` 与 `artifact_digest`；没有独立 artifact 时两者均为 null，长日志则写入对应 artifact。`completed` 必须覆盖全部 verification_ids。`source-coverage-audit` 与 `diff-scope-audit` 只允许出现在独立 verify/audit binding 中，passed evidence 必须引用 runtime 生成的固定 audit artifact，并提供非空 ref 与 digest。
+每条 evidence 都必须同时包含 `artifact_ref` 与 `artifact_digest`；没有独立 artifact 时两者均为 null，长日志则写入对应 artifact。`completed` 必须覆盖全部 verification_ids。`changed_files` 是 worker 观察值，不是归因真相；`finish` 会比较 bind 时自动保存的 task snapshot 与当前工作树，并按 effective writable scope 重写为 runtime 计算结果。三个固定 gate 只允许出现在对应 actor binding 中，passed evidence 必须引用 runtime 生成的固定 artifact。
+
+Owner 发布物的 body 至少含同名 `contract`、`owner_id`、`producer_task_id`、`audience` 和公开摘要。`COMMIT_ATTESTATION_V1` 还必须包含当前 `workspace_change_seq`、本 Owner 全部 `changed_files`、`conclusion: approved` 与所有参与 Owner 一致的单行 Conventional Commit `commit_message`。跨 Owner 不得在 handoff/interface body 中嵌入原始 result 或内部源码。
 
 ## needs_repair
 
@@ -172,12 +209,13 @@ node <plugin-root>/scripts/goal-dag.mjs checkpoint <plan_path> <state_path> <tas
 
 ```json
 {
-  "contract": "WORKER_RESULT_V4",
+  "contract": "WORKER_RESULT_V5",
   "status": "needs_repair",
   "task_id": "T1",
   "logical_id": "runtime.owner-state",
   "role": "work",
   "owner_id": "runtime-core",
+  "runtime_actor_id": null,
   "owner_generation": 2,
   "executor_id": "<executor_id>",
   "reservation_token": "<uuid>",
@@ -200,8 +238,9 @@ node <plugin-root>/scripts/goal-dag.mjs checkpoint <plan_path> <state_path> <tas
     "decisions": [],
     "invariants": [],
     "risks": ["生成器与源文件必须同步"]
-  }
+  },
+  "published_artifacts": []
 }
 ```
 
-所有终态先原子写入 binding 给出的 result_path，再返回相同 JSON。
+所有终态先原子写入 binding 给出的 result_path，再返回相同 JSON。同 Owner 精确路径扩域时，coordinator 可在 `finish` 接受 `needs_repair` 后运行 `expand-task-scope`；脚本会验证路径确属同一永久 Owner，将 task 重新排队为新 attempt，无需 Plan delta。其他 Owner 或未归属路径仍必须路由/治理。

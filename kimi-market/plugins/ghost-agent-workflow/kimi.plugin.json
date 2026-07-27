@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.1.4",
-  "description": "面向 Kimi Code local_fallback 生命周期的 subagent-only 文档 coverage、v4 Owner/task DAG、短续跑恢复与智能 Git 提交技能。",
+  "version": "0.1.7",
+  "description": "面向 Kimi Code local_fallback 生命周期的永久 Owner、v5 DAG、短续跑恢复与 Owner 化 Git 提交技能。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Ghost Agent Workflow",
     "shortDescription": "显式 /skill 入口的 subagent-only coverage 与 Owner DAG 工作流，local_fallback 生命周期，附 git-commit。",
-    "longDescription": "Kimi Code 的原生 Goal 不向插件暴露稳定的 native instance identity（无 threadId/createdAt），因此本插件使用 local_fallback 生命周期：通过显式 `/skill:subagent-coordination 执行 <计划文档路径>` 启动，未完成时逐字使用 runtime 输出的单行续跑提示继续；也可以自行用原生 `/goal` 包裹获得自动外循环。控制器内部调用 parallel-task-planner 生成 GOAL_CONTRACT_V1、PLAN_COVERAGE_V1 和 v4 DAG_PLAN_V4，再把 fenced attempt 分发给 subagent-goal-worker；执行方式固定为 subagent。skill 不调用 CreateGoal/UpdateGoal，不依赖原生 Goal 存在。Owner 是稳定逻辑责任域，Agent 只是软亲和执行载体，正确性只依赖 `.ghost-agent-workflow/` 中的持久状态。git-commit 用于安全提交当前改动。",
+    "longDescription": "Kimi 使用 local_fallback 生命周期与 DAG_PLAN_V5。Owner 是仓库级永久代码模块，scope include/exclude、用户批准治理和跨 Goal lease 由脚本硬校验；source/diff/commit-readiness 是独立 runtime actor。只有 Owner Registry、Capsule、接口和历史持久化，Goal/Plan/runtime 不进入 Git；提交由 Owner attestation 与 delivery manifest 驱动。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

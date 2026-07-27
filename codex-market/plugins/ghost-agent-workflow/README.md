@@ -8,7 +8,7 @@ Codex 推荐入口只有这一行：
 /goal 每轮使用 $subagent-coordination，完整执行 `./plan.md`。
 ```
 
-原生 `/goal` 是持久外循环；每轮显式 `$subagent-coordination` 是内循环入口和唯一公开控制器。它只读取并校验原生 objective，不调用 `create_goal`，也不通过 `update_goal` 覆盖 objective；内部调用 planner 生成 `GOAL_CONTRACT_V1`、`PLAN_COVERAGE_V1` 和 v4 `DAG_PLAN_V4`，再把 fenced attempt 分发给 worker。执行方式固定为 `subagent`。首次建图和每次 delta 修订后显示 runtime 生成的完整 DAG；只有 task、coverage、gate、revision 或 `next_action` 实质变化时才显示状态快照，无变化的等待不重复播报。每个本地 `goal_id`/目录都包含 `threadId + createdAt` 的稳定 SHA-256 短摘要，恢复时再精确校验完整 native identity 与 objective digest。Codex 不需要人工 continuation prompt。
+原生 `/goal` 是持久外循环；`$subagent-coordination` 生成 `GOAL_CONTRACT_V1`、coverage 与 `DAG_PLAN_V5`。Owner 是仓库级永久模块；三个机械 runtime actor 与 Owner 分离，仓库级 lease 防止跨 Goal 并发占用。首次显示完整 DAG，后续默认显示 delta diff；Goal/Plan/runtime 不进 Git，交付由 Owner attestation 与 `DELIVERY_MANIFEST_V1` 驱动。
 
 首次 `goal-validate` 会冻结 `WORKTREE_BASELINE_V1` 并生成 `SOURCE_BLOCKS_V1`。planner 为每个 plan item 写 source refs 和 required effects，task 用 `coverage_effect` 精确覆盖；独立 source audit 必须先于所有 work，最终 diff audit 由 runtime 扫描 baseline、真实工作区与 accepted results，两个 artifact 都用 SHA-256 绑定。
 
@@ -16,6 +16,6 @@ Codex 推荐入口只有这一行：
 
 只有 coverage 达到 100%、当前 revision 的 task 与 required gate 证据全部有效，且其它 completion invariant 均成立时，`finalize` 才返回 `completed`。skill 随后只执行 `update_goal(status: complete)` 并确认原生终态；确认失败时下轮幂等重试 completion bridge，不重跑已经完成的本地 DAG。
 
-Owner 是稳定逻辑责任域，Agent 只是软亲和执行载体。runtime 为每次新建下发 canonical `executor_spawn_name`，协调器不得自行重算；正确性只依赖 `.ghost-agent-workflow/` 中的持久状态。Codex 子代理固定使用 `gpt-5.6-sol/medium`，独立 audit 使用不同 Owner，不同 Goal 不复用 Agent。
+Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体。模块开发、查找资料、审查、修复和建议都只能由同一 Owner 完成，其他 Owner 只能消费它发布的接口或结论；纯 source/diff audit 使用无代码 scope 的机械 runtime actor，不创建 Owner。Agent 只是可替换执行载体，Codex 子代理固定使用 `gpt-5.6-sol/high`，不同 Goal 不复用物理 Agent。
 
-`.ghost-agent-workflow/` 是本地 runtime state，不应提交到版本库。
+只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、coverage、delta、reservation、result、artifact 和 session Capsule 都是临时状态，不应提交。Owner 新增或分裂必须先由脚本验证 scope 冲突，再取得用户对精确 digest 的明确批准。

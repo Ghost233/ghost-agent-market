@@ -56,6 +56,12 @@
       "stage": "audit",
       "description": "独立审计最终 tracked diff 均在计划写域内",
       "required": true
+    },
+    {
+      "id": "commit-readiness",
+      "stage": "delivery",
+      "description": "机械检查提交就绪并生成交付清单",
+      "required": true
     }
   ],
   "side_effects": {

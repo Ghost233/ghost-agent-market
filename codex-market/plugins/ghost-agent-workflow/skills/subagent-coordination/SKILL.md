@@ -15,11 +15,13 @@ description: 仅当当前 Codex 原生 Goal 的 objective 显式包含 $subagent
 
 不要解析 `/goal` 命令；平台已经把它转换为原生 Goal objective。不要调用 `create_goal`，不要改写 objective。只依据每轮第一个 `get_goal` 返回的原始 objective 与 native instance identity 触发和绑定。
 
-执行方式固定为 `subagent`。Codex Owner 与新建子代理固定使用 `gpt-5.6-sol/medium`；`spawn_agent` 使用 `fork_turns: "none"`，schema 支持时使用 `agent_type: "worker"`。Claude Code 使用平台默认 profile，是有意的平台差异。
+执行方式固定为 `subagent`。Codex Owner 与新建子代理固定使用 `gpt-5.6-sol/high`；`spawn_agent` 使用 `fork_turns: "none"`，schema 支持时使用 `agent_type: "worker"`。Claude Code 使用平台默认 profile，是有意的平台差异。
 
 本控制器只写 Goal/DAG 协调元数据并调度执行单元，不修改业务文件，不暂存、提交或推送代码。所有正式实施、审查和验证都必须是 DAG task。
 
-首次创建 Goal 时读取 [references/goal-contract.md](references/goal-contract.md)。进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。需要初始计划或局部修订时调用内部 `parallel-task-planner`，不得自行拼造 coverage、plan 或 delta。
+每轮首先读取 [references/owner-governance.md](references/owner-governance.md)，再处理 Goal。首次创建 Goal 时读取 [references/goal-contract.md](references/goal-contract.md)。进入 active 执行时读取 [references/templates.md](references/templates.md)；首次分发或裁决结果前再读取 `subagent-goal-worker/references/templates.md`。需要初始计划或局部修订时调用内部 `parallel-task-planner`，不得自行拼造 coverage、plan 或 delta。
+
+Owner 是仓库级永久模块主体，不属于某次 Goal/Plan。Goal 只能引用 `.ghost-agent-workflow/owners/registry.json` 中已获用户批准的 active Owner，不能自行新增、分裂、改名、改 scope 或创建临时 repair/review Owner。模块开发、搜索资料、代码审查、修复和建议都必须回到该模块同一 Owner；其他 Owner 只能消费它发布的接口或结论。
 
 ## 每轮生命周期入口
 
@@ -40,7 +42,7 @@ objective 缺少显式 skill 名、digest 不匹配或无法唯一绑定时停�
 为每个 Goal 创建：
 
 ```text
-.ghost-agent-workflow/goals/<goal_id>/
+.ghost-agent-workflow/runtime/goals/<goal_id>/
 ├── goal.json
 ├── goal-state.json
 ├── worktree-baseline.json
@@ -50,15 +52,18 @@ objective 缺少显式 skill 名、digest 不匹配或无法唯一绑定时停�
 ├── state.json
 ├── artifacts/
 ├── results/<task_id>/attempt-<attempt>-<reservation_token>.json
-└── owners/<owner_id>/{capsule.json,checkpoints/}
+└── owner-sessions/<owner_id>/{capsule.json,checkpoints/}
 ```
 
+永久数据位于 `.ghost-agent-workflow/owners/{registry.json,<owner_id>/capsule.json}`；Goal 目录、Plan、coverage、delta、reservation、result、artifact 和 session capsule 都是可删除运行时数据，不得提交 Git。
+
 1. 从 objective 解析唯一计划文档路径，转为绝对路径，读取内容并计算 digest；缺失或歧义时停止。
-2. 合并仓库强制策略、计划验收和 objective 追加要求。固定加入 required gate `source-coverage-audit` 与 `diff-scope-audit`；objective 只能增加 gate 或授权副作用，不能移除强制项。
+2. 合并仓库强制策略、计划验收和 objective 追加要求。固定加入 required gate `source-coverage-audit`、`diff-scope-audit` 与 `commit-readiness`；objective 只能增加 gate 或授权副作用，不能移除强制项。
 3. 按 reference 写入 `GOAL_CONTRACT_V1`：`execution_platform: codex`、`lifecycle.controller: codex_native`、完整 native identity、未经改写的 objective、`execution.mode: subagent`、绝对 workspace/source、scope、constraints、non-goals、side-effect policy 与 verification gates。
 4. 运行 `goal-validate`。它必须先捕获 `WORKTREE_BASELINE_V1` 和 `SOURCE_BLOCKS_V1`，再写 goal state；baseline 之前不得分发业务 task。
-5. 调用 `parallel-task-planner` 亲自读取 source 与 runtime source blocks，先生成 `PLAN_COVERAGE_V1`，再生成 `DAG_PLAN_V4`；运行 `validate` 和 `render`。不得把整篇 source 复制进 Goal Contract。
-6. objective 明确只规划时返回 coverage 与 DAG；否则进入执行循环。
+5. 运行 Owner Registry `validate`，按受影响路径逐一 `route`。每个模块路径必须恰好命中一个 active Owner；未覆盖或多重命中时生成 change request 与 validation，向用户展示精确 scope/digest 并停止，未经用户明确批准不得 `apply-change` 或继续规划。
+6. 调用 `parallel-task-planner` 亲自读取 source 与 runtime source blocks，先生成 `PLAN_COVERAGE_V1`，再生成 `DAG_PLAN_V5`；Plan 中模块 Owner 的 metadata、include/exclude 必须逐字复制 approved Registry，三个固定机械主体只放在 `runtime_actors[]`。运行 `validate` 和 `render`。不得把整篇 source 复制进 Goal Contract。
+7. objective 明确只规划时返回 coverage 与 DAG；否则进入执行循环。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs goal-validate <goal.json>
@@ -77,9 +82,9 @@ node <plugin-root>/scripts/goal-dag.mjs reconcile <plan_path> <state_path>
 
 先按 reference 恢复每个 active reservation，再 reserve。`source_status: source_missing` 或 `next_action: user_blocked` 时保留状态并要求恢复同一绝对 source path；不得猜测新 source、改 path、调用 `goal-refresh` 或误报完成。
 
-source digest 变化时停止新 reserve，只 drain 现有 reservation：健康 executor 继续到 canonical result 并 finish；丢失 executor 先 reclaim，再 `interrupt_agent`，确认停止后运行 `confirm-stale-executor`。active reservation 与 stale executor 都清零后，由本 coordinator 运行 `goal-refresh`，再调用 planner 生成 `DAG_DELTA_V1` 并运行 `apply-delta`。旧 revision 的每个 live task 必须显式 `carry_forward` 或 `invalidate`；两个固定 audit task 都必须 invalidate 并替换。
+source digest 变化时停止新 reserve，只 drain 现有 reservation：健康 executor 继续到 canonical result 并 finish；丢失 executor 先 reclaim，再 `interrupt_agent`，确认停止后运行 `confirm-stale-executor`。active reservation 与 stale executor 都清零后，由本 coordinator 运行 `goal-refresh`，再调用 planner 生成 `DAG_DELTA_V1` 并运行 `apply-delta`。旧 revision 的每个 live task 必须显式 `carry_forward` 或 `invalidate`；三个固定 runtime actor task 都必须 invalidate 并替换。
 
-failed、blocked、needs_repair 或 DAG exhausted 但 required effect coverage 未达 100% 时，只让 planner 修订受影响闭包。无关 Owner 继续，不能全量替换 active plan。只有父 objective 改变、未授权外部副作用、破坏性权限或无法安全消歧时请求用户决定。
+failed、blocked、needs_repair 或 DAG exhausted 但 required effect coverage 未达 100% 时，只让 planner 修订受影响闭包，并把 replacement 仍交回原模块 Owner。无关 Owner 继续，不能全量替换 active plan。只有父 objective 改变、Owner 覆盖缺口/冲突、Owner 新增/分裂、未授权外部副作用、破坏性权限或无法安全消歧时请求用户决定。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json>
@@ -91,15 +96,19 @@ node <plugin-root>/scripts/goal-dag.mjs apply-delta <plan.json> <state.json> <de
 用户可见进度由本控制器负责；planner 只生成结构化 coverage、plan 或 delta，worker 只执行绑定任务。
 
 - 首次 `validate` 和 `render` 成功后，展示 `render` 产生的完整当前 DAG，不省略节点或依赖；同时说明 plan revision、planned coverage、completed coverage、首批 ready/running task 与下一步。
-- 每次 `apply-delta` 成功后，重新运行 `validate` 和 `render`，展示修订后的完整 DAG，并说明相对上一 revision 新增、替换、失效、保留的 task、依赖变化及修订原因。
+- 每次 `apply-delta` 成功后重新运行 `validate`，默认只展示 runtime 返回的 DAG diff：新增、替换、失效、保留 task、依赖变化与原因；只有用户明确要求或无法从 delta 唯一解释当前拓扑时才重新 `render` 完整 DAG，避免每轮重复膨胀。
 - task 从 ready 进入 running、完成、失败、阻塞、被替换，或 source revision、planned/completed coverage、required gate、`next_action` 发生变化时，基于当前 plan 与 runtime `status`/`reconcile` 输出简短状态快照；同一推进批次中的多项变化合并播报。
 - wait、轮询或 reconcile 没有产生实质状态变化时不重复播报。不得根据聊天记忆手画状态、猜测进度，或把旧 revision 的结果写进当前快照。
-- 面向用户只展示 task id/title、公开状态、覆盖率、门禁、变化原因与下一步；不输出 reservation token、完整 `TASK_BINDING_V4`、Owner Capsule、executor target 或内部 artifact 内容。
+- 面向用户只展示 task id/title、公开状态、覆盖率、门禁、变化原因与下一步；不输出 reservation token、完整 `TASK_BINDING_V5`、Owner Capsule、executor target 或内部 artifact 内容。
 - 持续推进直到计划项 effect-aware coverage 达到 100%、所有 required gate 通过且 `finalize` 成功；最终回复展示终态快照和验收结论。
 
 ## Reservation 恢复与分发
 
-`status`/`reconcile.active_reservations[]` 与 `reserve.actions[]` 都携带 runtime 锁内重建的完整 canonical `TASK_BINDING_V4`。分发只能使用返回的 binding；不得从聊天记忆、旧 prompt 或自行扫描 plan 重算 attempt、token、权限、result path 或 artifact path。
+`status`/`reconcile.active_reservations[]` 与 `reserve.actions[]` 都携带 runtime 锁内重建的完整 canonical `TASK_BINDING_V5`。分发只能使用返回的 binding；不得从聊天记忆、旧 prompt 或自行扫描 plan 重算 attempt、token、权限、result path 或 artifact path。
+
+模块 task 的 binding 必须含 Registry/Capsule、include/exclude read/search/write、Owner artifact directory、dependency inputs、workspace sequence 与 current reusable evidence。Registry digest 漂移时停止新分发并重规划；不得把另一个 Owner 的路径加入读、搜或写权限。严格运行时必须把这些路径交给真实 allowlist gateway/OS sandbox；平台不能硬隔离时 fail closed。三个固定 runtime actor 只做机械证据检查，不是永久模块 Owner。
+
+`reserve` 返回 `owner_busy` 时不得绕过：运行 `owner-lease-inspect`，根据 lease 的 goal/task/state/executor 查询实际运行状态。健康 task 继续等待并 heartbeat；只有确认崩溃或死锁后，才用精确 token 与原因运行 `owner-lease-recover`，随后修复对应 task state。强制恢复会写不可变事件。
 
 需要安全回收时使用：
 
@@ -109,9 +118,12 @@ node <plugin-root>/scripts/goal-dag.mjs reclaim <plan_path> <state_path> <task_i
 node <plugin-root>/scripts/goal-dag.mjs confirm-stale-executor <plan_path> <state_path> <executor_id>
 node <plugin-root>/scripts/goal-dag.mjs rotate-owner <plan_path> <state_path> <owner_id> <expected_generation> <reason>
 node <plugin-root>/scripts/goal-dag.mjs reserve <plan_path> <state_path> <available_capacity>
+node <plugin-root>/scripts/goal-dag.mjs owner-lease-inspect <workspace_root> <owner_id>
+node <plugin-root>/scripts/goal-dag.mjs owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token>
+node <plugin-root>/scripts/goal-dag.mjs owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason>
 ```
 
-- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 `spawn_agent.task_name`；传入完整 binding、`model: "gpt-5.6-sol"`、`reasoning_effort: "medium"`、`fork_turns: "none"`，支持时加 `agent_type: "worker"`。取得 canonical target 后立即 `bind`，不创建启动握手回合。
+- `spawn_executor`：把 binding 的 `executor_spawn_name` 原样作为 `spawn_agent.task_name`；传入完整 binding、`model: "gpt-5.6-sol"`、`reasoning_effort: "high"`、`fork_turns: "none"`，支持时加 `agent_type: "worker"`。取得 canonical target 后立即 `bind`，不创建启动握手回合。
 - `reuse_executor`：用 `list_agents` 确认目标是当前 Goal/Owner 的 idle 健康 Agent；先 `bind`，再用 `followup_task` 发送原样 binding。
 - `reserved_unbound + spawn_executor` 无匹配 executor 时 `abandon`。复用目标或 running executor 确认丢失时以当前 token `reclaim`，停止返回的 executor，确认停止后 `confirm-stale-executor`。存在 stop-pending stale executor 时不得 reserve。
 - 物理 Agent 丢失后默认保持同一逻辑 Owner/generation；只有污染、重复失败或 Capsule 语义需要隔离时才 `rotate-owner`。不同 Goal 不复用 Agent；会话记忆和复用只是性能优化。
@@ -130,13 +142,19 @@ node <plugin-root>/scripts/goal-dag.mjs bind <plan_path> <state_path> <task_id> 
 node <plugin-root>/scripts/goal-dag.mjs finish <plan_path> <state_path> <task_id> <reservation_token> <result_path>
 ```
 
+`finish` 使用 bind 时保存的 task worktree snapshot 自动计算有效 scope 内变化，覆盖 worker 自报的 `changed_files`；有真实修改时递增 `workspace_change_seq`。测试证据只在同一 sequence 复用，后续修改会令旧验证失效。`needs_repair` 只请求同一 Owner 的精确路径且没有产生变化时，运行 `expand-task-scope`；runtime 验证 Registry 后把同一 task 以新 attempt 重新排队。跨 Owner 或未归属路径必须交回 planner/Owner 治理。
+
+```text
+node <plugin-root>/scripts/goal-dag.mjs expand-task-scope <plan_path> <state_path> <task_id> <reservation_token> <exact_repo_path>...
+```
+
 只在当前 source digest/revision 仍冻结、effect-aware planned/completed coverage 都为 100%、所有有效 task resolved、required gate 证据通过且无阻断 finding 时运行：
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <plan.json> <state.json>
 ```
 
-`finalize` 会 fresh 读取 source，并要求两个固定 audit evidence 精确引用 runtime 绑定的 artifact ref/digest。普通 DAG 失败不得映射为原生 blocked。
+`finalize` 会 fresh 读取 source，并要求三个固定 gate 的 current-sequence evidence 精确引用 runtime 绑定的 artifact ref/digest；`commit-readiness` 还必须产生可由 Git 控制器重新验证的 `DELIVERY_MANIFEST_V1`。普通 DAG 失败不得映射为原生 blocked。
 
 ## 原生完成桥接
 

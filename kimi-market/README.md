@@ -19,11 +19,11 @@
 
 Kimi Code 的原生 Goal 不向插件暴露稳定的 native instance identity（无 threadId/createdAt），因此本插件使用 `local_fallback` 生命周期：显式 `/skill:subagent-coordination` 是唯一公开 DAG 控制器；当目标未完成时，它会返回 runtime 生成的单行续跑提示（`/skill:subagent-coordination 继续 <goal.json绝对路径>`），请逐字使用该提示继续执行。如果你希望获得自动外循环，也可以用原生 `/goal 每轮调用 subagent-coordination skill …` 包裹；skill 本身不调用 CreateGoal/UpdateGoal，也不依赖原生 Goal 存在。
 
-控制器内部调用 planner 生成 coverage/plan/delta，并把 attempt 分发给 worker；执行方式固定为 `subagent`。instance identity 取 source 绝对路径与 source digest 的 SHA-256 前 12 位小写 hex 后缀，恢复时精确校验 instance 与 objective digest。首次运行先冻结工作区 baseline、生成 `SOURCE_BLOCKS_V1`；coverage 按 source refs × implementation/verification effects 计算，独立 source audit 在 work 前证明无遗漏，最终 diff audit 由 runtime 扫描 baseline 与真实工作区并固化 artifact digest。DAG 耗尽但 required effect coverage 不足 100% 时进入 `needs_delta`。
+控制器使用 `DAG_PLAN_V5`：模块 Owner 跨 Goal 永久存在并受仓库级 lease 互斥；三个机械 runtime actor 不属于 owners。首次显示完整 DAG，后续 delta 只显示 diff。runtime 自动归因 changes、用 workspace sequence 管理证据新鲜度，并生成 Owner attestations 驱动的 delivery manifest。
 
-Owner 是稳定的逻辑责任域，Agent 只是软亲和执行载体。执行器通过 `Agent(run_in_background: true)` 启动、`Agent(resume:)` 复用，正确性只依赖 `.ghost-agent-workflow/` 中的持久状态，不依赖 Agent 会话记忆。Kimi 子代理固定平台默认 profile（runtime_profile 为 null），不同 Goal 不复用 Agent。
+Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体；同一模块的开发、资料查找、审查、修复和建议永远回到同一 Owner，其他 Owner 不得读取其内部代码。Agent 只是可替换执行载体；Kimi 子代理使用平台默认 profile，不同 Goal 不复用物理 Agent。
 
-`.ghost-agent-workflow/` 只保存本地 runtime state，不应提交；请在使用插件的项目中将它加入 `.gitignore`。
+只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 是临时执行状态，应加入 `.gitignore`。Owner 新增或分裂必须经脚本冲突验证和用户对精确 digest 的明确批准。
 
 ## 安装
 

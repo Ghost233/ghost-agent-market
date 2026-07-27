@@ -10,6 +10,22 @@ description: |
 
 在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。Codex 端按注册工具选择 `multi_agent_v1` 或直接子代理的能力探测不适用于 Claude Code；这里继续由当前主会话完成分析和 Git 写入。
 
+
+## 永久 Owner 仓库的清单模式
+
+运行 `git rev-parse --show-toplevel` 后，首先检查仓库根的 `.ghost-agent-workflow/owners/registry.json`。文件存在时必须进入本节，并在本节结束；禁止继续执行后面的通用分析/主会话 diff 复核流程。Registry 不存在时才使用后续旧流程。
+
+清单模式中的 Git 控制器是机械 actor，不是模块 Owner。它只能读取 Registry、runtime state、`DELIVERY_MANIFEST_V1`、`COMMIT_ATTESTATION_V1`、Git identity/status/name-only/check/hash；不得读取 `git diff`、`git show` 的模块内容，不得搜索或语义审查模块代码，也不得替 Owner 修改提交信息或文件分组。
+
+1. 从当前已完成 Goal 的 commit-readiness evidence 取得精确 delivery manifest；若需发现候选，只按 runtime state 的 accepted artifact ref 机械查找，不能按时间戳盲选。多个或没有当前候选时停止。
+2. 运行 `node <plugin-root>/scripts/goal-dag.mjs delivery-validate <delivery-manifest.json>`。只有 `status: valid` 才继续；它会重新核对 worktree、HEAD、Registry digest、`workspace_change_seq`、diff-scope evidence、Owner attestations、敏感/runtime/未归属路径和 `git diff --check`。
+3. 机械比较 `git status --porcelain=v1 -z` 全部可交付路径和 manifest `changed_files[]`。集合不完全相等、存在脏 submodule 内部内容、清单外 staged 内容或 HEAD 改变时，在任何写入前停止。Goal/Plan/runtime 路径永不提交。
+4. 读取仓库指令和 Git identity；身份不符即停止。要求 `commit_strategy: single_atomic`，所有 Owner 已通过 attestation 同意同一个顶层 `commit_message`。
+5. 用 manifest 完整显式路径集合暂存一次；只用 `git diff --cached --name-only`、`git diff --cached --check` 和 status 核验路径，不显示模块 diff。使用共同批准的 message 创建一个原子提交，保留仓库要求的 trailer；不得拆分、合并或改写语义。
+
+清单模式不启动通用分析代理。最终只报告 manifest/attestation digest、sequence、commit hash、name-only/check 和剩余 status，不输出模块 diff。
+
+
 提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
 ## 预检

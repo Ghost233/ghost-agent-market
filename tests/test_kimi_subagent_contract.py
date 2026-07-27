@@ -157,7 +157,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
         for requirement in (
             "## 用户可见的 DAG 与状态",
             "展示 `render` 产生的完整当前 DAG",
-            "每次 `apply-delta` 成功后",
+            "每次 `apply-delta`",
             "planned coverage、completed coverage",
             "实质状态变化",
             "同一推进批次中的多项变化合并播报",

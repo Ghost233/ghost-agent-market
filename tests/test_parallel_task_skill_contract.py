@@ -97,6 +97,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
             gates = {gate["id"]: gate for gate in contract["verification_gates"]}
             self.assertTrue(gates["source-coverage-audit"]["required"])
             self.assertTrue(gates["diff-scope-audit"]["required"])
+            self.assertTrue(gates["commit-readiness"]["required"])
 
             if platform == "codex":
                 self.assertEqual(contract["lifecycle"]["controller"], "codex_native")
@@ -146,13 +147,17 @@ class GoalDagSkillContractTests(unittest.TestCase):
             skill = self.skill(platform, "parallel-task-planner")
             template = self.reference(platform, "parallel-task-planner")
             coverage = self.json_block_after(template, "## PLAN_COVERAGE_V1")
-            plan = self.json_block_after(template, "## DAG_PLAN_V4")
+            plan = self.json_block_after(template, "## DAG_PLAN_V5")
             delta = self.json_block_after(template, "## DAG_DELTA_V1")
 
             self.assertIn("goal.source.path", skill)
             self.assertEqual(coverage["contract"], "PLAN_COVERAGE_V1")
-            self.assertEqual(plan["contract"], "DAG_PLAN_V4")
-            self.assertEqual(plan["plan_format_version"], 4)
+            self.assertEqual(plan["contract"], "DAG_PLAN_V5")
+            self.assertEqual(plan["plan_format_version"], 5)
+            self.assertEqual(
+                {actor["id"] for actor in plan["runtime_actors"]},
+                {"source-audit", "diff-audit", "commit-readiness"},
+            )
             self.assertEqual(delta["contract"], "DAG_DELTA_V1")
             self.assertIn("coverage_update", delta)
             self.assertTrue(coverage["required_plan_items"])
@@ -192,6 +197,10 @@ class GoalDagSkillContractTests(unittest.TestCase):
             "bind",
             "finish",
             "finalize",
+            "owner-lease-inspect",
+            "owner-lease-heartbeat",
+            "owner-lease-recover",
+            "expand-task-scope",
         )
         for platform in PLATFORMS:
             skill = self.skill(platform, "subagent-coordination")
@@ -200,7 +209,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
                 self.assertIn(f"goal-dag.mjs {command}", skill)
             self.assertLess(skill.index("goal-dag.mjs status"), skill.index("goal-dag.mjs reconcile"))
             self.assertLess(skill.index("goal-dag.mjs reconcile"), skill.index("goal-dag.mjs reserve"))
-            self.assertIn("TASK_BINDING_V4", skill)
+            self.assertIn("TASK_BINDING_V5", skill)
             self.assertIn("executor_spawn_name", skill)
             self.assertIn("Owner/generation", skill)
             for window in (
@@ -220,7 +229,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
             for requirement in (
                 "## 用户可见的 DAG 与状态",
                 "展示 `render` 产生的完整当前 DAG",
-                "每次 `apply-delta` 成功后",
+                "每次 `apply-delta`",
                 "planned coverage、completed coverage",
                 "实质状态变化",
                 "同一推进批次中的多项变化合并播报",
@@ -238,8 +247,8 @@ class GoalDagSkillContractTests(unittest.TestCase):
         for platform in PLATFORMS:
             skill = self.skill(platform, "subagent-goal-worker")
             template = self.reference(platform, "subagent-goal-worker")
-            binding = self.json_block_after(template, "## TASK_BINDING_V4")
-            result = self.json_block_after(template, "## WORKER_RESULT_V4")
+            binding = self.json_block_after(template, "## TASK_BINDING_V5")
+            result = self.json_block_after(template, "## WORKER_RESULT_V5")
 
             self.assertEqual(binding["executor_mode"], "subagent")
             for field in (
@@ -252,6 +261,13 @@ class GoalDagSkillContractTests(unittest.TestCase):
                 "source_revision",
                 "plan_item_ids",
                 "coverage_effect",
+                "runtime_actor_id",
+                "owner_scope_excludes",
+                "readable_path_excludes",
+                "searchable_path_excludes",
+                "published_artifact_directory",
+                "dependency_inputs",
+                "workspace_change_seq",
                 "goal_constraints",
                 "side_effect_policy",
                 "verification_requirements",
@@ -268,6 +284,7 @@ class GoalDagSkillContractTests(unittest.TestCase):
             self.assertIn("OWNER_CHECKPOINT_V1", template)
             self.assertIn("goal-dag.mjs source-audit", template)
             self.assertIn("goal-dag.mjs diff-audit", template)
+            self.assertIn("goal-dag.mjs commit-readiness", template)
             self.assertIn("不得修改 goal/coverage/plan/state/capsule", skill)
 
     def test_platform_profiles_are_intentionally_different(self) -> None:
@@ -276,10 +293,10 @@ class GoalDagSkillContractTests(unittest.TestCase):
         codex_coordinator = self.skill("codex", "subagent-coordination")
         claude_coordinator = self.skill("claude", "subagent-coordination")
         self.assertIn('"model": "gpt-5.6-sol"', codex_plan)
-        self.assertIn('"reasoning_effort": "medium"', codex_plan)
+        self.assertIn('"reasoning_effort": "high"', codex_plan)
         self.assertIn('"runtime_profile": null', claude_plan)
         self.assertIn('model: "gpt-5.6-sol"', codex_coordinator)
-        self.assertIn('reasoning_effort: "medium"', codex_coordinator)
+        self.assertIn('reasoning_effort: "high"', codex_coordinator)
         self.assertIn('fork_turns: "none"', codex_coordinator)
         self.assertIn("不得指定 model", claude_coordinator)
 

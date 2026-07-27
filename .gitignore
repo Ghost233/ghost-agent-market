@@ -1,7 +1,9 @@
 .DS_Store
 .codebase-memory/
 .skillopt-reinforce/
-.ghost-agent-workflow/
+.ghost-agent-workflow/*
+!.ghost-agent-workflow/owners/
+!.ghost-agent-workflow/owners/**
 __pycache__/
 *.log
 tmp/

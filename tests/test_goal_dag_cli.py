@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"
 CLAUDE_SCRIPT = ROOT / "claude-code-market/scripts/goal-dag.mjs"
+KIMI_SCRIPT = ROOT / "kimi-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"
 FIXTURES = ROOT / "tests/fixtures/goal-dag"
 
 
@@ -55,8 +56,77 @@ class GoalDagCliTests(unittest.TestCase):
             if platform == "claude_code":
                 for owner in plan["owners"]:
                     owner["runtime_profile"] = None
+                for actor in plan["runtime_actors"]:
+                    actor["runtime_profile"] = None
             plan_path = root / "plan.json"
             plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            owner_root = workspace_root / ".ghost-agent-workflow" / "owners"
+            owner_root.mkdir(parents=True, exist_ok=True)
+            persistent_owners = []
+            for owner in plan["owners"]:
+                if not owner["writable_paths"]:
+                    continue
+                persistent_owner = {
+                    "id": owner["id"],
+                    "generation": 1,
+                    "status": "active",
+                    "responsibility": owner["responsibility"],
+                    "scope_patterns": owner["writable_paths"],
+                    "scope_excludes": owner["excluded_paths"],
+                    "worker_context": owner["worker_context"],
+                    "runtime_profile": owner["runtime_profile"],
+                    "lineage": {
+                        "parent_owner_ids": [],
+                        "created_by_request_digest": "bootstrap",
+                    },
+                }
+                persistent_owners.append(persistent_owner)
+                capsule_path = owner_root / owner["id"] / "capsule.json"
+                capsule_path.parent.mkdir(parents=True)
+                capsule_path.write_text(
+                    json.dumps(
+                        {
+                            "contract": "OWNER_CAPSULE_V2",
+                            "owner_id": owner["id"],
+                            "generation": 1,
+                            "registry_revision": 1,
+                            "scope_patterns": owner["writable_paths"],
+                            "scope_excludes": owner["excluded_paths"],
+                            "responsibility": owner["responsibility"],
+                            "worker_context": owner["worker_context"],
+                            "inherited_from": [],
+                            "decisions": [],
+                            "invariants": [],
+                            "risks": [],
+                            "important_symbols": [],
+                            "next_steps": [],
+                            "history": [],
+                            "updated_at": "2026-07-27T00:00:00.000Z",
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            (owner_root / "registry.json").write_text(
+                json.dumps(
+                    {
+                        "contract": "OWNER_REGISTRY_V2",
+                        "workspace_root": str(workspace_root),
+                        "revision": 1,
+                        "matcher": "owner-path-expression-v2",
+                        "managed_roots": ["src/**", "tests/**"],
+                        "owners": persistent_owners,
+                        "retired_owner_ids": [],
+                        "updated_at": "2026-07-27T00:00:00.000Z",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             coverage = json.loads((FIXTURES / "coverage.json").read_text(encoding="utf-8"))
             source_blocks = []
             for line_number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
@@ -130,6 +200,14 @@ class GoalDagCliTests(unittest.TestCase):
         self.assertEqual(len(payload["actions"]), 1, payload)
         return payload["actions"][0]
 
+    def action_subject_id(self, action: dict) -> str:
+        return action["execution_subject_id"]
+
+    def bound_executor_for(self, state: dict, action: dict) -> str | None:
+        subject_id = self.action_subject_id(action)
+        collection = "runtime_actors" if action["runtime_actor_id"] else "owners"
+        return state[collection][subject_id]["bound_executor_id"]
+
     def result_for(self, plan_path: Path, state_path: Path, task_id: str, status: str = "completed", **overrides: object) -> dict:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -141,12 +219,13 @@ class GoalDagCliTests(unittest.TestCase):
             changed_files = [f"{prefix}/changed.ts"]
         evidence_outcome = "passed" if status == "completed" else "failed"
         result = {
-            "contract": "WORKER_RESULT_V4",
+            "contract": "WORKER_RESULT_V5",
             "status": status,
             "task_id": task_id,
             "logical_id": task["logical_id"],
             "role": task["role"],
             "owner_id": task["owner_id"],
+            "runtime_actor_id": task["runtime_actor_id"],
             "owner_generation": task_state["owner_generation"],
             "executor_id": task_state["executor_id"],
             "reservation_token": task_state["reservation_token"],
@@ -170,10 +249,11 @@ class GoalDagCliTests(unittest.TestCase):
             "scope_request": None,
             "summary": f"{task_id} {status}",
             "owner_updates": {
-                "decisions": [f"{task_id} decision"],
-                "invariants": [f"{task_id} invariant"],
+                "decisions": [] if task["owner_id"] is None else [f"{task_id} decision"],
+                "invariants": [] if task["owner_id"] is None else [f"{task_id} invariant"],
                 "risks": [],
             },
+            "published_artifacts": [],
         }
         result.update(overrides)
         return result
@@ -182,6 +262,7 @@ class GoalDagCliTests(unittest.TestCase):
         self, plan_path: Path, state_path: Path, action: dict, executor_id: str,
         script: Path | None = None,
     ) -> None:
+        executor_id = action.get("executor_id") or executor_id
         self.run_json(
             "bind",
             plan_path,
@@ -202,10 +283,10 @@ class GoalDagCliTests(unittest.TestCase):
                 return
             for action in payload["actions"]:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
+                subject_id = self.action_subject_id(action)
                 executor = executors.setdefault(
-                    action["owner_id"],
-                    state["owners"][action["owner_id"]]["bound_executor_id"]
-                    or f"agent-{action['owner_id']}",
+                    subject_id,
+                    self.bound_executor_for(state, action) or f"agent-{subject_id}",
                 )
                 self.bind(plan_path, state_path, action, executor, script=script)
                 self.finish(plan_path, state_path, action, script=script)
@@ -219,8 +300,9 @@ class GoalDagCliTests(unittest.TestCase):
             actions = self.run_json("reserve", plan_path, state_path, 3, script=script)["actions"]
             self.assertTrue(actions)
             for action in actions:
+                subject_id = self.action_subject_id(action)
                 executor = executors.setdefault(
-                    action["owner_id"], f"agent-{action['owner_id']}"
+                    subject_id, f"agent-{subject_id}"
                 )
                 self.bind(plan_path, state_path, action, executor, script=script)
                 if action["task_id"] == target_task_id:
@@ -282,6 +364,73 @@ class GoalDagCliTests(unittest.TestCase):
         )
         return Path(payload["artifact_ref"]), payload["artifact_digest"]
 
+    def write_commit_readiness_artifact(
+        self, plan_path: Path, state_path: Path, action: dict, script: Path | None = None
+    ) -> tuple[Path, str]:
+        payload = self.run_json(
+            "commit-readiness",
+            plan_path,
+            state_path,
+            action["task_id"],
+            action["reservation_token"],
+            script=script,
+        )
+        return Path(payload["artifact_ref"]), payload["artifact_digest"]
+
+    def publish_owner_artifact(
+        self,
+        plan_path: Path,
+        state_path: Path,
+        task: dict,
+        contract: str,
+        audience: list[str],
+        **payload: object,
+    ) -> dict:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        goal = json.loads(Path(plan["goal_contract_path"]).read_text(encoding="utf-8"))
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        artifact_path = (
+            Path(goal["workspace"]["root"])
+            / ".ghost-agent-workflow"
+            / "owners"
+            / task["owner_id"]
+            / "interfaces"
+            / goal["goal_id"]
+            / task["id"]
+            / f"attempt-{state['tasks'][task['id']]['attempt']}"
+            / f"{task['id']}-{contract.lower()}.json"
+        )
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        body = {
+            "contract": contract,
+            "owner_id": task["owner_id"],
+            "producer_task_id": task["id"],
+            "audience": audience,
+            **payload,
+        }
+        artifact_path.write_text(
+            json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        return {
+            "contract": contract,
+            "ref": str(artifact_path),
+            "digest": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+            "audience": audience,
+        }
+
+    def accepted_owner_files(self, plan_path: Path, state_path: Path, owner_id: str) -> list[str]:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        changed: set[str] = set()
+        for task in plan["tasks"]:
+            task_state = state["tasks"][task["id"]]
+            if task["owner_id"] != owner_id or task_state["status"] != "completed":
+                continue
+            result_ref = task_state["result_ref"]
+            if result_ref:
+                changed.update(json.loads(Path(result_ref).read_text(encoding="utf-8"))["changed_files"])
+        return sorted(changed)
+
     def finish(
         self, plan_path: Path, state_path: Path, action: dict,
         status: str = "completed", script: Path | None = None, **overrides: object,
@@ -301,6 +450,38 @@ class GoalDagCliTests(unittest.TestCase):
                 changed_path.write_text(
                     f"{task_id} attempt {action['binding']['attempt']}\n", encoding="utf-8"
                 )
+        if status == "completed" and task["owner_id"] is not None:
+            result["published_artifacts"].append(
+                self.publish_owner_artifact(
+                    plan_path,
+                    state_path,
+                    task,
+                    "OWNER_HANDOFF_V1",
+                    ["*"],
+                    summary=result["summary"],
+                )
+            )
+        if status == "completed" and task["owner_id"] is not None:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            attested_files = sorted(set(
+                self.accepted_owner_files(plan_path, state_path, task["owner_id"])
+                + result["changed_files"]
+            ))
+            result["published_artifacts"].append(
+                self.publish_owner_artifact(
+                    plan_path,
+                    state_path,
+                    task,
+                    "COMMIT_ATTESTATION_V1",
+                    ["commit-readiness", "git-controller"],
+                    workspace_change_seq=(
+                        state["workspace_change_seq"] + (1 if result["changed_files"] else 0)
+                    ),
+                    changed_files=attested_files,
+                    commit_message="chore(workflow): 交付目标变更",
+                    conclusion="approved",
+                )
+            )
         if status == "completed" and "diff-scope-audit" in task["verification_ids"]:
             artifact_path, artifact_digest = self.write_diff_scope_artifact(
                 plan_path, state_path, action, script=script
@@ -318,6 +499,16 @@ class GoalDagCliTests(unittest.TestCase):
             evidence = next(
                 item for item in result["evidence"]
                 if item["verification_id"] == "source-coverage-audit"
+            )
+            evidence["artifact_ref"] = str(artifact_path)
+            evidence["artifact_digest"] = artifact_digest
+        if status == "completed" and "commit-readiness" in task["verification_ids"]:
+            artifact_path, artifact_digest = self.write_commit_readiness_artifact(
+                plan_path, state_path, action, script=script
+            )
+            evidence = next(
+                item for item in result["evidence"]
+                if item["verification_id"] == "commit-readiness"
             )
             evidence["artifact_ref"] = str(artifact_path)
             evidence["artifact_digest"] = artifact_digest
@@ -340,7 +531,7 @@ class GoalDagCliTests(unittest.TestCase):
             script=script,
         )
 
-    def test_goal_and_plan_initialize_v4_state_and_capsules(self) -> None:
+    def test_goal_and_plan_initialize_v5_state_and_capsules(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
             state_path = self.initialize(goal_path, plan_path)
             goal_state = json.loads((root / "goal-state.json").read_text(encoding="utf-8"))
@@ -348,7 +539,7 @@ class GoalDagCliTests(unittest.TestCase):
 
             self.assertEqual(goal_state["contract"], "GOAL_STATE_V1")
             self.assertEqual(goal_state["active_plan_path"], str(plan_path))
-            self.assertEqual(state["contract"], "DAG_RUN_STATE_V4")
+            self.assertEqual(state["contract"], "DAG_RUN_STATE_V5")
             self.assertEqual(state["tasks"]["T1"]["status"], "pending")
             self.assertEqual(state["owners"]["state-domain"]["generation"], 1)
             capsule = json.loads(
@@ -391,7 +582,7 @@ class GoalDagCliTests(unittest.TestCase):
             plan_path.write_text(json.dumps(plan), encoding="utf-8")
             missing_contract = self.run_cli("validate", plan_path)
             self.assertNotEqual(missing_contract.returncode, 0)
-            self.assertIn("plan contract must equal DAG_PLAN_V4", missing_contract.stderr)
+            self.assertIn("plan contract must equal DAG_PLAN_V5", missing_contract.stderr)
 
         with self.workspace() as (_, goal_path, plan_path):
             self.run_json("goal-validate", goal_path)
@@ -400,7 +591,7 @@ class GoalDagCliTests(unittest.TestCase):
             plan_path.write_text(json.dumps(plan), encoding="utf-8")
             result = self.run_cli("validate", plan_path)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("plan_format_version must equal 4", result.stderr)
+            self.assertIn("plan_format_version must equal 5", result.stderr)
 
     def test_goal_refresh_updates_digests_without_replacing_active_plan(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
@@ -439,7 +630,7 @@ class GoalDagCliTests(unittest.TestCase):
             source_audit_task = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T0"))
             source_audit_task.update(
                 {
-                    "id": "T5",
+                    "id": "T11",
                     "logical_id": "coverage.audit-source-r2",
                     "title": "重审第二版计划源覆盖",
                 }
@@ -447,10 +638,19 @@ class GoalDagCliTests(unittest.TestCase):
             diff_audit_task = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T9"))
             diff_audit_task.update(
                 {
-                    "id": "T8",
+                    "id": "T12",
                     "logical_id": "scope.audit-final-diff-r2",
                     "title": "重审第二版最终差异",
-                    "depends_on": ["T4", "T5"],
+                    "depends_on": ["T4", "T11"],
+                }
+            )
+            readiness_task = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T10"))
+            readiness_task.update(
+                {
+                    "id": "T13",
+                    "logical_id": "delivery.commit-readiness-r2",
+                    "title": "重做第二版提交就绪检查",
+                    "depends_on": ["T12"],
                 }
             )
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
@@ -462,15 +662,16 @@ class GoalDagCliTests(unittest.TestCase):
                         "base_plan_digest": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                         "revision": 2,
                         "add_owners": [],
-                        "add_tasks": [source_audit_task, diff_audit_task],
+                        "add_tasks": [source_audit_task, diff_audit_task, readiness_task],
                         "repairs": [],
                         "source_dispositions": [
                             {
                                 "task_id": task["id"],
-                                "action": "invalidate" if task["id"] in {"T0", "T9"} else "carry_forward",
+                                "action": "invalidate" if task["id"] in {"T0", "T9", "T10"} else "carry_forward",
                                 "replacement_task_id": (
-                                    "T5" if task["id"] == "T0"
-                                    else "T8" if task["id"] == "T9"
+                                    "T11" if task["id"] == "T0"
+                                    else "T12" if task["id"] == "T9"
+                                    else "T13" if task["id"] == "T10"
                                     else None
                                 ),
                             }
@@ -486,13 +687,13 @@ class GoalDagCliTests(unittest.TestCase):
             applied = self.run_json("apply-delta", plan_path, state_path, delta_path)
             self.assertEqual(applied["revision"], 2)
             action = self.reserve_one(plan_path, state_path)
-            self.assertEqual(action["task_id"], "T5")
+            self.assertEqual(action["task_id"], "T11")
             self.bind(
                 plan_path, state_path, action, "agent-flow-verification"
             )
             self.finish(plan_path, state_path, action)
             diff_action = self.reserve_one(plan_path, state_path)
-            self.assertEqual(diff_action["task_id"], "T8")
+            self.assertEqual(diff_action["task_id"], "T12")
             self.bind(
                 plan_path, state_path, diff_action, "agent-flow-verification"
             )
@@ -527,7 +728,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(len(actions), 2)
             self.assertEqual({action["action"] for action in actions}, {"spawn_executor"})
             for action in actions:
-                self.assertEqual(action["binding"]["contract"], "TASK_BINDING_V4")
+                self.assertEqual(action["binding"]["contract"], "TASK_BINDING_V5")
                 self.assertIn("checkpoint_path", action["binding"])
                 coverage_binding = action["binding"]["coverage"]
                 self.assertEqual(coverage_binding["ref"], str(plan_path.with_name("coverage.json")))
@@ -682,7 +883,8 @@ class GoalDagCliTests(unittest.TestCase):
                 if not payload["actions"]:
                     break
                 for action in payload["actions"]:
-                    executor = executors.setdefault(action["owner_id"], f"agent-{action['owner_id']}")
+                    subject_id = self.action_subject_id(action)
+                    executor = executors.setdefault(subject_id, f"agent-{subject_id}")
                     self.bind(plan_path, state_path, action, executor)
                     self.finish(plan_path, state_path, action)
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -713,7 +915,7 @@ class GoalDagCliTests(unittest.TestCase):
             replacement = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T1"))
             replacement.update(
                 {
-                    "id": "T5",
+                    "id": "T11",
                     "logical_id": "state.repair-types",
                     "title": "修复页面状态类型",
                     "task": "根据失败证据修复页面状态类型",
@@ -731,7 +933,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "revision": 2,
                         "add_owners": [],
                         "add_tasks": [replacement],
-                        "repairs": [{"task_id": "T1", "replacement_task_id": "T5"}],
+                        "repairs": [{"task_id": "T1", "replacement_task_id": "T11"}],
                         "source_dispositions": [],
                         "coverage_update": {
                             "required_plan_items": json.loads(
@@ -746,9 +948,9 @@ class GoalDagCliTests(unittest.TestCase):
             )
             applied = self.run_json("apply-delta", plan_path, state_path, delta_path)
             self.assertEqual(applied["unrelated_running_tasks"], ["T3"])
-            self.assertEqual(applied["repaired_tasks"][0]["replacement_task_id"], "T5")
+            self.assertEqual(applied["repaired_tasks"][0]["replacement_task_id"], "T11")
             next_payload = self.run_json("reserve", plan_path, state_path, 3)
-            self.assertEqual([action["task_id"] for action in next_payload["actions"]], ["T5"])
+            self.assertEqual([action["task_id"] for action in next_payload["actions"]], ["T11"])
             repaired_action = next_payload["actions"][0]
             self.bind(plan_path, state_path, repaired_action, "agent-state")
             self.finish(plan_path, state_path, repaired_action)
@@ -770,7 +972,7 @@ class GoalDagCliTests(unittest.TestCase):
             replacement = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T1"))
             replacement.update(
                 {
-                    "id": "T5",
+                    "id": "T11",
                     "logical_id": "state.invalid-repair",
                     "title": "无效的状态修复",
                     "task": "错误地依赖被修复任务",
@@ -786,7 +988,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "revision": 2,
                         "add_owners": [],
                         "add_tasks": [replacement],
-                        "repairs": [{"task_id": "T1", "replacement_task_id": "T5"}],
+                        "repairs": [{"task_id": "T1", "replacement_task_id": "T11"}],
                         "source_dispositions": [],
                         "coverage_update": {
                             "required_plan_items": json.loads(
@@ -813,7 +1015,7 @@ class GoalDagCliTests(unittest.TestCase):
             replacement = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T1"))
             replacement.update(
                 {
-                    "id": "T5",
+                    "id": "T11",
                     "logical_id": "state.repair-types",
                     "title": "修复页面状态类型",
                     "task": "修复失败状态类型",
@@ -834,7 +1036,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "revision": 2,
                         "add_owners": [],
                         "add_tasks": [replacement],
-                        "repairs": [{"task_id": "T1", "replacement_task_id": "T5"}],
+                        "repairs": [{"task_id": "T1", "replacement_task_id": "T11"}],
                         "source_dispositions": [],
                         "coverage_update": {"required_plan_items": mutated_items},
                         "safety": plan["safety"],
@@ -856,7 +1058,8 @@ class GoalDagCliTests(unittest.TestCase):
                 if not payload["actions"]:
                     break
                 for action in payload["actions"]:
-                    executor = executors.setdefault(action["owner_id"], f"agent-{action['owner_id']}")
+                    subject_id = self.action_subject_id(action)
+                    executor = executors.setdefault(subject_id, f"agent-{subject_id}")
                     self.bind(plan_path, state_path, action, executor)
                     self.finish(plan_path, state_path, action)
             finalized = self.run_json(
@@ -871,7 +1074,10 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(finalized["native_action"]["action"], "update_goal")
             goal_state = json.loads((root / "goal-state.json").read_text(encoding="utf-8"))
             self.assertEqual(goal_state["status"], "completed")
-            self.assertEqual(len(goal_state["completion_evidence"]), 6)
+            self.assertEqual(
+                len(goal_state["completion_evidence"]),
+                len(json.loads(plan_path.read_text(encoding="utf-8"))["tasks"]),
+            )
             blocked = self.run_cli("reserve", plan_path, state_path, 1)
             self.assertNotEqual(blocked.returncode, 0)
             self.assertIn("completed and immutable", blocked.stderr)
@@ -1129,9 +1335,8 @@ class GoalDagCliTests(unittest.TestCase):
             while verify_action is None:
                 actions = self.run_json("reserve", plan_path, state_path, 3)["actions"]
                 for action in actions:
-                    executor = executors.setdefault(
-                        action["owner_id"], f"agent-{action['owner_id']}"
-                    )
+                    subject_id = self.action_subject_id(action)
+                    executor = executors.setdefault(subject_id, f"agent-{subject_id}")
                     self.bind(plan_path, state_path, action, executor)
                     if action["task_id"] == "T9":
                         verify_action = action
@@ -1188,6 +1393,7 @@ class GoalDagCliTests(unittest.TestCase):
             result_path = Path(action["binding"]["result_path"])
             result_path.parent.mkdir(parents=True, exist_ok=True)
             result = self.result_for(plan_path, state_path, action["task_id"])
+            result["changed_files"] = []
             result_path.write_text(
                 json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
             )
@@ -1291,10 +1497,29 @@ class GoalDagCliTests(unittest.TestCase):
             plan["goal_digest"] = hashlib.sha256(goal_path.read_bytes()).hexdigest()
             for owner in plan["owners"]:
                 if owner["id"] == "state-domain":
-                    owner["id"] = "State.Domain-With-Hyphen"
+                    owner["id"] = "state-domain-with-hyphen"
             for task in plan["tasks"]:
                 if task["owner_id"] == "state-domain":
-                    task["owner_id"] = "State.Domain-With-Hyphen"
+                    task["owner_id"] = "state-domain-with-hyphen"
+            owner_root = Path(goal["workspace"]["root"]) / ".ghost-agent-workflow/owners"
+            registry_path = owner_root / "registry.json"
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            for owner in registry["owners"]:
+                if owner["id"] == "state-domain":
+                    owner["id"] = "state-domain-with-hyphen"
+            registry_path.write_text(
+                json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            old_capsule_path = owner_root / "state-domain/capsule.json"
+            capsule = json.loads(old_capsule_path.read_text(encoding="utf-8"))
+            capsule["owner_id"] = "state-domain-with-hyphen"
+            new_capsule_path = owner_root / "state-domain-with-hyphen/capsule.json"
+            new_capsule_path.parent.mkdir(parents=True)
+            new_capsule_path.write_text(
+                json.dumps(capsule, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
             plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
             coverage["plan_digest"] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
@@ -1310,6 +1535,167 @@ class GoalDagCliTests(unittest.TestCase):
             )
             second = self.reserve_one(plan_path, state_path)
             self.assertNotEqual(name1, second["executor_spawn_name"])
+
+    def test_same_persistent_owner_can_execute_work_and_verify_modes(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            task = next(item for item in plan["tasks"] if item["id"] == "T4")
+            task["owner_id"] = "state-domain"
+            plan_path.write_text(
+                json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            coverage_path = root / "coverage.json"
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            coverage["plan_digest"] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+            coverage_path.write_text(
+                json.dumps(coverage, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            state_path = self.initialize(goal_path, plan_path)
+            self.assertTrue(state_path.exists())
+
+    def test_plan_owner_metadata_must_exactly_match_approved_registry(self) -> None:
+        with self.workspace() as (_, _, plan_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            owner = next(item for item in plan["owners"] if item["id"] == "state-domain")
+            owner["writable_paths"] = ["src/state/**"]
+            plan_path.write_text(
+                json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            rejected = self.run_cli("validate", plan_path)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("approved persistent owner scope", rejected.stderr)
+
+    def test_binding_carries_permanent_owner_registry_and_access_scopes(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            binding = self.reserve_one(plan_path, state_path)["binding"]
+            self.assertEqual(binding["owner_registry"]["ref"], str(
+                Path(json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"])
+                / ".ghost-agent-workflow/owners/registry.json"
+            ))
+            self.assertEqual(binding["owner_scope_patterns"], binding["readable_paths"])
+            self.assertEqual(binding["owner_scope_patterns"], binding["searchable_paths"])
+            self.assertEqual(binding["owner_scope_excludes"], binding["readable_path_excludes"])
+            self.assertEqual(binding["owner_scope_excludes"], binding["searchable_path_excludes"])
+            self.assertTrue(Path(binding["persistent_owner_capsule_ref"]).exists())
+            self.assertTrue(binding["published_artifact_directory"].startswith(
+                str(Path(binding["persistent_owner_capsule_ref"]).parent / "interfaces")
+            ))
+
+    def test_repository_owner_lease_is_inspectable_and_token_fenced(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            owner_id = action["owner_id"]
+            inspected = self.run_json("owner-lease-inspect", workspace_root, owner_id)
+            self.assertEqual(inspected["status"], "leased")
+            self.assertEqual(inspected["lease"]["task_id"], action["task_id"])
+            self.assertEqual(inspected["lease"]["state_path"], str(state_path))
+            heartbeat = self.run_json(
+                "owner-lease-heartbeat", workspace_root, owner_id,
+                action["reservation_token"],
+            )
+            self.assertEqual(heartbeat["status"], "heartbeat_recorded")
+            rejected = self.run_cli(
+                "owner-lease-recover", workspace_root, owner_id, "wrong-token", "crashed",
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            recovered = self.run_json(
+                "owner-lease-recover", workspace_root, owner_id,
+                action["reservation_token"], "confirmed crashed executor",
+            )
+            self.assertTrue(recovered["recovered"])
+            self.assertTrue(Path(recovered["recovery_ref"]).exists())
+            self.assertEqual(
+                self.run_json("owner-lease-inspect", workspace_root, owner_id)["status"],
+                "free",
+            )
+
+    def test_finish_automatically_attributes_changes_from_bind_snapshot(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            self.bind(plan_path, state_path, action, "agent-auto-attribution")
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            changed_path = workspace_root / "src/state/auto-attributed.ts"
+            changed_path.parent.mkdir(parents=True, exist_ok=True)
+            changed_path.write_text("runtime owns attribution\n", encoding="utf-8")
+            finished = self.finish(
+                plan_path, state_path, action, changed_files=[]
+            )
+            self.assertEqual(finished["changed_files"], ["src/state/auto-attributed.ts"])
+            accepted = json.loads(Path(finished["result_ref"]).read_text(encoding="utf-8"))
+            self.assertEqual(accepted["changed_files"], ["src/state/auto-attributed.ts"])
+            self.assertEqual(finished["workspace_change_seq"], 1)
+
+    def test_same_owner_scope_request_requeues_without_plan_delta(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            self.bind(plan_path, state_path, action, "agent-scope-expand")
+            scope_request = {
+                "paths": ["src/page/extra.ts", "tests/fixtures/foreign.ts"],
+                "reason": "初始 task write scope 漏项",
+                "required_for_done_when": "同步页面读取",
+                "suggested_owner": action["owner_id"],
+                "split_hints": [],
+                "overlap_hints": [],
+            }
+            finished = self.finish(
+                plan_path,
+                state_path,
+                action,
+                status="needs_repair",
+                changed_files=[],
+                diff_self_check="scope_exception",
+                scope_request=scope_request,
+            )
+            self.assertEqual(finished["status"], "needs_repair")
+            foreign = self.run_cli(
+                "expand-task-scope", plan_path, state_path, action["task_id"],
+                action["reservation_token"], "tests/fixtures/foreign.ts",
+            )
+            self.assertNotEqual(foreign.returncode, 0)
+            expanded = self.run_json(
+                "expand-task-scope", plan_path, state_path, action["task_id"],
+                action["reservation_token"], "src/page/extra.ts",
+            )
+            self.assertEqual(expanded["status"], "expanded_and_queued")
+            retry = self.reserve_one(plan_path, state_path)
+            self.assertEqual(retry["task_id"], action["task_id"])
+            self.assertIn("src/page/extra.ts", retry["binding"]["writable_paths"])
+
+    def test_delivery_manifest_is_revalidated_for_owner_git_controller(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            self.complete_all(plan_path, state_path)
+            self.run_json(
+                "finalize", goal_path, root / "goal-state.json", plan_path, state_path,
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            readiness_ref = state["tasks"]["T10"]["result_ref"]
+            readiness = json.loads(Path(readiness_ref).read_text(encoding="utf-8"))
+            evidence = next(
+                item for item in readiness["evidence"]
+                if item["verification_id"] == "commit-readiness"
+            )
+            audit = json.loads(Path(evidence["artifact_ref"]).read_text(encoding="utf-8"))
+            validated = self.run_json("delivery-validate", audit["delivery_manifest_ref"])
+            self.assertEqual(validated["status"], "valid")
+            manifest = json.loads(
+                Path(audit["delivery_manifest_ref"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["commit_strategy"], "single_atomic")
+            self.assertEqual(manifest["commit_message"], "chore(workflow): 交付目标变更")
+            self.assertEqual(
+                {item["commit_message"] for item in manifest["owner_deliveries"]},
+                {manifest["commit_message"]},
+            )
 
     def test_completed_native_bridge_survives_deleted_execution_inputs(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
@@ -1507,13 +1893,22 @@ class GoalDagCliTests(unittest.TestCase):
             added = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T1"))
             added.update(
                 {
-                    "id": "T10",
+                    "id": "T13",
                     "logical_id": "state.late-required-work",
                     "title": "补充规划后发现的实现要求",
                     "task": "实现规划后才发现的必需状态行为",
                     "depends_on": ["T0"],
                     "plan_item_ids": ["PI-late-work"],
                     "priority": 25,
+                }
+            )
+            verification = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T4"))
+            verification.update(
+                {
+                    "id": "T14",
+                    "logical_id": "state.verify-late-work",
+                    "title": "复验补充实现后的完整流程",
+                    "depends_on": ["T4", "T13"],
                 }
             )
             delta_path = root / "late-work-delta.json"
@@ -1524,7 +1919,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "base_plan_digest": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                         "revision": 2,
                         "add_owners": [],
-                        "add_tasks": [added],
+                        "add_tasks": [added, verification],
                         "repairs": [],
                         "source_dispositions": [],
                         "coverage_update": {
@@ -1540,7 +1935,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.run_json("apply-delta", plan_path, state_path, delta_path)
             self.complete_all(plan_path, state_path)
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            self.assertEqual(state["tasks"]["T10"]["status"], "completed")
+            self.assertEqual(state["tasks"]["T13"]["status"], "completed")
             self.assertEqual(state["tasks"]["T9"]["status"], "completed")
             finalized = self.run_json(
                 "finalize", goal_path, root / "goal-state.json", plan_path, state_path
@@ -1560,7 +1955,7 @@ class GoalDagCliTests(unittest.TestCase):
             replacement = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T0"))
             replacement.update(
                 {
-                    "id": "T5",
+                    "id": "T11",
                     "logical_id": "coverage.audit-source-repair",
                     "title": "修复计划源覆盖审计",
                 }
@@ -1575,7 +1970,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "revision": 2,
                         "add_owners": [],
                         "add_tasks": [replacement],
-                        "repairs": [{"task_id": "T0", "replacement_task_id": "T5"}],
+                        "repairs": [{"task_id": "T0", "replacement_task_id": "T11"}],
                         "source_dispositions": [],
                         "coverage_update": {
                             "required_plan_items": coverage["required_plan_items"]
@@ -1589,7 +1984,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.run_json("apply-delta", plan_path, state_path, delta_path)
             action = self.reserve_one(plan_path, state_path)
-            self.assertEqual(action["task_id"], "T5")
+            self.assertEqual(action["task_id"], "T11")
             self.bind(plan_path, state_path, action, "agent-flow-verification")
             self.finish(plan_path, state_path, action)
             ready = self.run_json("reserve", plan_path, state_path, 2)["actions"]
@@ -1615,15 +2010,24 @@ class GoalDagCliTests(unittest.TestCase):
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             source_audit = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T0"))
             source_audit.update(
-                {"id": "T5", "logical_id": "coverage.audit-source-r3", "title": "审计第三版计划源"}
+                {"id": "T11", "logical_id": "coverage.audit-source-r3", "title": "审计第三版计划源"}
             )
             diff_audit = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T9"))
             diff_audit.update(
                 {
-                    "id": "T8",
+                    "id": "T12",
                     "logical_id": "scope.audit-final-diff-r3",
                     "title": "审计第三版最终差异",
-                    "depends_on": ["T4", "T5"],
+                    "depends_on": ["T4", "T11"],
+                }
+            )
+            readiness = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T10"))
+            readiness.update(
+                {
+                    "id": "T13",
+                    "logical_id": "delivery.commit-readiness-r3",
+                    "title": "审计第三版提交就绪",
+                    "depends_on": ["T12"],
                 }
             )
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
@@ -1638,14 +2042,17 @@ class GoalDagCliTests(unittest.TestCase):
                         "base_plan_digest": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                         "revision": 2,
                         "add_owners": [],
-                        "add_tasks": [source_audit, diff_audit],
+                        "add_tasks": [source_audit, diff_audit, readiness],
                         "repairs": [],
                         "source_dispositions": [
                             {
                                 "task_id": task["id"],
-                                "action": "invalidate" if task["id"] in {"T0", "T9"} else "carry_forward",
+                                "action": "invalidate" if task["id"] in {"T0", "T9", "T10"} else "carry_forward",
                                 "replacement_task_id": (
-                                    "T5" if task["id"] == "T0" else "T8" if task["id"] == "T9" else None
+                                    "T11" if task["id"] == "T0"
+                                    else "T12" if task["id"] == "T9"
+                                    else "T13" if task["id"] == "T10"
+                                    else None
                                 ),
                             }
                             for task in plan["tasks"]
@@ -1710,9 +2117,14 @@ class GoalDagCliTests(unittest.TestCase):
             diff_audit.update(
                 {"id": "N4", "logical_id": "scope.linear-final-diff", "title": "顺序最终差异审计", "depends_on": ["N3"]}
             )
+            readiness = deepcopy(by_id["T10"])
+            readiness.update(
+                {"id": "N5", "logical_id": "delivery.linear-readiness", "title": "顺序提交就绪", "depends_on": ["N4"]}
+            )
             replacements = {
                 "T0": "N0", "T1": "N1", "T2": "N1",
-                "T3": "N2", "T4": "N3", "T9": "N4",
+                "T3": "N2", "T4": "N3", "T5": "N3", "T6": "N2",
+                "T9": "N4", "T10": "N5",
             }
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
             delta_path = root / "linear-refresh-delta.json"
@@ -1723,7 +2135,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "base_plan_digest": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                         "revision": 2,
                         "add_owners": [],
-                        "add_tasks": [source_audit, state_work, fixture_work, verification, diff_audit],
+                        "add_tasks": [source_audit, state_work, fixture_work, verification, diff_audit, readiness],
                         "repairs": [],
                         "source_dispositions": [
                             {
@@ -1798,6 +2210,15 @@ class GoalDagCliTests(unittest.TestCase):
                     "depends_on": ["T4", "S0", "R3"],
                 }
             )
+            readiness = deepcopy(by_id["T10"])
+            readiness.update(
+                {
+                    "id": "C10",
+                    "logical_id": "delivery.commit-readiness-without-fixtures",
+                    "title": "检查删除要求后的提交就绪状态",
+                    "depends_on": ["D9"],
+                }
+            )
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
             coverage["required_plan_items"] = [
                 item for item in coverage["required_plan_items"]
@@ -1810,13 +2231,13 @@ class GoalDagCliTests(unittest.TestCase):
                 ]
 
             def delta_with_fixture_disposition(action: str) -> dict:
-                replacements = {"T0": "S0", "T3": "R3", "T9": "D9"}
+                replacements = {"T0": "S0", "T3": "R3", "T9": "D9", "T10": "C10"}
                 return {
                     "contract": "DAG_DELTA_V1",
                     "base_plan_digest": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                     "revision": 2,
                     "add_owners": [],
-                    "add_tasks": [source_audit, fixture_replacement, diff_audit],
+                    "add_tasks": [source_audit, fixture_replacement, diff_audit, readiness],
                     "repairs": [],
                     "source_dispositions": [
                         {
@@ -1872,7 +2293,7 @@ class GoalDagCliTests(unittest.TestCase):
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             duplicate = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T9"))
             duplicate.update(
-                {"id": "T8", "logical_id": "scope.audit-duplicate", "title": "重复最终差异审计"}
+                {"id": "T12", "logical_id": "scope.audit-duplicate", "title": "重复最终差异审计"}
             )
             coverage = json.loads((root / "coverage.json").read_text(encoding="utf-8"))
             delta_path = root / "duplicate-diff-delta.json"
@@ -1898,7 +2319,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             rejected = self.run_cli("apply-delta", plan_path, state_path, delta_path)
             self.assertNotEqual(rejected.returncode, 0)
-            self.assertIn("exactly one live diff-scope-audit", rejected.stderr)
+            self.assertIn("exactly one diff-scope-audit", rejected.stderr)
 
     def test_active_reservation_recovery_rebuilds_canonical_binding(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
@@ -2041,6 +2462,7 @@ const template = [
 process.stdout.write(JSON.stringify({
   codex: template.replaceAll("__EXECUTION_PLATFORM__", "codex"),
   claude_code: template.replaceAll("__EXECUTION_PLATFORM__", "claude_code"),
+  kimi: template.replaceAll("__EXECUTION_PLATFORM__", "kimi"),
 }));
 """
         built = subprocess.run(
@@ -2053,6 +2475,7 @@ process.stdout.write(JSON.stringify({
         expected = json.loads(built.stdout)
         self.assertEqual(expected["codex"], CODEX_SCRIPT.read_text(encoding="utf-8"))
         self.assertEqual(expected["claude_code"], CLAUDE_SCRIPT.read_text(encoding="utf-8"))
+        self.assertEqual(expected["kimi"], KIMI_SCRIPT.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
