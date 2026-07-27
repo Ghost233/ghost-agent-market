@@ -113,9 +113,20 @@ node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back  <registry.json> <fe
 node <plugin-root>/scripts/goal-dag.mjs worktree-remove      <registry.json> <owner_id> [--force]
 node <plugin-root>/scripts/goal-dag.mjs owner-bind-goal      <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>
 node <plugin-root>/scripts/goal-dag.mjs owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json>
+node <plugin-root>/scripts/goal-dag.mjs owner-delivery-recover <registry.json> --plan|--confirm <proposal_digest>
 ```
 
-`worktree-create`/`worktree-commit`/`worktree-merge-back` 当前仍是 registry-first 命令，并非跨 Goal、registry 与 Git 的原子 Goal-aware API。controller 先用 `owner-bind-goal` 冻结 `pending` delivery，再创建 worktree 并 reconcile 到 `active`；每次 commit/merge 后继续 reconcile。reconcile 必须验证 active Owner、scope、worktree identity、base、状态单调性以及 committed/merged OID ancestry；delta 新增的 live writable Owner 会在下一次 reconcile 以 `pending` 纳入 delivery，创建 worktree 后方可执行。当前没有完整的 Git/JSON crash-intent journal；无法由现有 OID 证明的崩溃窗口必须 fail closed 并请求人工修复，文档不得声称任意 Git 后、JSON 前故障都可自动恢复。
+`worktree-create`/`worktree-commit`/`worktree-merge-back`/`worktree-remove` 仍是 registry-first 命令，但每项 Git mutation 都在副作用前 durable 写入 `OWNER_GIT_INTENT_V1`。Git 后、registry 前崩溃时先运行 `owner-delivery-recover --plan`，只读核对 registry digest、登记 branch/path、worktree list、base/committed/feature OID 与 commit/merge operation marker；仅 `safety=safe` 的同一 proposal 才可 `--confirm` 前滚。unknown orphan、ref/path 漂移或 merge conflict 必须保留 intent并进入 `needs_repair`，禁止自动 adopt/delete/abort。proposal digest仍只提供防误操作和 TOCTOU。controller 用 `owner-bind-goal` 冻结 `pending` delivery，创建后 reconcile 到 `active`，commit/merge后继续 reconcile；delta新增 live writable Owner在下一次 reconcile以 `pending` 纳入。
+
+## Git intent 与恢复契约
+
+`OWNER_GIT_INTENT_V1` 存在于 `<registry.json>.git-intent.json`，是 runtime 临时恢复状态并由 `.gitignore` 忽略。任一 worktree mutation前若已有 intent，禁止启动新操作；先运行 `owner-delivery-recover --plan`。恢复分类：
+
+- `safe`：Git未应用、Git已应用但registry滞后，或registry已发布但intent未清；可用同一 `proposal_digest` 执行 `--confirm`。
+- `needs_repair`：registry digest漂移、branch/path/OID/operation marker不符、unknown orphan或冲突状态；不得confirm，不得人工删除intent后继续。
+- 无intent但发现相似 branch/path不代表属于当前Owner；runtime不会自动adopt。
+
+create恢复要求登记 path上的 worktree branch/HEAD/base精确吻合；commit恢复要求 branch tip是唯一带同一 operation marker且parent正确的新commit；merge恢复要求 feature tip是带marker、两个parent分别为冻结feature tip与owner committed OID的merge commit；remove只删除intent精确登记的path/branch/OID。无法唯一证明时保留现场供人工审计。
 
 ## 沉淀 owner 记忆
 
@@ -137,7 +148,7 @@ node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <n
 
 ### 功能域 Owner 注册表契约
 
-仅在创建、校验或变更 `OWNERS_REGISTRY_V1`，或准备 owner mutation/query/verification/note 输入时参考本节。配套命令由 `scripts/goal-dag.mjs` 提供：`owner-init`/`owner-list`/`owner-add --plan|--confirm`/`owner-query`/`owner-split --plan|--confirm`/`owner-verify-plan`/`owner-note`/`owner-bind-goal`/`owner-delivery-reconcile`/`worktree-create`/`worktree-commit`/`worktree-merge-back`/`worktree-remove`。
+仅在创建、校验或变更 `OWNERS_REGISTRY_V1`，或准备 owner mutation/query/verification/note/recovery 输入时参考本节。配套命令由 `scripts/goal-dag.mjs` 提供：`owner-init`/`owner-list`/`owner-add --plan|--confirm`/`owner-query`/`owner-split --plan|--confirm`/`owner-verify-plan`/`owner-note`/`owner-bind-goal`/`owner-delivery-reconcile`/`owner-delivery-recover --plan|--confirm`/`worktree-create`/`worktree-commit`/`worktree-merge-back`/`worktree-remove`。
 
 #### OWNERS_REGISTRY_V1
 
@@ -288,4 +299,4 @@ node <plugin-root>/scripts/goal-dag.mjs owner-note <registry.json> <owner_id> <n
 
 #### 平台差异
 
-owner-worktree visibility + PreToolUse 写权限钉位依赖 Claude Code 的 hook `agent_type` 上下文与宿主让 Agent 在 runtime 已创建 worktree 中执行的能力；不得再请求 Agent `isolation` 创建第二个 worktree。宿主不能进入该路径时返回 `unsupported`/`needs_repair`，禁止退回主 checkout。完整平台差异说明与写隔离三层（L1/L2/L3）见本 SKILL.md「边界」节。
+owner-worktree visibility + PreToolUse写权限钉位依赖宿主 Hook元数据与 worktree-local controller。Claude Code 2.1.220 的 Agent surface不能指定一个已存在 cwd；controller必须用 `scripts/claude-owner-host.py` 在登记 worktree的 OS cwd启动独立 Claude session，并由 adapter在启动前后校验 path/branch/HEAD/common-dir。禁止请求 `isolation`/`--worktree` 创建第二个 worktree，也禁止退回主 checkout。Hook provenance只在显式 opt-in smoke中脱敏记录，是特定 host/version observation，不是密码学身份保证。

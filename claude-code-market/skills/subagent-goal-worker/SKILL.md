@@ -19,7 +19,7 @@ Claude Code binding 的 runtime profile 为 `null`，由平台选择执行配置
 命名子代理（Agent 名 = `owner-<owner_id>`，binding 含非空 `owner_exec`）开工前自检三项，任一不满足立即返回 `needs_repair`，不重试、不换路径绕过：
 
 1. `owner_exec.agent_type` 必须为 `owner-<owner_id>`，与当前 Agent 的稳定身份一致。普通 executor 的 `owner_exec` 必须显式为 `null`，跳过本节 Owner 自检。
-2. 实际 cwd 必须等于 `owner_exec.worktree_path`，当前 Git branch 必须等于 `owner_exec.owner_branch`，HEAD 必须满足 `base_oid`/已登记提交的 ancestry 预期，且可见范围覆盖 `owned_modules_glob`。runtime `bind` 只验证登记信息，不验证宿主进程的实际 cwd/branch/HEAD；因此这些检查由 worker 承担。宿主无法进入既有 runtime worktree、worktree 丢失或任一检查不符时返回 `needs_repair`，不得创建第二个 worktree或退回主 checkout。
+2. Owner执行由 `claude-owner-host.py` 以 OS `cwd=owner_exec.worktree_path` 启动 worktree-local controller；Claude Code 2.1.220 的 Agent surface不能直接指定已有 cwd，禁止用 `--worktree` 创建第二载体。实际 cwd、Git top-level与 `owner_exec.worktree_path` 必须一致，branch等于 `owner_exec.owner_branch`，HEAD满足 base/登记提交 ancestry，Git common-dir指回主 registry。adapter启动前后均校验；不支持或漂移时返回 `unsupported`/`needs_repair`，不得自行 `cd`、重建 worktree或退回主 checkout。
 3. Owner Agent 的 Bash 默认由 L1 hook 拒绝；文件修改只使用带结构化路径的写工具。L1 deny 时直接返回 `needs_repair`，不得换路径或通过 shell 绕过。L2 sparse 只是 visibility superset，最终授权以 L1/L3 exact matcher 为准。
 
 ## 绑定门禁

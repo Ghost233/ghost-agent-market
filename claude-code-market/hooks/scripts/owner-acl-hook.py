@@ -22,15 +22,96 @@ subagent's cwd is the main repo or a per-owner worktree.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shlex
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 OWNER_PREFIX = "owner-"
+PROVENANCE_ENV = "GHOST_AGENT_HOOK_PROVENANCE"
+OWNER_LIKE_FIELDS = frozenset(
+    {"owner_id", "owner_exec", "owner_branch", "worktree_path", "owned_modules_glob"}
+)
+IDENTITY_FIELDS = (
+    "agent_type",
+    "agent_id",
+    "agent_name",
+    "session_id",
+    "hook_event_name",
+    "tool_name",
+    "permission_mode",
+)
+
+
+def _redacted_sample(value: Any) -> dict[str, Any]:
+    """Describe an identity value without persisting the identity itself."""
+    sample: dict[str, Any] = {"type": type(value).__name__}
+    if isinstance(value, str):
+        sample.update(
+            {
+                "present": bool(value),
+                "length": len(value),
+                "sha256_12": hashlib.sha256(value.encode("utf-8")).hexdigest()[:12],
+            }
+        )
+        if value.startswith(OWNER_PREFIX):
+            sample["owner_like"] = True
+    else:
+        sample["present"] = value is not None
+    return sample
+
+
+def record_provenance(
+    outcome: str,
+    payload: dict[str, Any] | None,
+    *,
+    reason_code: str,
+    raw: str | None = None,
+) -> None:
+    """Append an opt-in, redacted hook observation artifact.
+
+    The environment value is the artifact path. Recording is best-effort and
+    never changes the ACL decision. Payload values, paths, commands, and IDs are
+    intentionally not retained.
+    """
+    artifact = os.environ.get(PROVENANCE_ENV)
+    if not artifact:
+        return
+    observation: dict[str, Any] = {
+        "schema_version": 1,
+        "kind": "claude_hook_provenance",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "host": {"name": "claude-code", "observed_version": os.environ.get("CLAUDE_CODE_VERSION")},
+        "hook": "owner-acl-hook",
+        "outcome": outcome,
+        "reason_code": reason_code,
+        "identity_fields": {},
+    }
+    if payload is not None:
+        observation["identity_fields"] = {
+            field: _redacted_sample(payload[field])
+            for field in IDENTITY_FIELDS
+            if field in payload
+        }
+        observation["payload_keys"] = sorted(str(key) for key in payload)[:64]
+    elif raw is not None:
+        observation["malformed_input"] = {
+            "length": len(raw),
+            "sha256_12": hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:12],
+        }
+    try:
+        path = Path(artifact).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(observation, ensure_ascii=False, sort_keys=True) + "\n")
+    except OSError:
+        pass
 
 
 def emit_deny(reason: str) -> None:
@@ -258,59 +339,103 @@ def _owner_mutation_denial(payload: dict) -> str | None:
     return "owner mutation 只允许 --plan 或 --confirm <64hex>，二者互斥。"
 
 
+def _contains_owner_like(value: Any) -> bool:
+    if isinstance(value, dict):
+        if any(key in OWNER_LIKE_FIELDS for key in value):
+            return True
+        return any(_contains_owner_like(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_owner_like(item) for item in value)
+    return isinstance(value, str) and value.startswith(OWNER_PREFIX)
+
+
+def _deny(payload: dict[str, Any] | None, reason: str, reason_code: str) -> int:
+    emit_deny(reason)
+    record_provenance("failed", payload, reason_code=reason_code)
+    return 0
+
+
 def main() -> int:
+    raw = sys.stdin.read()
     try:
-        payload = json.load(sys.stdin)
-    except (OSError, ValueError):
-        return 0  # fail-open: cannot parse, let the platform decide
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        # A corrupt payload that still claims Owner provenance must not erase the
+        # authorization boundary. Generic corrupt host input remains unsupported.
+        owner_like = "owner-" in raw or any(f'"{field}"' in raw for field in OWNER_LIKE_FIELDS)
+        if owner_like:
+            emit_deny("Owner-like hook payload malformed；Owner 模式 fail closed。")
+            record_provenance("failed", None, reason_code="malformed_owner_like_payload", raw=raw)
+        else:
+            record_provenance("unsupported", None, reason_code="malformed_payload", raw=raw)
+        return 0
+    if not isinstance(parsed, dict):
+        if _contains_owner_like(parsed):
+            return _deny(None, "Owner-like hook payload 必须是 object；Owner 模式 fail closed。", "non_object_owner_like_payload")
+        record_provenance("unsupported", None, reason_code="non_object_payload", raw=raw)
+        return 0
+    payload: dict[str, Any] = parsed
     mutation_denial = _owner_mutation_denial(payload)
     if mutation_denial is not None:
-        emit_deny(mutation_denial)
+        return _deny(payload, mutation_denial, "invalid_owner_mutation")
+    agent_type = payload.get("agent_type")
+    owner_like = _contains_owner_like(payload)
+    if agent_type is None:
+        if owner_like:
+            return _deny(payload, "Owner-like payload 缺少 agent_type；Owner 模式 fail closed。", "missing_owner_identity")
+        record_provenance("unsupported", payload, reason_code="identity_field_unavailable")
         return 0
-    agent_type = payload.get("agent_type") or ""
-    if not isinstance(agent_type, str) or not agent_type.startswith(OWNER_PREFIX):
-        return 0  # not an owner subagent
+    if not isinstance(agent_type, str):
+        if owner_like:
+            return _deny(payload, "Owner-like payload 的 agent_type 非字符串；Owner 模式 fail closed。", "malformed_owner_identity")
+        record_provenance("unsupported", payload, reason_code="identity_field_unsupported")
+        return 0
+    if not agent_type.startswith(OWNER_PREFIX):
+        if owner_like:
+            return _deny(payload, "Owner-like payload 与 agent_type 身份冲突；Owner 模式 fail closed。", "conflicting_owner_identity")
+        record_provenance("unsupported", payload, reason_code="non_owner_agent")
+        return 0
     owner_id = agent_type[len(OWNER_PREFIX) :]
     if not owner_id:
-        emit_deny("owner agent_type 缺少 owner identity；Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, "owner agent_type 缺少 owner identity；Owner 模式 fail closed。", "empty_owner_identity")
     tool_input = payload.get("tool_input") or {}
-    if isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
-        emit_deny("Owner agent 禁止 Bash；必须使用具有结构化路径的写工具。")
-        return 0
+    if not isinstance(tool_input, dict):
+        return _deny(payload, "Owner tool_input malformed；Owner 模式 fail closed。", "malformed_tool_input")
+    if isinstance(tool_input.get("command"), str):
+        return _deny(payload, "Owner agent 禁止 Bash；必须使用具有结构化路径的写工具。", "owner_bash_denied")
     root = main_workspace_root(payload)
     registry_path = root / ".ghost-agent-workflow" / "owners" / "registry.json"
     owner, registry_error = load_owner_record(registry_path, owner_id)
     if owner is None:
-        emit_deny(f"Owner ACL 无法建立可信绑定: {registry_error}; Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, f"Owner ACL 无法建立可信绑定: {registry_error}; Owner 模式 fail closed。", "owner_registry_untrusted")
     binding = owner.get("worktree_binding")
     if not isinstance(binding, dict) or binding.get("status") not in {"active", "sealed"}:
-        emit_deny(f"Owner ACL 无法建立可信 worktree binding: owner {owner_id}; Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, f"Owner ACL 无法建立可信 worktree binding: owner {owner_id}; Owner 模式 fail closed。", "worktree_binding_untrusted")
     worktree_path = binding.get("worktree_path")
     if not isinstance(worktree_path, str) or not worktree_path:
-        emit_deny(f"Owner ACL worktree path 无效: owner {owner_id}; Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, f"Owner ACL worktree path 无效: owner {owner_id}; Owner 模式 fail closed。", "worktree_path_invalid")
     execution_root = Path(worktree_path).resolve()
-    cwd = Path(payload.get("cwd") or "").resolve()
+    cwd_value = payload.get("cwd")
+    if not isinstance(cwd_value, str) or not cwd_value:
+        return _deny(payload, "Owner agent cwd 缺失或无效；Owner 模式 fail closed。", "cwd_invalid")
+    cwd = Path(cwd_value).resolve()
     try:
         cwd.relative_to(execution_root)
     except ValueError:
-        emit_deny(f"Owner agent cwd 不在登记 worktree 内: {cwd}; Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, f"Owner agent cwd 不在登记 worktree 内: {cwd}; Owner 模式 fail closed。", "cwd_outside_worktree")
     rel = target_rel_path(payload, execution_root)
     if rel is None:
-        emit_deny("Owner 写操作缺少可解析的登记 worktree 内结构化路径；Owner 模式 fail closed。")
-        return 0
+        return _deny(payload, "Owner 写操作缺少可解析的登记 worktree 内结构化路径；Owner 模式 fail closed。", "target_path_unresolved")
     modules = list(owner["owned_modules"])
     if path_matches(rel, modules):
+        record_provenance("passed", payload, reason_code="owner_write_in_scope")
         return 0
-    emit_deny(
+    return _deny(
+        payload,
         f'owner {owner_id} 写入被拒: {rel} 不在其 owned_modules 内。'
-        f'owner 间严格文件隔离，仅可写自己负责的模块。'
+        f'owner 间严格文件隔离，仅可写自己负责的模块。',
+        "owner_write_out_of_scope",
     )
-    return 0
 
 
 if __name__ == "__main__":

@@ -60,6 +60,24 @@ class ClaudePluginContractTests(unittest.TestCase):
         command = owner["hooks"][0]["command"]
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/scripts/owner-acl-hook.py", command)
 
+    def test_claude_owner_host_adapter_contract(self) -> None:
+        adapter = (PLUGIN / "scripts/claude-owner-host.py").read_text(encoding="utf-8")
+        self.assertIn('HOST_VERSION_VALIDATED = "2.1.220"', adapter)
+        self.assertIn('REAL_SMOKE_ENV = "GHOST_AGENT_REAL_HOST_SMOKE"', adapter)
+        self.assertIn('"kind": "claude_owner_host_capability"', adapter)
+        self.assertIn('"mode": "worktree_local_controller"', adapter)
+        self.assertIn('else "direct_probe"', adapter)
+        self.assertIn('"--worktree"', adapter)  # rejection guard, never child argv
+        self.assertIn('cwd=worktree', adapter)
+
+    def test_owner_hook_provenance_contract(self) -> None:
+        hook = (PLUGIN / "hooks/scripts/owner-acl-hook.py").read_text(encoding="utf-8")
+        self.assertIn('PROVENANCE_ENV = "GHOST_AGENT_HOOK_PROVENANCE"', hook)
+        self.assertIn('"kind": "claude_hook_provenance"', hook)
+        self.assertIn('"sha256_12"', hook)
+        for outcome in ('"passed"', '"failed"', '"unsupported"'):
+            self.assertIn(outcome, hook)
+
     def test_claude_skill_md_is_the_only_contract_source(self) -> None:
         references = sorted((PLUGIN / "skills").glob("*/references/*.md"))
         self.assertTrue(references)
@@ -78,7 +96,8 @@ class ClaudePluginContractTests(unittest.TestCase):
         per_skill_requirements = {
             "owner-registry": (
                 "--confirm <proposal_digest>", "不能证明 AskUserQuestion", "owner-bind-goal",
-                "worktree-commit", "owner-delivery-reconcile", "visibility superset",
+                "worktree-commit", "owner-delivery-reconcile", "owner-delivery-recover",
+                "OWNER_GIT_INTENT_V1", "visibility superset",
                 "tombstone", "depends_on_owners",
             ),
             "parallel-task-planner": (
@@ -86,6 +105,7 @@ class ClaudePluginContractTests(unittest.TestCase):
             ),
             "subagent-coordination": (
                 "owner-bind-goal", "worktree-commit", "owner-delivery-reconcile",
+                "owner-delivery-recover", "claude-owner-host.py",
                 "owner_commit_pending", "owner_merge_pending", "owner_exec", "Bash",
             ),
             "subagent-goal-worker": ("owner_exec", "Bash", "owner-<owner_id>"),
@@ -107,7 +127,9 @@ class ClaudePluginContractTests(unittest.TestCase):
         self.assertIn("requirements/", readme)
         self.assertIn("runtime worktrees", readme)
         self.assertIn("runtime transaction", readme)
-        self.assertNotIn("operation journal", readme)
+        self.assertIn("OWNER_GIT_INTENT_V1", readme)
+        self.assertIn("owner-delivery-recover", readme)
+        self.assertNotIn("没有完整 crash-intent journal", readme)
         self.assertNotIn("`.ghost-agent-workflow/` 是本地 runtime state，不应提交", readme)
 
     def test_git_commit_keeps_fixed_nexus_trailer(self) -> None:

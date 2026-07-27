@@ -177,10 +177,10 @@ node <plugin-root>/scripts/goal-dag.mjs finalize <goal.json> <goal-state.json> <
 
 1. 规划阶段调 `owner-query`；缺口先执行 `owner-add --plan`/`owner-split --plan`，向用户展示候选变化、`registry_digest` 和 `proposal_digest`。AskUserQuestion 明确确认后，以 `--confirm <proposal_digest>` 执行同一 proposal。digest 只绑定 proposal 与 registry freshness，不能证明 AskUserQuestion 或回答者身份。随后产 plan 并运行 `owner-verify-plan`。
 2. 运行 `owner-bind-goal <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>`，先为 required work Owner 冻结 `pending` delivery；再执行 `worktree-create <registry.json> <feature_branch> <owner_id>`，随后运行 `owner-delivery-reconcile`，验证 worktree identity/base/scope 后推进到 `active`。runtime worktree 是唯一载体；L2 只是 visibility superset。delta 若新增 live writable Owner，下一次 reconcile 会把它以 `pending` 纳入，创建并再次 reconcile 后才能 dispatch。
-3. 以 `owner-<owner_id>` 为 Agent spawn name，让它直接在 canonical `owner_exec.worktree_path` 工作；不得创建第二个 isolation worktree或退回主 checkout。普通 task 的 `owner_exec` 为 `null`；Owner work task 包含 `agent_type`、`worktree_path`、`owner_branch`、`base_oid`、`owned_modules_glob`。runtime `bind` 不验证宿主进程的实际 cwd/branch/HEAD，worker 必须自检；宿主不支持既有路径或校验失败时返回 `unsupported`/`needs_repair`。Owner Bash 默认 deny。
+3. 以 OS `cwd=owner_exec.worktree_path` 调用 `<plugin-root>/scripts/claude-owner-host.py --controller` 启动 worktree-local Claude controller，再由其执行 fenced binding；Claude Code 2.1.220 的 Agent surface不能指定一个已有 cwd，故不得假称主 checkout中的 Agent可直接进入该 worktree，也不得使用 `--worktree` 创建第二载体。adapter启动前后验证 canonical path、branch、HEAD和 Git common-dir；能力不满足时返回 `unsupported`/`needs_repair`，禁止退回主 checkout。普通 task的 `owner_exec` 为 `null`；Owner Bash默认 deny。
 4. worker 通过 `owner_updates` 回写 per-Goal Capsule；controller 在主工作区用 `owner-note` 沉淀 registry memory，worker 不写 registry memory。
 5. work task accepted 后按 `status.next_action` 推进：`owner_commit_pending` 时逐 Owner 调 `worktree-commit <registry.json> <owner_id>` 后 reconcile；`owner_merge_pending` 时串行调 `worktree-merge-back <registry.json> <feature_branch> <owner_id>` 后再次 reconcile。commit 必须先于 merge，clean/branch/OID/exact scope 任一门禁失败都停止。
-6. 所有 required Owner merged 后才运行 merge 后的 `diff-scope-audit`，再运行 `finalize`；成功后才能 `worktree-remove`。worktree 命令当前仍是 registry-first 旧 surface，由 bind+reconcile 同步 Goal，不是跨 Git/JSON 的原子命令，也没有完整 crash-intent journal。
+6. 所有 required Owner merged后才运行 merge后的 `diff-scope-audit`，再运行 `finalize`；成功后才能 `worktree-remove`。四类 worktree命令均为 durable intent-first：检测到 pending intent时先 `owner-delivery-recover --plan`，仅 safety=safe且 proposal digest仍新鲜时 `--confirm`；ambiguous/unknown orphan/merge conflict进入 `needs_repair`，绝不自动 adopt/delete/abort。
 
 ```text
 node <plugin-root>/scripts/goal-dag.mjs owner-list           <registry.json>
@@ -189,6 +189,7 @@ node <plugin-root>/scripts/goal-dag.mjs owner-verify-plan   <registry.json> <pla
 node <plugin-root>/scripts/goal-dag.mjs owner-note          <registry.json> <owner_id> <note.json>
 node <plugin-root>/scripts/goal-dag.mjs owner-bind-goal      <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch>
 node <plugin-root>/scripts/goal-dag.mjs owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json>
+node <plugin-root>/scripts/goal-dag.mjs owner-delivery-recover <registry.json> --plan|--confirm <proposal_digest>
 node <plugin-root>/scripts/goal-dag.mjs worktree-create      <registry.json> <feature_branch> <owner_id>
 node <plugin-root>/scripts/goal-dag.mjs worktree-commit      <registry.json> <owner_id>
 node <plugin-root>/scripts/goal-dag.mjs worktree-merge-back  <registry.json> <feature_branch> <owner_id>

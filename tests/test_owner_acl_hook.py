@@ -64,6 +64,15 @@ class OwnerAclHookTests(unittest.TestCase):
         out = result.stdout.strip()
         return json.loads(out) if out else None
 
+    def run_hook_raw(self, raw: str, extra_env: dict | None = None) -> dict | None:
+        env = {**os.environ, **(extra_env or {})}
+        result = subprocess.run(
+            ["python3", str(HOOK)], input=raw, capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = result.stdout.strip()
+        return json.loads(out) if out else None
+
     def test_in_scope_write_is_allowed(self) -> None:
         with self.workspace_with_owner() as (workspace_root, _):
             self.assertIsNone(self.run_hook({
@@ -326,6 +335,46 @@ class OwnerAclHookTests(unittest.TestCase):
             })
             self.assertIsNotNone(denied)
             self.assertIn("unknown", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_malformed_and_owner_like_payloads_fail_closed(self) -> None:
+        malformed = self.run_hook_raw('{"agent_type":"owner-proto_owner"')
+        self.assertEqual(malformed["hookSpecificOutput"]["permissionDecision"], "deny")
+        conflicting = self.run_hook({
+            "agent_type": "general-purpose",
+            "owner_exec": {"worktree_path": "/tmp/owner"},
+            "tool_input": {"file_path": "/tmp/owner/x"},
+        })
+        self.assertEqual(conflicting["hookSpecificOutput"]["permissionDecision"], "deny")
+        missing_identity = self.run_hook({
+            "owner_branch": "owner-proto", "tool_input": {"file_path": "/tmp/x"},
+        })
+        self.assertEqual(missing_identity["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_opt_in_provenance_records_redacted_all_outcomes(self) -> None:
+        with self.workspace_with_owner() as (workspace_root, _), tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "hook.jsonl"
+            env = {"GHOST_AGENT_HOOK_PROVENANCE": str(artifact), "CLAUDE_CODE_VERSION": "2.1.220"}
+            self.assertIsNone(self.run_hook({
+                "agent_type": "owner-proto_owner", "agent_id": "secret-agent-id",
+                "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/proto/log.proto")},
+            }, env))
+            self.assertIsNotNone(self.run_hook({
+                "agent_type": "owner-proto_owner", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/api/leak.ts")},
+            }, env))
+            self.assertIsNone(self.run_hook({
+                "agent_type": "general-purpose", "cwd": str(workspace_root),
+                "tool_input": {"file_path": str(workspace_root / "src/api/read.ts")},
+            }, env))
+            records = [json.loads(line) for line in artifact.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["outcome"] for record in records], ["passed", "failed", "unsupported"])
+            serialized = artifact.read_text(encoding="utf-8")
+            self.assertNotIn("secret-agent-id", serialized)
+            self.assertNotIn(str(workspace_root), serialized)
+            sample = records[0]["identity_fields"]["agent_id"]
+            self.assertEqual(sample["length"], len("secret-agent-id"))
+            self.assertIn("sha256_12", sample)
 
     def test_missing_registry_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

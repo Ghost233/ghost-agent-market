@@ -39,6 +39,15 @@ class OwnerRegistryCliTests(unittest.TestCase):
             capture_output=True, text=True, check=False, env=environment,
         )
 
+    def run_cli_env(self, environment_overrides: dict[str, str], *args: object) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        environment["GOAL_DAG_EXECUTION_PLATFORM"] = "claude_code"
+        environment.update(environment_overrides)
+        return subprocess.run(
+            ["node", str(CLAUDE_SCRIPT), *(str(arg) for arg in args)],
+            capture_output=True, text=True, check=False, env=environment,
+        )
+
     def run_json(self, *args: object) -> dict:
         result = self.run_cli(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -464,6 +473,90 @@ class OwnerRegistryCliTests(unittest.TestCase):
             behind = self.run_cli("worktree-commit", registry_path, "proto_owner")
             self.assertNotEqual(behind.returncode, 0)
             self.assertIn("no longer descends from base_oid", behind.stderr)
+
+    def recover_pending(self, registry_path: Path) -> dict:
+        plan = self.run_json("owner-delivery-recover", registry_path, "--plan")
+        self.assertEqual(plan["status"], "plan")
+        self.assertEqual(plan["safety"], "safe", plan)
+        return self.run_json(
+            "owner-delivery-recover", registry_path, "--confirm", plan["proposal_digest"])
+
+    def test_git_intent_create_recovers_each_phase(self) -> None:
+        for crash_point in ("after_intent_prepared", "after_worktree_add", "after_sparse_checkout", "before_registry_publish"):
+            with self.subTest(crash_point=crash_point), self.registry_workspace() as (workspace_root, registry_path):
+                (workspace_root / "src/proto/base.proto").parent.mkdir(parents=True, exist_ok=True)
+                (workspace_root / "src/proto/base.proto").write_text("base\n", encoding="utf-8")
+                subprocess.run(["git", "-C", str(workspace_root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(workspace_root), "-c", "user.name=t", "-c", "user.email=t@e.invalid",
+                                "commit", "-q", "-m", "init"], check=True)
+                subprocess.run(["git", "-C", str(workspace_root), "checkout", "-q", "-b", "dev_feature"], check=True)
+                self.init_registry(registry_path, workspace_root)
+                self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
+                crashed = self.run_cli_env({"GOAL_DAG_TEST_CRASH_POINT": crash_point},
+                                           "worktree-create", registry_path, "dev_feature", "proto_owner")
+                self.assertNotEqual(crashed.returncode, 0)
+                intent_path = Path(f"{registry_path}.git-intent.json")
+                self.assertEqual(json.loads(intent_path.read_text(encoding="utf-8"))["contract"],
+                                 "OWNER_GIT_INTENT_V1")
+                self.recover_pending(registry_path)
+                self.assertFalse(intent_path.exists())
+                listed = self.run_json("owner-list", registry_path)
+                expected = "none" if crash_point == "after_intent_prepared" else "active"
+                self.assertEqual(listed["owners"][0]["worktree_status"], expected)
+
+    def test_git_intent_commit_merge_remove_recovery(self) -> None:
+        with self.registry_workspace() as (workspace_root, registry_path):
+            (workspace_root / "src/proto/base.proto").parent.mkdir(parents=True, exist_ok=True)
+            (workspace_root / "src/proto/base.proto").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(workspace_root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "-c", "user.name=t", "-c", "user.email=t@e.invalid",
+                            "commit", "-q", "-m", "init"], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "checkout", "-q", "-b", "dev_feature"], check=True)
+            self.init_registry(registry_path, workspace_root)
+            self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
+            created = self.run_json("worktree-create", registry_path, "dev_feature", "proto_owner")
+            worktree = Path(created["worktree_path"])
+            (worktree / "src/proto/new.proto").write_text("new\n", encoding="utf-8")
+            crashed = self.run_cli_env({"GOAL_DAG_TEST_CRASH_POINT": "after_git_commit"},
+                                       "worktree-commit", registry_path, "proto_owner")
+            self.assertNotEqual(crashed.returncode, 0)
+            self.recover_pending(registry_path)
+            self.assertEqual(self.run_json("owner-list", registry_path)["owners"][0]["worktree_status"], "sealed")
+            crashed = self.run_cli_env({"GOAL_DAG_TEST_CRASH_POINT": "after_merge"},
+                                       "worktree-merge-back", registry_path, "dev_feature", "proto_owner")
+            self.assertNotEqual(crashed.returncode, 0)
+            self.recover_pending(registry_path)
+            self.assertEqual(self.run_json("owner-list", registry_path)["owners"][0]["worktree_status"], "merged")
+            crashed = self.run_cli_env({"GOAL_DAG_TEST_CRASH_POINT": "after_worktree_remove"},
+                                       "worktree-remove", registry_path, "proto_owner")
+            self.assertNotEqual(crashed.returncode, 0)
+            self.recover_pending(registry_path)
+            self.assertEqual(self.run_json("owner-list", registry_path)["owners"][0]["worktree_status"], "removed")
+
+    def test_recovery_unknown_orphan_fails_closed(self) -> None:
+        with self.registry_workspace() as (workspace_root, registry_path):
+            subprocess.run(["git", "-C", str(workspace_root), "checkout", "-q", "-b", "dev_feature"], check=True)
+            self.init_registry(registry_path, workspace_root)
+            self.add_owner(registry_path, "proto_owner", ["src/proto/**"])
+            crashed = self.run_cli_env({"GOAL_DAG_TEST_CRASH_POINT": "after_worktree_add"},
+                                       "worktree-create", registry_path, "dev_feature", "proto_owner")
+            self.assertNotEqual(crashed.returncode, 0)
+            intent_path = Path(f"{registry_path}.git-intent.json")
+            intent = json.loads(intent_path.read_text(encoding="utf-8"))
+            subprocess.run(["git", "-C", str(workspace_root), "worktree", "remove", "--force", intent["worktree_path"]], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "branch", "-D", intent["owner_branch"]], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "branch", intent["owner_branch"], "HEAD"], check=True)
+            other = workspace_root / "other.txt"
+            other.write_text("other\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(workspace_root), "add", "other.txt"], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "-c", "user.name=t", "-c", "user.email=t@e.invalid",
+                            "commit", "-q", "-m", "other"], check=True)
+            subprocess.run(["git", "-C", str(workspace_root), "branch", "-f", intent["owner_branch"], "HEAD"], check=True)
+            plan = self.run_json("owner-delivery-recover", registry_path, "--plan")
+            self.assertEqual(plan["safety"], "needs_repair")
+            rejected = self.run_cli("owner-delivery-recover", registry_path, "--confirm", plan["proposal_digest"])
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertTrue(intent_path.exists())
 
     def test_owner_verify_plan_checks_writable_within_owned_modules(self) -> None:
         with self.registry_workspace() as (workspace_root, registry_path):

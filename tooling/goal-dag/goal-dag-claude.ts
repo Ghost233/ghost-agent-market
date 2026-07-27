@@ -1,12 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
+  fsyncSync,
   linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -215,6 +219,26 @@ type OwnerDelivery = {
   owners: Record<string, OwnerDeliveryEntry>;
   pending_intent: Record<string, unknown> | null;
   frozen_evidence: Record<string, unknown> | null;
+};
+
+type OwnerGitOperation = "create" | "commit" | "merge" | "remove";
+
+type OwnerGitIntent = {
+  contract: "OWNER_GIT_INTENT_V1";
+  intent_id: string;
+  operation: OwnerGitOperation;
+  owner_id: string;
+  workspace_root: string;
+  registry_digest_before: string;
+  created_at: string;
+  feature_branch: string;
+  owner_branch: string;
+  worktree_path: string;
+  base_oid: string;
+  pre_owner_oid: string | null;
+  pre_feature_oid: string;
+  force: boolean;
+  sparse_dirs: string[];
 };
 
 type RegistryOwner = {
@@ -548,6 +572,33 @@ function readJson(path: string): unknown {
 
 function serializedJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function syncPath(path: string): void {
+  const descriptor = openSync(path, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function writeTextDurable(path: string, payload: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  const descriptor = openSync(temporaryPath, "wx");
+  try {
+    writeFileSync(descriptor, payload, { encoding: "utf8" });
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  try {
+    renameSync(temporaryPath, path);
+    syncPath(dirname(path));
+  } finally {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  }
 }
 
 function writeTextAtomic(path: string, payload: string): void {
@@ -5965,7 +6016,8 @@ function ownerInitCommand(registryArgument: string, workspaceRootArgument: strin
     "*.lock\n" +
     "*.lock.*.tmp\n" +
     "*.tmp\n" +
-    "*.transaction.json\n";
+    "*.transaction.json\n" +
+    "*.git-intent.json\n";
   let archiveWarning: string | null = null;
   const rootGitignore = join(workspaceRoot, ".gitignore");
   if (existsSync(rootGitignore)) {
@@ -6000,6 +6052,7 @@ function loadRegistryLocked(registryPath: string): OwnersRegistry {
 function ownerListCommand(registryArgument: string): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     return {
       contract: "OWNER_REGISTRY_LIST_V1" as const,
@@ -6065,6 +6118,7 @@ function ownerQueryCommand(registryArgument: string, requirementArgument: string
   ).map(normalizePathPattern);
   const text = requireString(requirement.text, "requirement.text");
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const covered: Array<{ module: string; owner_id: string }> = [];
     const gaps: string[] = [];
@@ -6114,6 +6168,7 @@ function ownerSplitCommand(
   );
   ensureUnique(inputs.map((item) => item.owner_id), "split_spec.new_owners.owner_id");
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const parentIndex = registry.owners.findIndex((owner) => owner.owner_id === parentOwnerId);
     if (parentIndex === -1) fail(`parent owner not found: ${parentOwnerId}`);
@@ -6221,11 +6276,274 @@ function sparseCheckoutDirs(modules: string[]): string[] {
   return [...dirs].sort(compareStableStrings);
 }
 
+function ownerGitIntentPath(registryPath: string): string {
+  return `${registryPath}.git-intent.json`;
+}
+
+function crashPoint(point: string): void {
+  if (process.env.GOAL_DAG_TEST_CRASH_POINT === point) {
+    fail(`injected crash at ${point}`);
+  }
+}
+
+function parseOwnerGitIntent(value: unknown, registryPath: string): OwnerGitIntent {
+  const source = requireRecord(value, "owner git intent");
+  if (source.contract !== "OWNER_GIT_INTENT_V1") fail("owner git intent contract must equal OWNER_GIT_INTENT_V1");
+  const operation = requireString(source.operation, "owner git intent.operation");
+  if (operation !== "create" && operation !== "commit" && operation !== "merge" && operation !== "remove") {
+    fail(`owner git intent.operation is invalid: ${operation}`);
+  }
+  const oid = (value: unknown, label: string, nullable = false): string | null => {
+    if (nullable && value === null) return null;
+    const result = requireString(value, label);
+    if (!/^[0-9a-f]{40,64}$/u.test(result)) fail(`${label} is invalid`);
+    return result;
+  };
+  const workspaceRoot = resolve(requireString(source.workspace_root, "owner git intent.workspace_root"));
+  const intent: OwnerGitIntent = {
+    contract: "OWNER_GIT_INTENT_V1",
+    intent_id: requireString(source.intent_id, "owner git intent.intent_id"),
+    operation: operation as OwnerGitOperation,
+    owner_id: requireIdentifier(source.owner_id, "owner git intent.owner_id"),
+    workspace_root: workspaceRoot,
+    registry_digest_before: requireString(source.registry_digest_before, "owner git intent.registry_digest_before"),
+    created_at: requireString(source.created_at, "owner git intent.created_at"),
+    feature_branch: requireString(source.feature_branch, "owner git intent.feature_branch"),
+    owner_branch: requireString(source.owner_branch, "owner git intent.owner_branch"),
+    worktree_path: resolve(requireString(source.worktree_path, "owner git intent.worktree_path")),
+    base_oid: oid(source.base_oid, "owner git intent.base_oid") as string,
+    pre_owner_oid: oid(source.pre_owner_oid, "owner git intent.pre_owner_oid", true),
+    pre_feature_oid: oid(source.pre_feature_oid, "owner git intent.pre_feature_oid") as string,
+    force: requireBoolean(source.force, "owner git intent.force"),
+    sparse_dirs: requireStringArray(source.sparse_dirs, "owner git intent.sparse_dirs", true),
+  };
+  const expectedRoot = dirname(resolve(registryPath)).endsWith("/owners")
+    ? resolve(dirname(resolve(registryPath)), "../..")
+    : workspaceRoot;
+  if (intent.workspace_root !== expectedRoot && !intent.worktree_path.startsWith(`${intent.workspace_root}/`)) {
+    fail("owner git intent paths are inconsistent");
+  }
+  if (!/^[0-9a-f]{64}$/u.test(intent.registry_digest_before)) fail("owner git intent.registry_digest_before is invalid");
+  return intent;
+}
+
+function loadOwnerGitIntent(registryPath: string): OwnerGitIntent | null {
+  const path = ownerGitIntentPath(registryPath);
+  return existsSync(path) ? parseOwnerGitIntent(readJson(path), registryPath) : null;
+}
+
+function requireNoOwnerGitIntent(registryPath: string): void {
+  const intent = loadOwnerGitIntent(registryPath);
+  if (intent !== null) fail(`pending owner git intent ${intent.intent_id}; run owner-delivery-recover --plan`);
+}
+
+function prepareOwnerGitIntent(registryPath: string, intent: OwnerGitIntent): void {
+  const path = ownerGitIntentPath(registryPath);
+  if (existsSync(path)) fail(`pending owner git intent already exists: ${path}`);
+  writeTextDurable(path, serializedJson(intent));
+  crashPoint("after_intent_prepared");
+}
+
+function publishOwnerGitRegistry(registryPath: string, registry: OwnersRegistry): void {
+  crashPoint("before_registry_publish");
+  writeTransaction(registryPath, [[registryPath, registry]]);
+  crashPoint("after_registry_publish");
+  const path = ownerGitIntentPath(registryPath);
+  if (existsSync(path)) unlinkSync(path);
+}
+
+function gitRefOidOrNull(workspaceRoot: string, ref: string): string | null {
+  const result = spawnSync("git", ["-C", workspaceRoot, "rev-parse", "--verify", ref], { encoding: "utf8", shell: false });
+  return result.status === 0 ? String(result.stdout).trim() : null;
+}
+
+function registeredWorktree(workspaceRoot: string, targetPath: string): { branch: string | null; head: string } | null {
+  const output = gitOutput(workspaceRoot, ["worktree", "list", "--porcelain"], "git worktree list");
+  const canonicalTarget = existsSync(targetPath) ? realpathSync(targetPath) : resolve(targetPath);
+  const lines = output.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].startsWith("worktree ")) continue;
+    const observedPath = lines[index].slice(9);
+    const canonicalObserved = existsSync(observedPath) ? realpathSync(observedPath) : resolve(observedPath);
+    if (canonicalObserved !== canonicalTarget) continue;
+    let head = "";
+    let branchRef: string | null = null;
+    for (let cursor = index + 1; cursor < lines.length && !lines[cursor].startsWith("worktree "); cursor += 1) {
+      if (lines[cursor].startsWith("HEAD ")) head = lines[cursor].slice(5);
+      if (lines[cursor].startsWith("branch ")) branchRef = lines[cursor].slice(7);
+    }
+    return { branch: branchRef?.startsWith("refs/heads/") ? branchRef.slice(11) : branchRef, head };
+  }
+  return null;
+}
+
+function makeOwnerGitIntent(
+  registryPath: string,
+  registry: OwnersRegistry,
+  operation: OwnerGitOperation,
+  ownerId: string,
+  binding: RegistryWorktreeBinding | null,
+  featureBranch: string,
+  ownerBranch: string,
+  worktreePath: string,
+  baseOid: string,
+  force = false,
+  sparseDirs: string[] = [],
+): OwnerGitIntent {
+  return {
+    contract: "OWNER_GIT_INTENT_V1", intent_id: randomUUID(), operation, owner_id: ownerId,
+    workspace_root: registry.workspace_root, registry_digest_before: digestFile(registryPath),
+    created_at: new Date().toISOString(), feature_branch: featureBranch, owner_branch: ownerBranch,
+    worktree_path: worktreePath, base_oid: baseOid,
+    pre_owner_oid: gitRefOidOrNull(registry.workspace_root, `refs/heads/${ownerBranch}`),
+    pre_feature_oid: gitRefOidOrNull(registry.workspace_root, `refs/heads/${featureBranch}`) ?? baseOid,
+    force, sparse_dirs: sparseDirs,
+  };
+}
+
 function findActiveOwner(registry: OwnersRegistry, ownerId: string): RegistryOwner {
   const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
   if (owner === undefined) fail(`owner not found: ${ownerId}`);
   if (owner.lifecycle !== "active") fail(`owner ${ownerId} is not active: ${owner.lifecycle}`);
   return owner;
+}
+
+function ownerOperationMarker(intent: OwnerGitIntent): string {
+  return `Goal-DAG-Operation: ${intent.intent_id}`;
+}
+
+function commitHasOwnerOperationMarker(workspaceRoot: string, oid: string, intent: OwnerGitIntent): boolean {
+  const message = gitOutput(workspaceRoot, ["show", "-s", "--format=%B", oid], "owner operation marker");
+  return message.split(/\r?\n/u).includes(ownerOperationMarker(intent));
+}
+
+function commitParents(workspaceRoot: string, oid: string): string[] {
+  return gitOutput(workspaceRoot, ["rev-list", "--parents", "-n", "1", oid], "owner operation parents")
+    .trim().split(/\s+/u).slice(1);
+}
+
+function ownerGitRecoveryAssessment(registryPath: string, intent: OwnerGitIntent): Record<string, unknown> {
+  const registry = loadRegistryLocked(registryPath);
+  if (resolve(registry.workspace_root) !== intent.workspace_root) fail("owner git intent workspace_root mismatch");
+  const owner = registry.owners.find((candidate) => candidate.owner_id === intent.owner_id);
+  if (owner === undefined) return { safety: "needs_repair", action: "none", reason: "intent owner is unknown" };
+  const worktree = registeredWorktree(intent.workspace_root, intent.worktree_path);
+  const ownerOid = gitRefOidOrNull(intent.workspace_root, `refs/heads/${intent.owner_branch}`);
+  const featureOid = gitRefOidOrNull(intent.workspace_root, `refs/heads/${intent.feature_branch}`);
+  const observations = { worktree, owner_oid: ownerOid, feature_oid: featureOid };
+  const binding = owner.worktree_binding;
+  const registryAlreadyPublished = (() => {
+    if (binding === null) return false;
+    if (intent.operation === "create") return binding.status === "active" && binding.owner_branch === intent.owner_branch && binding.worktree_path === intent.worktree_path;
+    if (intent.operation === "commit") return binding.status === "sealed" && binding.committed_oid === ownerOid;
+    if (intent.operation === "merge") return binding.status === "merged" && binding.merged_oid === featureOid;
+    return binding.status === "removed";
+  })();
+  if (registryAlreadyPublished) return { safety: "safe", action: "clear_published_intent", observations };
+  if (digestFile(registryPath) !== intent.registry_digest_before) {
+    return { safety: "needs_repair", action: "none", reason: "registry changed after intent was prepared", observations };
+  }
+  if (intent.operation === "create") {
+    if (binding !== null && binding.status === "active") return { safety: "needs_repair", action: "none", reason: "owner already has another active binding", observations };
+    if (worktree === null && ownerOid === null) return { safety: "safe", action: "discard_unapplied_intent", observations };
+    if (worktree?.branch === intent.owner_branch && worktree.head === intent.base_oid && ownerOid === intent.base_oid) {
+      return { safety: "safe", action: "publish_create", observations };
+    }
+    return { safety: "needs_repair", action: "none", reason: "create artifacts have ambiguous identity", observations };
+  }
+  if (binding === null || binding.owner_branch !== intent.owner_branch || binding.worktree_path !== intent.worktree_path) {
+    return { safety: "needs_repair", action: "none", reason: "registry binding identity does not match intent", observations };
+  }
+  if (intent.operation === "commit") {
+    if (worktree?.branch !== intent.owner_branch || ownerOid === null) return { safety: "needs_repair", action: "none", reason: "commit worktree or branch identity is missing", observations };
+    const ancestor = spawnSync("git", ["-C", intent.workspace_root, "merge-base", "--is-ancestor", intent.base_oid, ownerOid], { encoding: "utf8", shell: false });
+    if (ancestor.status !== 0) return { safety: "needs_repair", action: "none", reason: "owner branch no longer descends from base_oid", observations };
+    if (ownerOid !== intent.pre_owner_oid) {
+      if (!commitHasOwnerOperationMarker(intent.workspace_root, ownerOid, intent)) return { safety: "needs_repair", action: "none", reason: "owner commit has no matching operation marker", observations };
+      const parents = commitParents(intent.workspace_root, ownerOid);
+      if (parents.length !== 1 || parents[0] !== intent.pre_owner_oid) return { safety: "needs_repair", action: "none", reason: "owner commit parent does not match intent", observations };
+    }
+    return { safety: "safe", action: "complete_commit", observations };
+  }
+  if (intent.operation === "merge") {
+    if (ownerOid === null || ownerOid !== intent.pre_owner_oid || featureOid === null) return { safety: "needs_repair", action: "none", reason: "merge branch identity changed", observations };
+    if (featureOid === intent.pre_feature_oid) return { safety: "safe", action: "complete_merge", observations };
+    const parents = commitParents(intent.workspace_root, featureOid);
+    if (!commitHasOwnerOperationMarker(intent.workspace_root, featureOid, intent) || parents.length !== 2 || parents[0] !== intent.pre_feature_oid || parents[1] !== ownerOid) {
+      return { safety: "needs_repair", action: "none", reason: "feature merge commit does not match intent marker or parents", observations };
+    }
+    return { safety: "safe", action: "publish_merge", observations };
+  }
+  if (ownerOid !== null && ownerOid !== intent.pre_owner_oid) return { safety: "needs_repair", action: "none", reason: "owner branch was replaced by an unknown ref", observations };
+  if (worktree !== null && worktree.branch !== intent.owner_branch) return { safety: "needs_repair", action: "none", reason: "worktree path belongs to another branch", observations };
+  return { safety: "safe", action: "complete_remove", observations };
+}
+
+function applyOwnerGitRecovery(registryPath: string, intent: OwnerGitIntent, action: string): void {
+  if (action === "clear_published_intent" || action === "discard_unapplied_intent") {
+    unlinkSync(ownerGitIntentPath(registryPath));
+    return;
+  }
+  const registry = loadRegistryLocked(registryPath);
+  const owner = registry.owners.find((candidate) => candidate.owner_id === intent.owner_id);
+  if (owner === undefined) fail(`owner not found: ${intent.owner_id}`);
+  const binding = owner.worktree_binding;
+  if (action === "publish_create") {
+    owner.worktree_binding = { feature_branch: intent.feature_branch, owner_branch: intent.owner_branch,
+      worktree_path: intent.worktree_path, status: "active", created_at: intent.created_at,
+      base_oid: intent.base_oid, committed_oid: null, committed_at: null, merged_oid: null, merged_at: null };
+    stampHistory(owner, "worktree_created", "crash recovery");
+  } else if (action === "complete_commit") {
+    if (binding === null) fail("commit recovery binding is missing");
+    const dirty = gitOutput(intent.worktree_path, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], "recover owner status")
+      .split("\0").filter(Boolean).map((record) => normalizePathPattern(record.slice(3)));
+    const violations = dirty.filter((path) => !owner.owned_modules.some((pattern) => pathMatchesPattern(path, pattern)));
+    if (violations.length > 0) fail(`recovery found files outside owned_modules: ${violations.join(", ")}`);
+    if (dirty.length > 0) {
+      gitOutput(intent.worktree_path, ["add", "--", ...dirty], "recover stage owner changes");
+      gitOutput(intent.worktree_path, ["commit", "-m", `seal owner ${intent.owner_id}\n\n${ownerOperationMarker(intent)}`], "recover commit owner changes");
+    }
+    binding.status = "sealed";
+    binding.committed_oid = gitOutput(intent.worktree_path, ["rev-parse", "--verify", "HEAD"], "recover owner oid").trim();
+    binding.committed_at = new Date().toISOString();
+    stampHistory(owner, "worktree_committed", "crash recovery");
+  } else if (action === "complete_merge" || action === "publish_merge") {
+    if (binding === null || binding.committed_oid === null) fail("merge recovery binding is incomplete");
+    if (action === "complete_merge") gitOutput(intent.workspace_root, ["merge", "--no-ff", intent.owner_branch, "-m", `merge ${intent.owner_branch} into ${intent.feature_branch}\n\n${ownerOperationMarker(intent)}`], "recover merge owner branch");
+    binding.status = "merged";
+    binding.merged_oid = gitOutput(intent.workspace_root, ["rev-parse", "--verify", intent.feature_branch], "recover merged oid").trim();
+    binding.merged_at = new Date().toISOString();
+    stampHistory(owner, "worktree_merged", "crash recovery");
+  } else if (action === "complete_remove") {
+    if (binding === null) fail("remove recovery binding is missing");
+    const registered = registeredWorktree(intent.workspace_root, intent.worktree_path);
+    if (registered !== null) gitOutput(intent.workspace_root, ["worktree", "remove", ...(intent.force ? ["--force"] : []), intent.worktree_path], "recover worktree remove");
+    if (gitRefOidOrNull(intent.workspace_root, `refs/heads/${intent.owner_branch}`) !== null) gitOutput(intent.workspace_root, ["branch", intent.force ? "-D" : "-d", intent.owner_branch], "recover branch delete");
+    binding.status = "removed";
+    stampHistory(owner, "worktree_removed", "crash recovery");
+  } else fail(`unsupported owner git recovery action: ${action}`);
+  registry.updated_at = new Date().toISOString();
+  writeTransaction(registryPath, [[registryPath, registry]]);
+  unlinkSync(ownerGitIntentPath(registryPath));
+}
+
+function ownerDeliveryRecoverCommand(registryArgument: string, mode: "plan" | "confirm", confirmation: string | null): void {
+  const registryPath = resolve(registryArgument);
+  const payload = withStateLock(registryPath, () => {
+    const intent = loadOwnerGitIntent(registryPath);
+    if (intent === null) return { contract: "OWNER_DELIVERY_RECOVERY_PLAN_V1", status: "no_pending_intent" };
+    const assessment = ownerGitRecoveryAssessment(registryPath, intent);
+    const proposal = { intent_id: intent.intent_id, operation: intent.operation, owner_id: intent.owner_id, ...assessment };
+    const proposalDigest = digestJson({ kind: "owner-delivery-recover", intent, proposal });
+    if (mode === "confirm") {
+      if (requireConfirmationDigest(confirmation) !== proposalDigest) fail("proposal_digest mismatch; rerun --plan");
+      if (assessment.safety !== "safe") fail(`owner delivery recovery needs repair: ${String(assessment.reason)}`);
+      applyOwnerGitRecovery(registryPath, intent, String(assessment.action));
+    }
+    return { contract: "OWNER_DELIVERY_RECOVERY_PLAN_V1", status: mode === "plan" ? "plan" : "recovered",
+      proposal_digest: proposalDigest, confirmation_scope: "anti_accidental_and_toctou_only", ...proposal };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 function worktreeCreateCommand(
@@ -6235,6 +6553,7 @@ function worktreeCreateCommand(
 ): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const owner = findActiveOwner(registry, ownerId);
     if (owner.worktree_binding !== null && owner.worktree_binding.status === "active") {
@@ -6251,12 +6570,18 @@ function worktreeCreateCommand(
     const ownerBranch = `owner_${ownerId}_${branchSuffix}`;
     const worktreePath = join(workspaceRoot, ".ghost-agent-workflow", "worktrees", branchSuffix, ownerId);
     if (existsSync(worktreePath)) fail(`worktree path already exists: ${worktreePath}`);
+    const dirs = sparseCheckoutDirs(owner.owned_modules);
+    const intent = makeOwnerGitIntent(
+      registryPath, registry, "create", ownerId, owner.worktree_binding,
+      featureBranch, ownerBranch, worktreePath, baseOid, false, dirs,
+    );
+    prepareOwnerGitIntent(registryPath, intent);
     gitOutput(
       workspaceRoot,
       ["worktree", "add", "-b", ownerBranch, worktreePath, featureBranch],
       "git worktree add",
     );
-    const dirs = sparseCheckoutDirs(owner.owned_modules);
+    crashPoint("after_worktree_add");
     if (dirs.length > 0) {
       gitOutput(
         worktreePath,
@@ -6264,6 +6589,7 @@ function worktreeCreateCommand(
         "sparse-checkout set",
       );
     }
+    crashPoint("after_sparse_checkout");
     owner.worktree_binding = {
       feature_branch: featureBranch,
       owner_branch: ownerBranch,
@@ -6278,7 +6604,7 @@ function worktreeCreateCommand(
     };
     stampHistory(owner, "worktree_created", null);
     registry.updated_at = new Date().toISOString();
-    writeTransaction(registryPath, [[registryPath, registry]]);
+    publishOwnerGitRegistry(registryPath, registry);
     return {
       status: "created" as const,
       owner_id: ownerId,
@@ -6294,6 +6620,7 @@ function worktreeCreateCommand(
 function worktreeCommitCommand(registryArgument: string, ownerId: string): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const owner = findActiveOwner(registry, ownerId);
     const binding = owner.worktree_binding;
@@ -6312,16 +6639,23 @@ function worktreeCommitCommand(registryArgument: string, ownerId: string): void 
     const auditedPaths = uniqueStrings([...committedPaths, ...dirty]);
     const violations = auditedPaths.filter((path) => !owner.owned_modules.some((pattern) => pathMatchesPattern(path, pattern)));
     if (violations.length > 0) fail(`owner ${ownerId} changed files outside owned_modules: ${violations.join(", ")}`);
+    const intent = makeOwnerGitIntent(
+      registryPath, registry, "commit", ownerId, binding, binding.feature_branch,
+      binding.owner_branch, binding.worktree_path, binding.base_oid,
+    );
+    prepareOwnerGitIntent(registryPath, intent);
     if (dirty.length > 0) {
       gitOutput(worktree, ["add", "--", ...dirty], "stage owner changes");
-      gitOutput(worktree, ["commit", "-m", `seal owner ${ownerId}`], "commit owner changes");
+      crashPoint("after_git_add");
+      gitOutput(worktree, ["commit", "-m", `seal owner ${ownerId}\n\n${ownerOperationMarker(intent)}`], "commit owner changes");
+      crashPoint("after_git_commit");
     }
     const committedOid = gitOutput(worktree, ["rev-parse", "--verify", "HEAD"], "owner commit oid").trim();
     const remaining = gitOutput(worktree, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], "verify clean owner worktree");
     if (remaining !== "") fail(`owner ${ownerId} worktree is not clean after commit`);
     binding.status = "sealed"; binding.committed_oid = committedOid; binding.committed_at = new Date().toISOString();
     stampHistory(owner, "worktree_committed", dirty.length === 0 ? "no-change seal" : null);
-    registry.updated_at = new Date().toISOString(); writeTransaction(registryPath, [[registryPath, registry]]);
+    registry.updated_at = new Date().toISOString(); publishOwnerGitRegistry(registryPath, registry);
     return { status: "sealed" as const, owner_id: ownerId, committed_oid: committedOid, changed_files: dirty.length };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -6334,6 +6668,7 @@ function worktreeMergeBackCommand(
 ): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const owner = findActiveOwner(registry, ownerId);
     const binding = owner.worktree_binding;
@@ -6371,17 +6706,23 @@ function worktreeMergeBackCommand(
         `owner ${ownerId} changed files outside owned_modules: ${violations.join(", ")}`,
       );
     }
+    const intent = makeOwnerGitIntent(
+      registryPath, registry, "merge", ownerId, binding, featureBranch,
+      ownerBranch, binding.worktree_path, binding.base_oid,
+    );
+    prepareOwnerGitIntent(registryPath, intent);
     gitOutput(
       workspaceRoot,
-      ["merge", "--no-ff", ownerBranch, "-m", `merge ${ownerBranch} into ${featureBranch}`],
+      ["merge", "--no-ff", ownerBranch, "-m", `merge ${ownerBranch} into ${featureBranch}\n\n${ownerOperationMarker(intent)}`],
       "merge owner branch",
     );
+    crashPoint("after_merge");
     owner.worktree_binding.status = "merged";
     owner.worktree_binding.merged_oid = gitOutput(workspaceRoot, ["rev-parse", "--verify", "HEAD"], "merged feature oid").trim();
     owner.worktree_binding.merged_at = new Date().toISOString();
     stampHistory(owner, "worktree_merged", null);
     registry.updated_at = new Date().toISOString();
-    writeTransaction(registryPath, [[registryPath, registry]]);
+    publishOwnerGitRegistry(registryPath, registry);
     return {
       status: "merged" as const,
       owner_id: ownerId,
@@ -6396,6 +6737,7 @@ function worktreeMergeBackCommand(
 function worktreeRemoveCommand(registryArgument: string, ownerId: string, force: boolean): void {
   const registryPath = resolve(registryArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
     if (owner === undefined) fail(`owner not found: ${ownerId}`);
@@ -6405,6 +6747,12 @@ function worktreeRemoveCommand(registryArgument: string, ownerId: string, force:
       fail(`worktree not merged; pass --force to remove anyway`);
     }
     const workspaceRoot = registry.workspace_root;
+    const intent = makeOwnerGitIntent(
+      registryPath, registry, "remove", ownerId, binding, binding.feature_branch,
+      binding.owner_branch, binding.worktree_path, binding.base_oid ?? gitRefOidOrNull(workspaceRoot, binding.feature_branch) ?? "",
+      force,
+    );
+    prepareOwnerGitIntent(registryPath, intent);
     if (existsSync(binding.worktree_path)) {
       gitOutput(
         workspaceRoot,
@@ -6412,15 +6760,17 @@ function worktreeRemoveCommand(registryArgument: string, ownerId: string, force:
         "git worktree remove",
       );
     }
+    crashPoint("after_worktree_remove");
     gitOutput(
       workspaceRoot,
       ["branch", force ? "-D" : "-d", binding.owner_branch],
       "git branch delete",
     );
+    crashPoint("after_branch_delete");
     owner.worktree_binding.status = "removed";
     stampHistory(owner, "worktree_removed", null);
     registry.updated_at = new Date().toISOString();
-    writeTransaction(registryPath, [[registryPath, registry]]);
+    publishOwnerGitRegistry(registryPath, registry);
     return { status: "removed" as const, owner_id: ownerId, owner_branch: binding.owner_branch };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -6430,6 +6780,7 @@ function ownerVerifyPlanCommand(registryArgument: string, planArgument: string):
   const registryPath = resolve(registryArgument);
   const planPath = resolve(planArgument);
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const plan = requireRecord(readJson(planPath), "plan");
     const ownersRaw = plan.owners;
@@ -6481,6 +6832,7 @@ function ownerNoteCommand(registryArgument: string, ownerId: string, noteArgumen
     ? "note"
     : requireString(note.slug, "note.slug").replace(/[^A-Za-z0-9._-]+/g, "-");
   const payload = withStateLock(registryPath, () => {
+    requireNoOwnerGitIntent(registryPath);
     const registry = loadRegistryLocked(registryPath);
     const owner = registry.owners.find((candidate) => candidate.owner_id === ownerId);
     if (owner === undefined) fail(`owner not found: ${ownerId}`);
@@ -6578,6 +6930,8 @@ function main(argv: string[]): void {
   }
   if (command === "owner-bind-goal" && args.length === 6) return ownerBindGoalCommand(args[0], args[1], args[2], args[3], args[4], args[5]);
   if (command === "owner-delivery-reconcile" && args.length === 5) return ownerDeliveryReconcileCommand(args[0], args[1], args[2], args[3], args[4]);
+  if (command === "owner-delivery-recover" && args.length === 2 && args[1] === "--plan") return ownerDeliveryRecoverCommand(args[0], "plan", null);
+  if (command === "owner-delivery-recover" && args.length === 3 && args[1] === "--confirm") return ownerDeliveryRecoverCommand(args[0], "confirm", args[2]);
   if (command === "worktree-create" && args.length === 3) {
     return worktreeCreateCommand(args[0], args[1], args[2]);
   }
@@ -6592,7 +6946,7 @@ function main(argv: string[]): void {
     return worktreeRemoveCommand(args[0], args[1], args.length === 3);
   }
   fail(
-    "usage: goal-dag.mjs goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | validate <plan.json> | render <plan.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <executor_id> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | apply-delta <plan.json> <state.json> <delta.json> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <executor_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-init <registry.json> <workspace_root> | owner-list <registry.json> | owner-add <registry.json> <owner-def.json> --plan|--confirm <proposal_digest> | owner-query <registry.json> <requirement.json> | owner-split <registry.json> <parent_owner_id> <split-spec.json> --plan|--confirm <proposal_digest> | owner-verify-plan <registry.json> <plan.json> | owner-note <registry.json> <owner_id> <note.json> | owner-bind-goal <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch> | owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> | worktree-create <registry.json> <feature_branch> <owner_id> | worktree-commit <registry.json> <owner_id> | worktree-merge-back <registry.json> <feature_branch> <owner_id> | worktree-remove <registry.json> <owner_id> [--force]",
+    "usage: goal-dag.mjs goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | validate <plan.json> | render <plan.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <executor_id> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | apply-delta <plan.json> <state.json> <delta.json> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <executor_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-init <registry.json> <workspace_root> | owner-list <registry.json> | owner-add <registry.json> <owner-def.json> --plan|--confirm <proposal_digest> | owner-query <registry.json> <requirement.json> | owner-split <registry.json> <parent_owner_id> <split-spec.json> --plan|--confirm <proposal_digest> | owner-verify-plan <registry.json> <plan.json> | owner-note <registry.json> <owner_id> <note.json> | owner-bind-goal <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> <feature_branch> | owner-delivery-reconcile <goal.json> <goal-state.json> <plan.json> <state.json> <registry.json> | owner-delivery-recover <registry.json> --plan|--confirm <proposal_digest> | worktree-create <registry.json> <feature_branch> <owner_id> | worktree-commit <registry.json> <owner_id> | worktree-merge-back <registry.json> <feature_branch> <owner_id> | worktree-remove <registry.json> <owner_id> [--force]",
   );
 }
 
