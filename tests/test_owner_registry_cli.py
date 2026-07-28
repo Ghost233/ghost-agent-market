@@ -65,10 +65,6 @@ class OwnerRegistryCliTests(unittest.TestCase):
             "scope_patterns": patterns,
             "scope_excludes": [],
             "worker_context": f"保持 {owner_id} 模块知识",
-            "runtime_profile": {
-                "model": "gpt-5.6-sol",
-                "reasoning_effort": "high",
-            },
             "lineage": {
                 "parent_owner_ids": [] if parent is None else [parent],
                 "created_by_request_digest": "bootstrap",
@@ -124,10 +120,6 @@ class OwnerRegistryCliTests(unittest.TestCase):
                     "responsibility": "负责报表模块",
                     "scope_patterns": ["src/report/**"],
                     "worker_context": "保持报表合同稳定",
-                    "runtime_profile": {
-                        "model": "gpt-5.6-sol",
-                        "reasoning_effort": "high",
-                    },
                 }
             ],
             "capsule_strategy": "empty",
@@ -190,10 +182,6 @@ class OwnerRegistryCliTests(unittest.TestCase):
                         "responsibility": "负责仓库初始模块",
                         "scope_patterns": ["**"],
                         "worker_context": "保持仓库初始模块知识",
-                        "runtime_profile": {
-                            "model": "gpt-5.6-sol",
-                            "reasoning_effort": "high",
-                        },
                     }
                 ],
             )
@@ -267,7 +255,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.assertEqual(created["status"], "created")
             request = json.loads(request_path.read_text(encoding="utf-8"))
             self.assertEqual(request["contract"], "OWNER_CHANGE_REQUEST_V2")
-            self.assertEqual(request["new_owners"][0]["runtime_profile"], None)
+            self.assertNotIn("runtime_profile", request["new_owners"][0])
             self.assertIn("created_at", request)
             self.run_json("validate-change", registry_path, request_path, validation_path)
             approved = self.run_json(
@@ -319,14 +307,12 @@ class OwnerRegistryCliTests(unittest.TestCase):
                         "responsibility": "负责用户认证",
                         "scope_patterns": ["src/user/auth/**"],
                         "worker_context": "保持认证合同",
-                        "runtime_profile": registry["owners"][0]["runtime_profile"],
                     },
                     {
                         "id": "user-profile-module",
                         "responsibility": "负责用户资料",
                         "scope_patterns": ["src/user/profile/**"],
                         "worker_context": "保持资料合同",
-                        "runtime_profile": registry["owners"][0]["runtime_profile"],
                     },
                 ],
                 capsule_strategy="inherit_parent",
@@ -362,14 +348,12 @@ class OwnerRegistryCliTests(unittest.TestCase):
                         "responsibility": "负责用户认证",
                         "scope_patterns": ["src/user/auth/**"],
                         "worker_context": "保持认证合同",
-                        "runtime_profile": registry["owners"][0]["runtime_profile"],
                     },
                     {
                         "id": "user-profile-module",
                         "responsibility": "负责用户资料",
                         "scope_patterns": ["src/user/profile/**"],
                         "worker_context": "保持资料合同",
-                        "runtime_profile": registry["owners"][0]["runtime_profile"],
                     },
                 ],
                 capsule_strategy="inherit_parent",
@@ -406,7 +390,6 @@ class OwnerRegistryCliTests(unittest.TestCase):
                         "scope_patterns": ["src/user/**"],
                         "scope_excludes": [],
                         "worker_context": "保持用户模块知识",
-                        "runtime_profile": source_owner["runtime_profile"],
                     },
                     {
                         "id": "source-remainder",
@@ -414,7 +397,6 @@ class OwnerRegistryCliTests(unittest.TestCase):
                         "scope_patterns": ["src/**"],
                         "scope_excludes": ["src/user/**"],
                         "worker_context": "保持非用户源码知识",
-                        "runtime_profile": source_owner["runtime_profile"],
                     },
                 ],
                 capsule_strategy="inherit_sources",

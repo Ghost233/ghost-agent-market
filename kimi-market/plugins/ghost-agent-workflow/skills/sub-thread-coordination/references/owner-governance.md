@@ -6,7 +6,7 @@ Owner 是仓库级模块责任主体，不是临时 task 角色。一个受管�
 
 - Owner ID、scope 和永久 Capsule 跨 Goal 保留；物理子线程可以轮换。
 - 跨 Owner 只消费公开 interface/handoff，不读取对方聊天。
-- source/diff/commit audit 是 runtime actor，不是 Owner。
+- source/diff/commit audit 是脚本任务，不是 Owner 或模型角色。
 - Registry、Capsule、lease 和 history 只能由脚本更新。
 
 ## 路由
@@ -57,7 +57,7 @@ goal-dag.mjs owner-lease-heartbeat <workspace> <owner_id> <token>
 goal-dag.mjs owner-lease-recover <workspace> <owner_id> <token> <reason>
 ```
 
-监督线程只报告 stalled；主线程确认线程确实无法继续后才 recover/reclaim。旧线程标为 lost 或 archived 后，创建新 generation 并从 Capsule 恢复。
+Main 连续三次等待无变化后只报告疑似 stalled；用户确认线程确实无法继续后才 recover/reclaim。旧线程标为 lost 或 archived 后，创建新 generation 并从 Capsule 恢复。
 
 ## Git 交付
 

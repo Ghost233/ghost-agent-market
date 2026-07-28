@@ -1,126 +1,138 @@
 ---
 name: sub-thread-coordination
-description: 当用户明确要求用长期子线程、Owner DAG、可展开子图、显式 Review 和网页进度执行计划时使用。默认不要求原生 Goal；只有用户已启动或明确要求 Goal 才桥接。所有执行单元均为可长期持有上下文的子线程。
+description: 当用户明确要求用长期子线程、Owner DAG、可展开子图、显式 Review 和网页进度执行计划时使用。默认不要求原生 Goal；只有用户已启动或明确要求 Goal 才桥接。由一个脚本化 Supervisor 创建、等待并通知最多八个执行子线程。
 ---
 
 # 子线程 DAG 协调器
 
-这是唯一协调入口。运行时禁止使用 subagent 接口，也禁止把临时执行单元伪装成长期子线程。
+> 平台差异：Claude Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才能执行本工作流。标准 Agent 不具备用户长期持有上下文与完成约束，禁止作为回退；缺少子线程 API 时必须在规划后 fail closed。本平台固定使用 `standalone_thread`，不包含原生 Goal 桥接。
 
-首次进入时完整读取 [Owner 治理](references/owner-governance.md)、[运行契约](references/goal-contract.md) 和 [恢复约定](references/templates.md)。只有引用文件 digest 改变或进入对应流程时才重读。Planner 必须显式使用 `$parallel-task-planner`，Worker 使用 `$sub-thread-goal-worker`，监督线程使用 `$sub-thread-task-supervisor`。
+这是唯一协调入口。禁止 subagent；只允许一个固定 Supervisor，不创建其他等待中转或视图刷新线程。首次进入时完整读取 [Owner 治理](references/owner-governance.md)、[运行契约](references/goal-contract.md) 和 [恢复约定](references/templates.md)；引用 digest 未变时不重复读取。
+
+Planner 必须显式使用 `$parallel-task-planner`，Planner Reviewer 使用 `$planner-reviewer`，Supervisor 使用 `$sub-thread-task-supervisor`，Owner/Implementation Review 使用 `$sub-thread-goal-worker`，配置使用 `$setup-sub-thread-workflow`，Dashboard 由 Main 直接调用 `$start-dag-dashboard`。
 
 ## 硬规则
 
-1. 模型只提供业务判断和最小语义输入。ID、attempt、token、revision、digest、timestamp、路径、默认字段、状态迁移和文件写入均由脚本生成。
-2. 有 domain command 时必须使用；不得手写完整 JSON，也不得用 `json-write --replace` 模拟状态更新。
-3. `state.json`、`goal-state.json`、`threads.json`、`progress.json`、`events.jsonl`、Registry 和 Capsule 只能由脚本更新。
-4. Goal、Plan、Delta、Expansion、Checkpoint、source audit 和 result 都有精简输入命令；正常流程禁止 `json-write`。旧完整契约只作为只读兼容输入。
-5. 聊天只传 binding、最小输入和紧凑 receipt。完整结果与证据只落盘。
+1. 模型只提交最小语义输入；ID、attempt、token、revision、digest、timestamp、路径、默认字段、状态迁移及结构化文件均由脚本生成。
+2. 禁止模型直接编辑配置、Plan、State、Result、Progress、Registry、Owner Capsule 或 Review JSON。
+3. Supervisor 只通过 `supervisor-next/supervisor-record` 取得并持久化紧凑动作，再调用 `wait_threads`；Main 不读取监督文件或完整执行线程结果。
+4. 并行数范围 1–8。不得为了填满槽位拆分存在真实依赖的任务。
+5. Runtime Actor 不是模型角色。source、scope、diff、schema、evidence、progress 和 commit readiness 均调用脚本。
+6. 脚本 JSON 只作机器收据，禁止复制到 commentary、final 或普通聊天；完整 DAG、Binding、Result、Review、Progress、diff 和日志只落本地文件。
+
+## 工作流配置
+
+工作流开始时运行一次；文件不存在会自动创建：
+
+```text
+workflow-config.mjs init <workspace>
+workflow-config.mjs show <workspace>
+```
+
+配置只有 `parallel` 及 `profiles.planner/owner/review/supervisor`。创建任何新 LLM 子线程前必须再次 `show`，使用户的实时修改对新线程生效；已经存在的线程不强制更换。
+
+- Planner、Composite Planner：`profiles.planner`
+- Owner Worker：`profiles.owner`
+- Planner Reviewer、Implementation Review：`profiles.review`
+- Supervisor：`profiles.supervisor`，默认 `gpt-5.6-luna/medium`
+- 其它未明确覆盖的 LLM 子线程：`gpt-5.6-sol/high`
 
 ## 生命周期
 
-默认 `standalone_thread`，不调用原生 Goal 工具。只有用户已经启动或明确要求 Goal 时使用 `codex_native`；Owner 变化等待用户时不要把 Goal 标为 blocked，应用完成后提示用户可继续 Goal。
+本平台固定使用 `standalone_thread`，不调用 Codex 原生 Goal。Owner 变化等待用户时保持本地工作流暂停；应用成功后提示用户可以继续执行。
 
-创建时把 `GOAL_INPUT_V1` 和 `PLAN_INPUT_V1` 直接送入脚本 stdin，不先创建中间 JSON：
+初始顺序固定为：
 
 ```text
-goal-dag.mjs goal-create <goal.json> <workspace_root>
-goal-dag.mjs goal-validate <goal.json>
-goal-dag.mjs plan-create <goal.json> <plan.json>
-goal-dag.mjs validate <plan.json>
+配置 init + show
+→ goal-create + goal-validate
+→ Planner 生成 PLAN_INPUT_V1
+→ plan-create 机械校验并保存 DAG draft
+→ planner-review-context
+→ Planner Reviewer 独立审查
+→ planner-review-submit
+→ activate
+→ Main 启动 Dashboard
+→ Main 创建并命名 Supervisor
+→ reserve / Supervisor wait_threads
 ```
+
+Planner Reviewer 返回 `revise` 时，Planner 通过 `plan-revise` 只修订一次，再运行第二轮 context/review。第二轮仍需修改时停止并通知 Main，禁止循环。`activate` 成功前不得 reserve，也不得启动 Dashboard。
+
+Dashboard 启动失败只影响查看：Main 报错后继续业务 DAG，并允许稍后重试。成功时只向用户报告一次 URL；runtime 自动维护 `progress.json` 和 `events.jsonl`。
 
 ## 主线程与线程登记
 
-主线程发现不使用 nonce：
+Main 标题使用 `goal-validate.thread_titles.main`，格式为 `[GA][任务][主控] <中文目标>`。扫描当前 workspace 后，未结束且角色为主控的 Main 必须恰好一个；发现多个时立即停止，不创建子线程。用 `thread-registry` 脚本登记 Main 和模型线程，内部 id 不进入可见标题。
 
-1. 把当前任务标题设为 `[GA][TASK][MAIN] <goal_id>`。
-2. 扫描当前 workspace 的任务。
-3. 标题完全匹配且未结束的 Main 必须恰好一个；零个或多个立即停止本工作流，不创建任何子线程。
-4. 用脚本持久化该 `thread_id + host_id`：
+`create_thread` 不接受 `title` 或 `name`。每个新线程必须按以下顺序初始化：
 
 ```text
-goal-dag.mjs thread-registry init <threads.json> <goal_id> <main_id> <main_host>
+create_thread
+→ 取得正式 threadId；若只返回 clientThreadId，则等待初始化完成
+→ 创建者通过 send_message_to_thread 通知新线程自己的 threadId 和 canonical title
+→ 新线程立即调用 set_thread_title({ threadId, title })
+→ 设置成功后再登记、bind 和执行任务
 ```
 
-其他变更只调用：
+Main 创建 Supervisor，Supervisor 创建执行线程；两者的创建提示都必须明确要求新线程先完成上述改名。不得把标题参数伪造到 `create_thread`，也不得用 `clientThreadId` 代替正式 `threadId`。
+
+系统 key 只含小写字母、数字和下划线。所有可见标题必须逐字使用脚本收据，不得由模型翻译或拼入 owner_id/task_id/thread_key：
+
+- `[GA][任务][主控] <中文目标>`
+- `[GA][任务][规划] <中文任务>`
+- `[GA][任务][子图规划] <中文父任务>`
+- `[GA][任务][规划审查] <中文任务>`
+- `[GA][任务][责任域] <中文任务>`
+- `[GA][任务][实现审查] <中文任务>`
+- `[GA][任务][监督] <中文目标>`
+
+Planner 生成的 task `title` 必须包含中文，否则 runtime 拒绝 Plan。Owner 线程复用到新任务时也必须先改成当前脚本标题。不得创建第二个 Supervisor、Dashboard 刷新或 Runtime 模型线程。Main 创建 Supervisor 后，取得正式 threadId，再通知它自行设置 canonical 标题。
+
+## 调度循环
+
+每轮严格执行：
 
 ```text
-goal-dag.mjs thread-registry put-thread <threads.json> <key> <thread_id> <host> <role> <idle|running|lost>
-goal-dag.mjs thread-registry set-status <threads.json> <key> <idle|running|lost>
-goal-dag.mjs thread-registry put-watch <threads.json> <task_id> <attempt> <key> [cursor|-]
-goal-dag.mjs thread-registry remove-watch <threads.json> <task_id> <attempt> <key>
+status
+→ reconcile
+→ reserve，最多补满 config.parallel 个 active task
+→ 立即执行所有 run_script action
+→ 用 Goal 目录唤醒 Supervisor
+→ Supervisor 调用 supervisor-next，创建/复用、bind 并投递模型线程
+→ Supervisor 用 wait_threads 等待最多 8 个目标并通过 supervisor-record 保存 cursor
+→ Supervisor 只通知 Main 终态 task/thread/status
+→ Main 只把 result_ref 交给 finish 脚本做机械验收，不直接读取 Result
+→ 补满空余槽位
 ```
 
-系统 key 使用 `wf_<role>_<goalkey>` 风格，只含小写字母、数字和下划线。可见标题使用 `[GA][TASK][ROLE] 名称`：
+`run_script` action 仍由 Main 直接调用其 `runtime-execute` 命令，不创建、登记或等待线程。Supervisor 不读取原始 Plan/State/Registry、完整 DAG、Worker 聊天或结果正文；只执行 `$sub-thread-task-supervisor` 的两个脚本入口。模型线程通过 Supervisor receipt 的 `dispatch` 自行取得 `TASK_BINDING_V6`。
 
-- `[GA][TASK][SUPERVISOR] 任务监督`
-- `[GA][TASK][DAG_VIEW] DAG 视图`
-- `[GA][TASK][OWNER] <owner_id>`
-- `[GA][TASK][RUNTIME] <actor_id>`
-- `[GA][TASK][REVIEW] <task_id>`
+Supervisor 的机器通知可以包含 result_ref，但用户可见消息不得包含它。线程终态而 Result 无效时只说“线程已结束，但尚未生成有效结果”；只有 `finish` 返回的脚本消息才可称为“任务完成”。Supervisor 不判断结果、不决定 retry/reclaim，也不向用户输出普通 running 状态。
 
-## 固定子线程
+## 静默与摘要
 
-- 监督线程：固定 `gpt-5.6-luna/low`，加载 `$sub-thread-task-supervisor`；只等待和通知。
-- DAG 视图线程：只启动/读取 Dashboard，不向主线程输出图。
-- Owner/Runtime 线程：同一 Owner generation 长期复用；只在丢失或上下文不可恢复时轮换。
-- Review 线程：执行显式 Review 节点，不复用实现线程的聊天上下文。
+- 需要传给其他线程的内容直接使用 `send_message_to_thread`，当前聊天不重复。
+- 线程之间只传必要标量、文件引用和不超过 100 字的脚本摘要；禁止粘贴 JSON 代码块、完整 stdout、DAG、任务正文、代码、diff、结果或日志。
+- `supervisor-next` 的 create/wait/notify 每类最多 8 项。没有状态变化时不发用户可见消息。
+- 创建或监控集合变化时，Main 可以列出最多 8 个脚本生成的中文标题。
+- 错误只报告一句原因与脚本给出的日志路径。原始 JSON 只有用户明确要求时才能展示。
 
-## 规划与调度
+## Composite Planner
 
-初始计划只生成稳定的顶层节点。Review 是 `role: review` 的普通 DAG 节点；机械验收不是 Review。每轮严格执行：
+Owner Worker 在任何可归因业务修改前发现需要拆解时，调用 `subgraph-request` 并结束当前 attempt。随后 Composite Planner 使用 `$parallel-task-planner` 和 `profiles.planner` 生成 `TASK_SUBGRAPH_INPUT_V1`：
 
-```text
-status -> reconcile -> recovery/apply -> reserve
-```
+- child 使用 `T2-1/T2-2/T2-3`；
+- 声明内部依赖及 entry/exit；
+- 保留父节点的外部依赖边界；
+- 不修改业务代码。
 
-创建或复用线程后先 `bind`，再发送未经修改的精简 canonical binding `TASK_BINDING_V6`，固定 envelope 为：
+runtime 校验并 `expand-subgraph` 后，由普通 Owner Worker 执行子节点。
 
-```text
-使用 $sub-thread-goal-worker；执行以下 canonical TASK_BINDING_V6：
-```
+## Review、Owner 变化与完成
 
-随后用 `thread-registry put-watch` 登记，并把同一 watch 交给监督线程。监督线程只通知主线程检查；Worker 聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程读取 canonical result、调用 `finish`，然后只向用户报告已经机械接受的 task 最终结果。
+Planner Reviewer 是激活前门禁，不是 DAG 节点。Implementation Review 仍是显式 `role: review` 节点，并使用独立 Review 线程；机械验收不是 Review。
 
-## Review 升级
+Owner 变化是用户决策，期间暂停当前 DAG：`request → validate-change → 用户确认 → approve-change → apply-change → owner transition delta`。所有文件由脚本写入。
 
-Worker 只在结果最小输入中填写可选 `review_upgrade`。`finish` 自动将该 task 置为待升级；`reconcile` 返回 `review_upgrades[]` 并暂停其下游。
-
-Planner 的 delta 只增加一个简短映射：
-
-```json
-{"task":"T2","review_task":"T2R","reason":"公共接口变化"}
-```
-
-同时在 `tasks` 中提供精简 Review 节点，并把 `DAG_DELTA_INPUT_V1` 从 stdin 交给 `apply-delta ... -`。runtime 自动补 revision/digest/默认数组、把 subject 改为 immediate、重连直接下游并清除待升级状态。
-
-## 子 DAG
-
-leaf 需要拆解时，Worker 不写 request JSON，只调用：
-
-```text
-goal-dag.mjs subgraph-request <plan> <state> <task_id> <token> <reason> [建议子任务]...
-```
-
-Planner 只生成 `TASK_SUBGRAPH_INPUT_V1` 的 children、entry、exit 和可选 safety，再通过 `expand-subgraph ... -` 应用。runtime 自动绑定 request、token、revision、digest 和父节点。child 使用 `T2-1` 风格，内部仍是 DAG；外部依赖始终指向父节点。
-
-## Owner 变化
-
-Owner 变化是用户决策，流程期间暂停整个当前 DAG，避免设计多套局部暂停状态：
-
-```text
-request -> validate-change -> 用户确认 -> approve-change -> apply-change -> owner transition delta
-```
-
-批准文件必须由 `owner-registry.mjs approve-change` 生成，不能手写。应用和 transition 均成功后恢复调度；详见 Owner 治理。
-
-## 进度、挂死与完成
-
-每个 runtime mutation 都自动刷新固定 `progress.json` 并追加 `events.jsonl`；模型和 DAG 视图线程不得写这两个文件。主线程不输出 Mermaid 或 DAG diff，只给 Dashboard URL 和最终 task 结果。
-
-监督线程连续三次 bounded wait 都没有状态或 cursor 变化时发送一次 `TASK_STALLED`，保留 watch。主线程确认后可 reclaim、将旧线程标为 lost/archived，再创建新 generation；监督线程不得自行关闭或重启任务。
-
-Evidence 只有 runtime 返回单一 `cache_key` 时才允许复用；没有 key 就执行验证，禁止模型拼接多个 digest。
-
-只有 coverage、Review/verify、blocking findings、scope 和 delivery gate 全部通过时运行 `finalize`。standalone 到此完成；codex_native 再桥接原生 Goal。
+只有 coverage、Implementation Review/verify、blocking findings、scope 与 delivery gate 全部通过才 `finalize`。Main 只向用户报告 Dashboard URL、Owner 决策、真实阻塞、疑似挂死、已验收 task 最终结果和 Goal 完成；不得持续报告普通 running 状态、Planner 过程、测试过程、Delta 准备或完整 DAG/Mermaid。

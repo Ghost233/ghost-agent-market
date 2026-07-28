@@ -50,10 +50,6 @@ class KimiGoalDagCliTests(unittest.TestCase):
             plan["goal_digest"] = hashlib.sha256(goal_path.read_bytes()).hexdigest()
             plan["plan_source"] = dict(goal["source"])
             plan["coverage_path"] = str(root / "coverage.json")
-            for owner in plan["owners"]:
-                owner["runtime_profile"] = None
-            for actor in plan["runtime_actors"]:
-                actor["runtime_profile"] = None
             plan_path = root / "plan.json"
             plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -71,7 +67,6 @@ class KimiGoalDagCliTests(unittest.TestCase):
                     "scope_patterns": owner["writable_paths"],
                     "scope_excludes": owner["excluded_paths"],
                     "worker_context": owner["worker_context"],
-                    "runtime_profile": owner["runtime_profile"],
                     "lineage": {
                         "parent_owner_ids": [],
                         "created_by_request_digest": "bootstrap",
@@ -168,11 +163,39 @@ class KimiGoalDagCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+    def run_json_input(self, payload: dict, *args: object) -> dict:
+        environment = os.environ.copy()
+        environment["GOAL_DAG_EXECUTION_PLATFORM"] = PLATFORM
+        result = subprocess.run(
+            ["node", str(KIMI_SCRIPT), *(str(arg) for arg in args)],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def approve_plan(self, plan_path: Path) -> None:
+        self.run_json("planner-review-context", plan_path)
+        self.run_json_input(
+            {
+                "parallelism": "pass",
+                "too_complex": False,
+                "too_simple": False,
+                "changes": [],
+            },
+            "planner-review-submit",
+            plan_path,
+        )
+
     def test_goal_validate_and_status_return_kimi_continuation(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
             expected = f"/skill:sub-thread-coordination 继续 `{goal_path}`。"
             payload = self.run_json("goal-validate", goal_path)
             self.assertEqual(payload["continuation_prompt"], expected)
+            self.approve_plan(plan_path)
             validated = self.run_json("validate", plan_path)
             state_path = validated["state_path"]
             status = self.run_json("status", plan_path, state_path)
@@ -193,13 +216,15 @@ class KimiGoalDagCliTests(unittest.TestCase):
             )
             self.assertFalse(plan_path.with_name("state.json").exists())
 
-    def test_reserve_binds_null_runtime_profile(self) -> None:
+    def test_reserve_returns_script_action_for_runtime_gate(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
             self.run_json("goal-validate", goal_path)
+            self.approve_plan(plan_path)
             validated = self.run_json("validate", plan_path)
             payload = self.run_json("reserve", plan_path, validated["state_path"], 1)
             self.assertEqual(len(payload["actions"]), 1, payload)
-            self.assertIsNone(payload["actions"][0]["binding"]["thread"]["profile"])
+            self.assertEqual(payload["actions"][0]["action"], "run_script")
+            self.assertNotIn("binding", payload["actions"][0])
 
     def test_codex_platform_goal_is_rejected(self) -> None:
         with self.workspace() as (_, goal_path, _):

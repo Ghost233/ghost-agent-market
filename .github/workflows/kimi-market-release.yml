@@ -29,6 +29,7 @@ jobs:
           node tooling/goal-dag/sync-thread-skills.mjs
           node tooling/goal-dag/build.mjs
           node tooling/owner-registry/build.mjs
+          node tooling/workflow-config/build.mjs
           git diff --exit-code -- claude-code-market codex-market kimi-market
 
       - name: Validate workflow contracts

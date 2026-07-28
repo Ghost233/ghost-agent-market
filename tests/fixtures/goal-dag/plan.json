@@ -24,7 +24,6 @@
       ],
       "excluded_paths": [],
       "worker_context": "保持状态类型与页面读取接口一致",
-      "runtime_profile": null,
       "reuse_policy": "owner_affinity"
     },
     {
@@ -36,7 +35,6 @@
       ],
       "excluded_paths": [],
       "worker_context": "保持夹具形状与状态契约一致",
-      "runtime_profile": null,
       "reuse_policy": "owner_affinity"
     }
   ],
@@ -45,22 +43,19 @@
       "id": "source-audit",
       "role": "verify",
       "responsibility": "机械审计计划源覆盖",
-      "worker_context": "仅运行 source-audit 脚本",
-      "runtime_profile": null
+      "worker_context": "仅运行 source-audit 脚本"
     },
     {
       "id": "diff-audit",
       "role": "verify",
       "responsibility": "机械审计最终差异",
-      "worker_context": "仅运行 diff-audit 脚本",
-      "runtime_profile": null
+      "worker_context": "仅运行 diff-audit 脚本"
     },
     {
       "id": "commit-readiness",
       "role": "verify",
       "responsibility": "机械生成提交就绪清单",
-      "worker_context": "仅运行 commit-readiness 脚本",
-      "runtime_profile": null
+      "worker_context": "仅运行 commit-readiness 脚本"
     }
   ],
   "tasks": [
@@ -267,12 +262,12 @@
     },
     {
       "id": "T5",
-      "logical_id": "delivery.attest-state-domain",
-      "title": "审查状态模块交付",
+      "logical_id": "review.state-domain",
+      "title": "独立审查状态模块",
       "role": "review",
       "owner_id": "state-domain",
       "runtime_actor_id": null,
-      "task": "由状态模块 Owner 审查并发布提交证明",
+      "task": "独立审查状态模块实现与验证证据",
       "depends_on": [
         "T4"
       ],
@@ -281,10 +276,10 @@
         "state-delivery"
       ],
       "done_when": [
-        "发布本模块 COMMIT_ATTESTATION_V1"
+        "审查通过且没有 blocking finding"
       ],
       "verification_ids": [
-        "state-domain-attestation"
+        "state-domain-review"
       ],
       "satisfies_goal_gates": [],
       "plan_item_ids": [
@@ -305,12 +300,12 @@
     },
     {
       "id": "T6",
-      "logical_id": "delivery.attest-state-fixtures",
-      "title": "审查夹具模块交付",
+      "logical_id": "review.state-fixtures",
+      "title": "独立审查夹具模块",
       "role": "review",
       "owner_id": "state-fixtures",
       "runtime_actor_id": null,
-      "task": "由夹具模块 Owner 审查并发布提交证明",
+      "task": "独立审查夹具模块实现与验证证据",
       "depends_on": [
         "T4"
       ],
@@ -319,10 +314,10 @@
         "fixture-delivery"
       ],
       "done_when": [
-        "发布本模块 COMMIT_ATTESTATION_V1"
+        "审查通过且没有 blocking finding"
       ],
       "verification_ids": [
-        "state-fixtures-attestation"
+        "state-fixtures-review"
       ],
       "satisfies_goal_gates": [],
       "plan_item_ids": [

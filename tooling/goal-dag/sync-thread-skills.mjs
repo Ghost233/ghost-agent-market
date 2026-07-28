@@ -11,6 +11,9 @@ const codexRoot = join(
 const synchronizedFiles = [
   "parallel-task-planner/SKILL.md",
   "parallel-task-planner/references/templates.md",
+  "planner-reviewer/SKILL.md",
+  "setup-sub-thread-workflow/SKILL.md",
+  "start-dag-dashboard/SKILL.md",
   "sub-thread-goal-worker/SKILL.md",
   "sub-thread-goal-worker/references/templates.md",
   "sub-thread-task-supervisor/SKILL.md",
@@ -53,11 +56,10 @@ for (const target of targets) {
     `> 平台差异：${target.platform} 只有在宿主提供可创建、发送和等待的长期子线程 API 时才能执行本工作流。标准 Agent 不具备用户长期持有上下文与完成约束，禁止作为回退；缺少子线程 API 时必须在规划后 fail closed。本平台固定使用 \`standalone_thread\`，不包含原生 Goal 桥接。`,
     "",
   ].join("\n");
-  const standaloneLifecycle = `## 生命周期\n\n本平台固定使用 \`standalone_thread\`：不调用 Codex 原生 Goal 工具；本地 Goal Contract 只表示 runtime 批次。宿主必须提供可创建、设置标题、发送、等待和长期恢复的子线程 API，否则 fail closed。\n\n`;
   const platformCoordinator = coordinatorSource
     .replace(
-      /## 两种生命周期\n[\s\S]*?(?=## 固定线程拓扑)/u,
-      standaloneLifecycle,
+      "默认 `standalone_thread`，不调用原生 Goal。只有用户已经启动或明确要求 Goal 时使用 `codex_native`。Owner 变化等待用户时不要把 Goal 标为 blocked；应用成功后提示用户可以继续 Goal。",
+      `本平台固定使用 \`standalone_thread\`，不调用 Codex 原生 Goal。Owner 变化等待用户时保持本地工作流暂停；应用成功后提示用户可以继续执行。`,
     )
     .replace(
       "所有执行单元必须是可长期持有上下文的 Codex 子线程。",
@@ -83,8 +85,8 @@ for (const target of targets) {
     join(target.root, "sub-thread-coordination/SKILL.md"),
     platformCoordinator
       .replace(
-        "# 持久子线程 DAG 协调器\n",
-        `# 持久子线程 DAG 协调器\n${platformBoundary}`,
+        "# 子线程 DAG 协调器\n",
+        `# 子线程 DAG 协调器\n${platformBoundary}`,
       ),
   );
 
@@ -118,5 +120,42 @@ for (const target of targets) {
     ),
   );
 }
+
+for (const relativePath of [
+  "planner-reviewer/agents/openai.yaml",
+  "setup-sub-thread-workflow/agents/openai.yaml",
+  "start-dag-dashboard/agents/openai.yaml",
+  "sub-thread-task-supervisor/agents/openai.yaml",
+]) {
+  write(
+    join(repositoryRoot, "claude-code-market/skills", relativePath),
+    readFileSync(join(codexRoot, relativePath), "utf8"),
+  );
+}
+
+for (const skill of ["start-dag-dashboard"]) {
+  const path = join(repositoryRoot, "claude-code-market/skills", skill, "SKILL.md");
+  write(
+    path,
+    readFileSync(path, "utf8").replace("\n---\n", "\ndisable-model-invocation: true\n---\n"),
+  );
+}
+
+const kimiDashboardPath = join(
+  repositoryRoot,
+  "kimi-market/plugins/ghost-agent-workflow/skills/start-dag-dashboard/SKILL.md",
+);
+write(
+  kimiDashboardPath,
+  readFileSync(kimiDashboardPath, "utf8")
+    .replace(
+      "\n---\n",
+      "\nwhenToUse: 用户显式启动 Dashboard，或协调器在 Plan 激活后启动 Dashboard 时使用。\n---\n",
+    )
+    .replace(
+      "node <plugin-root>/scripts/start-dashboard.mjs",
+      "node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs",
+    ),
+);
 
 process.stdout.write("thread workflow skills synchronized\n");

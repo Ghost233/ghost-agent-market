@@ -17,13 +17,15 @@ goal-dag.mjs goal-create <goal.json> <workspace_root>
 goal-dag.mjs goal-validate <goal.json>
 ```
 
-输入只需 `id/objective/source/scope`；`non_goals/constraints/max_concurrency/controller/native_thread_id/gates` 按需增加。固定机械 gate、side-effect 默认值、平台、digest、revision 和生命周期结构由脚本补齐。
+输入只需 `id/objective/source/scope`；`non_goals/constraints/max_concurrency/controller/native_thread_id/gates` 按需增加。省略 `max_concurrency` 时读取 `.ghost-agent-workflow/config.json` 的 `parallel`，有效范围为 1–8，默认 8。固定机械 gate、side-effect 默认值、平台、digest、revision 和生命周期结构由脚本补齐。
 
 `goal-validate` 初始化 Goal State、source blocks 和轻量 workspace fence。Fence 用内容/tree 与 task scope 判断冲突；HEAD 指针单独变化不作废 attempt。
 
+`plan-create` 只生成并机械校验 draft。随后依次运行 `planner-review-context`、独立 Planner Reviewer、`planner-review-submit` 和 `activate`。Reviewer 最多要求一次 `plan-revise`；第二轮仍不通过时通知 Main。
+
 ## Gate
 
-机械 gate 固定为 source coverage、diff scope 和 commit readiness。业务 Review 必须是显式 DAG 节点；verify 是独立验证节点。三者不能互相替代。
+机械 gate 固定为 source coverage、diff scope 和 commit readiness，由 `runtime-execute` 直接运行脚本，不创建模型线程。业务 Review 必须是显式 DAG 节点；verify 是确定性验证节点。三者不能互相替代。
 
 Evidence 默认不复用。只有 runtime 签发一个不可伪造的 `cache_key` 且 lookup 命中时，verify 才能直接使用；模型不得自己拼 tree/scope/command/config digest。
 

@@ -11,6 +11,7 @@ import {
   readlinkSync,
   renameSync,
   unlinkSync,
+  watch,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -41,6 +42,13 @@ type NativeSyncStatus = "not_started" | "not_required" | "pending" | "confirmed"
 type WorkerProfile = {
   model: string;
   reasoning_effort: string;
+};
+
+type ThreadProfileRole = "planner" | "owner" | "review" | "supervisor";
+
+type ThreadWorkflowConfig = {
+  parallel: number;
+  profiles: Record<ThreadProfileRole, WorkerProfile>;
 };
 
 type GoalGate = {
@@ -163,7 +171,6 @@ type OwnerDefinition = {
   writable_paths: string[];
   excluded_paths: string[];
   worker_context: string;
-  runtime_profile: WorkerProfile | null;
   reuse_policy: "owner_affinity";
 };
 
@@ -172,10 +179,16 @@ type RuntimeActorDefinition = {
   role: "verify";
   responsibility: string;
   worker_context: string;
-  runtime_profile: WorkerProfile | null;
 };
 
-type ExecutionSubject = OwnerDefinition | RuntimeActorDefinition;
+type ReviewSubjectDefinition = {
+  id: string;
+  role: "review";
+  responsibility: string;
+  worker_context: string;
+};
+
+type ExecutionSubject = OwnerDefinition | RuntimeActorDefinition | ReviewSubjectDefinition;
 
 type OwnerLeaseV1 = {
   contract: "OWNER_LEASE_V1";
@@ -380,6 +393,7 @@ type RunState = {
   tasks: Record<string, TaskState>;
   owners: Record<string, OwnerState>;
   runtime_actors: Record<string, OwnerState>;
+  reviewers: Record<string, OwnerState>;
   evidence_cache: Record<string, {
     task_id: string;
     result_ref: string;
@@ -466,6 +480,7 @@ const RUNTIME_ACTOR_IDS = new Set<RuntimeActorId>([
 ]);
 
 function taskSubjectId(task: TaskDefinition): string {
+  if (task.role === "review") return `review-${task.id}`;
   return task.owner_id ?? task.runtime_actor_id ?? fail(`task ${task.id} has no execution subject`);
 }
 
@@ -474,10 +489,27 @@ function isModuleTask(task: TaskDefinition): boolean {
 }
 
 function executionSubjects(plan: Plan): ExecutionSubject[] {
-  return [...plan.owners, ...plan.runtime_actors];
+  return [
+    ...plan.owners,
+    ...plan.runtime_actors,
+    ...plan.tasks.filter((task) => task.role === "review").map((task) => ({
+      id: taskSubjectId(task),
+      role: "review" as const,
+      responsibility: `独立审查 ${task.id}`,
+      worker_context: "只执行绑定的 Implementation Review",
+    })),
+  ];
 }
 
 function subjectForTask(plan: Plan, task: TaskDefinition): ExecutionSubject {
+  if (task.role === "review") {
+    return {
+      id: taskSubjectId(task),
+      role: "review",
+      responsibility: `独立审查 ${task.id}`,
+      worker_context: "只执行绑定的 Implementation Review",
+    };
+  }
   const id = taskSubjectId(task);
   const subject = executionSubjects(plan).find((candidate) => candidate.id === id);
   if (subject === undefined) fail(`task ${task.id} references unknown execution subject: ${id}`);
@@ -486,7 +518,11 @@ function subjectForTask(plan: Plan, task: TaskDefinition): ExecutionSubject {
 
 function subjectStateForTask(state: RunState, task: TaskDefinition): OwnerState {
   const id = taskSubjectId(task);
-  const subjectState = task.owner_id === null ? state.runtime_actors[id] : state.owners[id];
+  const subjectState = task.role === "review"
+    ? state.reviewers[id]
+    : task.owner_id === null
+      ? state.runtime_actors[id]
+      : state.owners[id];
   if (subjectState === undefined) fail(`runtime state is missing execution subject: ${id}`);
   return subjectState;
 }
@@ -523,6 +559,22 @@ const REASONING_EFFORTS = new Set([
   "max",
   "ultra",
 ]);
+const MAX_PARALLEL_THREADS = 8;
+const THREAD_PROFILE_ROLES: ThreadProfileRole[] = [
+  "planner",
+  "owner",
+  "review",
+  "supervisor",
+];
+const DEFAULT_THREAD_WORKFLOW_CONFIG: ThreadWorkflowConfig = {
+  parallel: 8,
+  profiles: {
+    planner: { model: "gpt-5.6-sol", reasoning_effort: "high" },
+    owner: { model: "gpt-5.6-sol", reasoning_effort: "high" },
+    review: { model: "gpt-5.6-sol", reasoning_effort: "high" },
+    supervisor: { model: "gpt-5.6-luna", reasoning_effort: "medium" },
+  },
+};
 const ROLE_LABELS: Record<TaskRole, string> = {
   work: "实施",
   review: "审查",
@@ -549,6 +601,25 @@ function requireString(value: unknown, label: string): string {
   return value;
 }
 
+function requireChineseText(value: unknown, label: string): string {
+  const text = requireString(value, label).trim();
+  if (!/[\u3400-\u9fff]/u.test(text)) {
+    fail(`${label} must contain a Chinese character`);
+  }
+  return text;
+}
+
+function compactUserSummary(value: string): string {
+  const normalized = value
+    .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const characters = [...normalized];
+  return characters.length <= 100
+    ? normalized
+    : `${characters.slice(0, 99).join("")}…`;
+}
+
 function requireNullableString(value: unknown, label: string): string | null {
   if (value === null) return null;
   return requireString(value, label);
@@ -559,6 +630,14 @@ function requirePositiveInteger(value: unknown, label: string): number {
     fail(`${label} must be a positive integer`);
   }
   return value as number;
+}
+
+function requireParallelCount(value: unknown, label: string): number {
+  const result = requirePositiveInteger(value, label);
+  if (result > MAX_PARALLEL_THREADS) {
+    fail(`${label} must not exceed ${MAX_PARALLEL_THREADS}`);
+  }
+  return result;
 }
 
 function requireNonNegativeInteger(value: unknown, label: string): number {
@@ -632,6 +711,71 @@ function writeTextAtomic(path: string, payload: string): void {
 function writeJson(path: string, value: unknown): void {
   writeTextAtomic(path, serializedJson(value));
   refreshProgressDocumentsForMutation([path]);
+}
+
+function threadWorkflowConfigPath(workspaceRoot: string): string {
+  return join(resolve(workspaceRoot), ".ghost-agent-workflow", "config.json");
+}
+
+function parseThreadWorkflowConfig(value: unknown): ThreadWorkflowConfig {
+  const source = requireRecord(value, "thread workflow config");
+  requireExactKeys(source, ["parallel", "profiles"], "thread workflow config");
+  const rawProfiles = requireRecord(source.profiles, "thread workflow config.profiles");
+  requireExactKeys(rawProfiles, THREAD_PROFILE_ROLES, "thread workflow config.profiles");
+  const profiles = {} as Record<ThreadProfileRole, WorkerProfile>;
+  for (const role of THREAD_PROFILE_ROLES) {
+    const rawProfile = requireRecord(
+      rawProfiles[role],
+      `thread workflow config.profiles.${role}`,
+    );
+    requireAllowedKeys(
+      rawProfile,
+      ["model", "effort"],
+      `thread workflow config.profiles.${role}`,
+    );
+    const effort = requireString(
+      rawProfile.effort,
+      `thread workflow config.profiles.${role}.effort`,
+    );
+    if (!REASONING_EFFORTS.has(effort)) {
+      fail(`thread workflow config.profiles.${role}.effort is invalid: ${effort}`);
+    }
+    profiles[role] = {
+      model: requireString(
+        rawProfile.model,
+        `thread workflow config.profiles.${role}.model`,
+      ),
+      reasoning_effort: effort,
+    };
+  }
+  return {
+    parallel: requireParallelCount(source.parallel, "thread workflow config.parallel"),
+    profiles,
+  };
+}
+
+function loadThreadWorkflowConfig(workspaceRoot: string): ThreadWorkflowConfig {
+  const path = threadWorkflowConfigPath(workspaceRoot);
+  if (!existsSync(path)) {
+    writeTextAtomic(path, serializedJson({
+      parallel: DEFAULT_THREAD_WORKFLOW_CONFIG.parallel,
+      profiles: Object.fromEntries(THREAD_PROFILE_ROLES.map((role) => [role, {
+        model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].model,
+        effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].reasoning_effort,
+      }])),
+    }));
+  }
+  const value = requireRecord(readJson(path), "thread workflow config");
+  const rawProfiles = requireRecord(value.profiles, "thread workflow config.profiles");
+  if (!Object.hasOwn(rawProfiles, "supervisor") &&
+      Object.keys(rawProfiles).sort().join(",") === "owner,planner,review") {
+    rawProfiles.supervisor = {
+      model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.supervisor.model,
+      effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.supervisor.reasoning_effort,
+    };
+    writeTextAtomic(path, serializedJson(value));
+  }
+  return parseThreadWorkflowConfig(value);
 }
 
 function writeImmutableJson(path: string, value: unknown): "created" | "existing" {
@@ -1335,7 +1479,6 @@ type ApprovedOwnerSnapshot = {
   scope_patterns: string[];
   scope_excludes: string[];
   worker_context: string;
-  runtime_profile: WorkerProfile | null;
 };
 
 function ownerRegistryPathFor(workspaceRoot: string): string {
@@ -1455,7 +1598,7 @@ function updateOwnerLease(
   reservationToken: string,
   update: { executor_id?: string | null; status?: "reserved" | "running" },
 ): OwnerLeaseV1 | null {
-  if (task.owner_id === null) return null;
+  if (task.owner_id === null || task.role === "review") return null;
   const leasePath = ownerLeasePathFor(goal.workspace.root, task.owner_id);
   mkdirSync(dirname(leasePath), { recursive: true });
   return withStateLock(leasePath, () => {
@@ -1475,7 +1618,7 @@ function releaseOwnerLease(
   task: TaskDefinition,
   reservationToken: string,
 ): boolean {
-  if (task.owner_id === null) return false;
+  if (task.owner_id === null || task.role === "review") return false;
   const leasePath = ownerLeasePathFor(goal.workspace.root, task.owner_id);
   mkdirSync(dirname(leasePath), { recursive: true });
   return withStateLock(leasePath, () => {
@@ -1543,10 +1686,6 @@ function approvedOwnerRegistry(goal: GoalContract): {
         owner.worker_context,
         `owner registry.owners[${index}].worker_context`,
       ),
-      runtime_profile: parseRuntimeProfile(
-        owner.runtime_profile,
-        `owner registry.owners[${index}].runtime_profile`,
-      ),
     };
   });
   ensureUnique(owners.map((owner) => owner.id), "approved owner id");
@@ -1612,8 +1751,7 @@ function validatePlanOwnersAgainstRegistry(
     }
     if (
       owner.responsibility !== approved.responsibility ||
-      owner.worker_context !== approved.worker_context ||
-      serializedJson(owner.runtime_profile) !== serializedJson(approved.runtime_profile)
+      owner.worker_context !== approved.worker_context
     ) fail(`plan owner ${owner.id} metadata must exactly match the approved owner registry`);
     const capsulePath = persistentOwnerCapsulePathFor(goal.workspace.root, owner.id);
     if (!existsSync(capsulePath)) fail(`persistent owner capsule is missing: ${capsulePath}`);
@@ -1731,14 +1869,14 @@ function parseGoal(value: unknown, verifySourceDigest = true): GoalContract {
     execution_platform: source.execution_platform as ExecutionPlatform,
     workspace: { root: resolve(workspaceRoot) },
     source: { path: resolve(sourcePath), digest: sourceDigest, revision: sourceRevision },
-    objective: requireString(source.objective, "goal objective"),
+    objective: requireChineseText(source.objective, "goal objective"),
     scope: requireStringArray(source.scope, "goal scope", false),
     non_goals: requireStringArray(source.non_goals, "goal non_goals"),
     constraints: requireStringArray(source.constraints, "goal constraints"),
     lifecycle: { controller: lifecycle.controller as GoalController, native_goal: nativeGoal },
     execution: {
       mode: execution.mode as ExecutorMode,
-      max_concurrency: requirePositiveInteger(
+      max_concurrency: requireParallelCount(
         execution.max_concurrency,
         "goal execution.max_concurrency",
       ),
@@ -1807,6 +1945,7 @@ function goalCreateCommand(targetArgument: string, workspaceArgument: string): v
     ? resolve(sourceValue)
     : resolve(workspaceRoot, sourceValue);
   if (!existsSync(sourcePath)) fail(`goal source does not exist: ${sourcePath}`);
+  const workflowConfig = loadThreadWorkflowConfig(workspaceRoot);
   const controller = (input.controller ?? "standalone_thread") as GoalController;
   if (!new Set<GoalController>(["codex_native", "standalone_thread", "local_fallback"]).has(controller)) {
     fail(`goal input.controller is invalid: ${String(input.controller)}`);
@@ -1848,7 +1987,7 @@ function goalCreateCommand(targetArgument: string, workspaceArgument: string): v
     execution_platform: EXPECTED_PLATFORM,
     workspace: { root: workspaceRoot },
     source: { path: sourcePath, digest: digestFile(sourcePath), revision: 1 },
-    objective: requireString(input.objective, "goal input.objective"),
+    objective: requireChineseText(input.objective, "goal input.objective"),
     scope: requireStringArray(input.scope, "goal input.scope", false),
     non_goals: input.non_goals === undefined
       ? []
@@ -1865,8 +2004,8 @@ function goalCreateCommand(targetArgument: string, workspaceArgument: string): v
     execution: {
       mode: "thread",
       max_concurrency: input.max_concurrency === undefined
-        ? 4
-        : requirePositiveInteger(input.max_concurrency, "goal input.max_concurrency"),
+        ? workflowConfig.parallel
+        : requireParallelCount(input.max_concurrency, "goal input.max_concurrency"),
       reuse_policy: "owner_affinity",
     },
     verification_gates: [...customGates, ...fixedGoalGates()],
@@ -1894,17 +2033,6 @@ function goalCreateCommand(targetArgument: string, workspaceArgument: string): v
   })}\n`);
 }
 
-function parseRuntimeProfile(value: unknown, label: string): WorkerProfile | null {
-  if (value === null) return null;
-  const source = requireRecord(value, label);
-  const model = requireString(source.model, `${label}.model`);
-  const reasoningEffort = requireString(source.reasoning_effort, `${label}.reasoning_effort`);
-  if (!REASONING_EFFORTS.has(reasoningEffort)) {
-    fail(`${label}.reasoning_effort is invalid: ${reasoningEffort}`);
-  }
-  return { model, reasoning_effort: reasoningEffort };
-}
-
 function parseOwner(value: unknown, index: number): OwnerDefinition {
   const source = requireRecord(value, `owners[${index}]`);
   const role = requireString(source.role, `owners[${index}].role`);
@@ -1930,13 +2058,17 @@ function parseOwner(value: unknown, index: number): OwnerDefinition {
     writable_paths: writablePaths,
     excluded_paths: excludedPaths,
     worker_context: requireString(source.worker_context, `owners[${index}].worker_context`),
-    runtime_profile: parseRuntimeProfile(source.runtime_profile, `owners[${index}].runtime_profile`),
     reuse_policy: "owner_affinity",
   };
 }
 
 function parseRuntimeActor(value: unknown, index: number): RuntimeActorDefinition {
   const source = requireRecord(value, `runtime_actors[${index}]`);
+  requireExactKeys(
+    source,
+    ["id", "role", "responsibility", "worker_context"],
+    `runtime_actors[${index}]`,
+  );
   const id = requireIdentifier(source.id, `runtime_actors[${index}].id`) as RuntimeActorId;
   if (!RUNTIME_ACTOR_IDS.has(id)) {
     fail(`runtime_actors[${index}].id is not a fixed runtime actor: ${id}`);
@@ -1954,10 +2086,6 @@ function parseRuntimeActor(value: unknown, index: number): RuntimeActorDefinitio
     worker_context: requireString(
       source.worker_context,
       `runtime_actors[${index}].worker_context`,
-    ),
-    runtime_profile: parseRuntimeProfile(
-      source.runtime_profile,
-      `runtime_actors[${index}].runtime_profile`,
     ),
   };
 }
@@ -2048,11 +2176,8 @@ function parseTask(value: unknown, index: number): TaskDefinition {
   }
   const role = requireString(source.role, `tasks[${index}].role`);
   if (!ROLES.has(role as TaskRole)) fail(`tasks[${index}].role is invalid: ${role}`);
-  const title = requireString(source.title, `tasks[${index}].title`).trim();
+  const title = requireChineseText(source.title, `tasks[${index}].title`);
   if (title.length > 80) fail(`tasks[${index}].title must be at most 80 characters`);
-  if (!/[\u3400-\u9fff]/u.test(title)) {
-    fail(`tasks[${index}].title must contain a Chinese character`);
-  }
   const writablePaths = requireStringArray(
     source.writable_paths,
     `tasks[${index}].writable_paths`,
@@ -2191,21 +2316,18 @@ function fixedRuntimeActors(): RuntimeActorDefinition[] {
       role: "verify",
       responsibility: "机械审计计划源覆盖",
       worker_context: "仅运行 source-audit 脚本",
-      runtime_profile: null,
     },
     {
       id: "diff-audit",
       role: "verify",
       responsibility: "机械审计最终差异",
       worker_context: "仅运行 diff-audit 脚本",
-      runtime_profile: null,
     },
     {
       id: "commit-readiness",
       role: "verify",
       responsibility: "机械生成提交就绪清单",
       worker_context: "仅运行 commit-readiness 脚本",
-      runtime_profile: null,
     },
   ];
 }
@@ -2381,14 +2503,13 @@ function expandPlanInputTask(
   return parseTask(canonical, index);
 }
 
-function planCreateCommand(goalArgument: string, planArgument: string): void {
-  const goalPath = resolve(goalArgument);
-  const planPath = resolve(planArgument);
-  if (goalPath !== join(dirname(planPath), "goal.json")) {
-    fail(`goal path must equal ${join(dirname(planPath), "goal.json")}`);
-  }
+function buildPlanDraft(
+  goalPath: string,
+  planPath: string,
+  input: Record<string, unknown>,
+  revision: number,
+): { plan: Plan; coverage: PlanCoverage; planDigest: string } {
   const goal = parseGoal(readJson(goalPath));
-  const input = readStructuredInput("PLAN_INPUT_V1");
   requireAllowedKeys(
     input,
     ["contract", "items", "tasks", "safety", "safety_reasons"],
@@ -2414,7 +2535,7 @@ function planCreateCommand(goalArgument: string, planArgument: string): void {
     contract: "DAG_PLAN_V5",
     planner: "parallel-task-planner",
     plan_format_version: 5,
-    revision: 1,
+    revision,
     execution_platform: EXPECTED_PLATFORM,
     goal_contract_path: goalPath,
     goal_digest: digestFile(goalPath),
@@ -2449,6 +2570,17 @@ function planCreateCommand(goalArgument: string, planArgument: string): void {
     expectedGoalDigest: digestFile(goalPath),
     sourceBlocksValue: buildSourceBlocks(goal),
   });
+  return { plan, coverage, planDigest };
+}
+
+function planCreateCommand(goalArgument: string, planArgument: string): void {
+  const goalPath = resolve(goalArgument);
+  const planPath = resolve(planArgument);
+  if (goalPath !== join(dirname(planPath), "goal.json")) {
+    fail(`goal path must equal ${join(dirname(planPath), "goal.json")}`);
+  }
+  const input = readStructuredInput("PLAN_INPUT_V1");
+  const { plan, coverage, planDigest } = buildPlanDraft(goalPath, planPath, input, 1);
   if (existsSync(planPath) || existsSync(plan.coverage_path)) {
     if (
       existsSync(planPath) && existsSync(plan.coverage_path) &&
@@ -2472,6 +2604,219 @@ function planCreateCommand(goalArgument: string, planArgument: string): void {
     plan_ref: planPath,
     plan_digest: planDigest,
     coverage_ref: plan.coverage_path,
+  })}\n`);
+}
+
+type PlannerReview = {
+  contract: "PLANNER_REVIEW_V1";
+  round: number;
+  plan_ref: string;
+  plan_digest: string;
+  context_ref: string;
+  context_digest: string;
+  decision: "pass" | "revise";
+  parallelism: "pass" | "revise";
+  too_complex: boolean;
+  too_simple: boolean;
+  changes: string[];
+};
+
+function plannerReviewDirectory(planPath: string): string {
+  return join(dirname(planPath), "planner-reviews");
+}
+
+function plannerReviewContextPath(planPath: string, revision: number): string {
+  return join(plannerReviewDirectory(planPath), `context-${revision}.json`);
+}
+
+function plannerReviewPath(planPath: string, revision: number): string {
+  return join(plannerReviewDirectory(planPath), `review-${revision}.json`);
+}
+
+function plannerReviewMetrics(plan: Plan, configuredParallel: number): Record<string, unknown> {
+  const byId = new Map(plan.tasks.map((task) => [task.id, task]));
+  const levels = new Map<string, number>();
+  const levelFor = (taskId: string): number => {
+    const existing = levels.get(taskId);
+    if (existing !== undefined) return existing;
+    const task = byId.get(taskId) ?? fail(`unknown task in planner metrics: ${taskId}`);
+    const level = task.depends_on.length === 0
+      ? 0
+      : Math.max(...task.depends_on.map((dependency) => levelFor(dependency))) + 1;
+    levels.set(taskId, level);
+    return level;
+  };
+  for (const task of plan.tasks) levelFor(task.id);
+  const widths = new Map<number, number>();
+  for (const level of levels.values()) widths.set(level, (widths.get(level) ?? 0) + 1);
+  const scores = criticalScores(plan.tasks);
+  return {
+    node_count: plan.tasks.length,
+    max_ready_width: Math.max(0, ...widths.values()),
+    critical_path_cost: Math.max(0, ...scores.values()),
+    configured_parallel: configuredParallel,
+  };
+}
+
+function buildPlannerReviewContext(planPath: string, plan: Plan): Record<string, unknown> {
+  const goal = parseGoal(readJson(plan.goal_contract_path));
+  const config = loadThreadWorkflowConfig(goal.workspace.root);
+  return {
+    contract: "PLANNER_REVIEW_CONTEXT_V1",
+    plan_ref: planPath,
+    plan_digest: digestFile(planPath),
+    revision: plan.revision,
+    metrics: plannerReviewMetrics(plan, config.parallel),
+    tasks: plan.tasks.map((task) => ({
+      id: task.id,
+      goal: task.task,
+      owner: task.owner_id ?? "runtime-script",
+      after: task.depends_on,
+    })),
+  };
+}
+
+function plannerReviewContextCommand(planArgument: string): void {
+  const planPath = resolve(planArgument);
+  if (existsSync(statePathFor(planPath))) fail("planner review is only allowed before Plan activation");
+  const { plan } = parsePlan(readJson(planPath), planPath);
+  if (plan.revision > 2) fail("planner review supports only the initial draft and one revision");
+  const context = buildPlannerReviewContext(planPath, plan);
+  const contextPath = plannerReviewContextPath(planPath, plan.revision);
+  const status = writeImmutableJson(contextPath, context);
+  const goal = parseGoal(readJson(plan.goal_contract_path));
+  process.stdout.write(`${JSON.stringify({
+    contract: "PLANNER_REVIEW_CONTEXT_RECEIPT_V1",
+    status,
+    thread_title: goalThreadTitles(goal).planner_reviewer,
+    context_ref: contextPath,
+    context_digest: digestFile(contextPath),
+    context,
+  })}\n`);
+}
+
+function parsePlannerReview(value: unknown, planPath: string, plan: Plan): PlannerReview {
+  const source = requireRecord(value, "planner review");
+  requireExactKeys(source, [
+    "contract",
+    "round",
+    "plan_ref",
+    "plan_digest",
+    "context_ref",
+    "context_digest",
+    "decision",
+    "parallelism",
+    "too_complex",
+    "too_simple",
+    "changes",
+  ], "planner review");
+  if (source.contract !== "PLANNER_REVIEW_V1") {
+    fail("planner review.contract must equal PLANNER_REVIEW_V1");
+  }
+  const review: PlannerReview = {
+    contract: "PLANNER_REVIEW_V1",
+    round: requirePositiveInteger(source.round, "planner review.round"),
+    plan_ref: canonicalPath(planPath, requireString(source.plan_ref, "planner review.plan_ref"), "planner review.plan_ref"),
+    plan_digest: requireString(source.plan_digest, "planner review.plan_digest"),
+    context_ref: requireString(source.context_ref, "planner review.context_ref"),
+    context_digest: requireString(source.context_digest, "planner review.context_digest"),
+    decision: source.decision === "pass" ? "pass" : source.decision === "revise" ? "revise" : fail("planner review.decision is invalid"),
+    parallelism: source.parallelism === "pass" ? "pass" : source.parallelism === "revise" ? "revise" : fail("planner review.parallelism is invalid"),
+    too_complex: requireBoolean(source.too_complex, "planner review.too_complex"),
+    too_simple: requireBoolean(source.too_simple, "planner review.too_simple"),
+    changes: requireStringArray(source.changes, "planner review.changes"),
+  };
+  if (review.round !== plan.revision) fail("planner review round must equal plan revision");
+  if (review.plan_digest !== digestFile(planPath)) fail("planner review plan digest mismatch");
+  const expectedContextPath = plannerReviewContextPath(planPath, plan.revision);
+  canonicalPath(expectedContextPath, review.context_ref, "planner review.context_ref");
+  if (!existsSync(expectedContextPath) || digestFile(expectedContextPath) !== review.context_digest) {
+    fail("planner review context is missing or changed");
+  }
+  return review;
+}
+
+function acceptedPlannerReview(planPath: string, plan: Plan): PlannerReview {
+  const reviewPath = plannerReviewPath(planPath, plan.revision);
+  if (!existsSync(reviewPath)) fail("Plan requires Planner Reviewer approval before activation");
+  const review = parsePlannerReview(readJson(reviewPath), planPath, plan);
+  if (review.decision !== "pass") {
+    fail(plan.revision >= 2
+      ? "Planner Reviewer still requests revision after the single allowed retry; notify Main"
+      : "Planner Reviewer requests one Plan revision before activation");
+  }
+  return review;
+}
+
+function plannerReviewSubmitCommand(planArgument: string): void {
+  const planPath = resolve(planArgument);
+  if (existsSync(statePathFor(planPath))) fail("planner review is only allowed before Plan activation");
+  const { plan } = parsePlan(readJson(planPath), planPath);
+  if (plan.revision > 2) fail("planner review supports only two rounds");
+  const contextPath = plannerReviewContextPath(planPath, plan.revision);
+  if (!existsSync(contextPath)) fail("run planner-review-context before submitting a review");
+  const input = readStructuredInput("-");
+  requireExactKeys(
+    input,
+    ["parallelism", "too_complex", "too_simple", "changes"],
+    "planner review input",
+  );
+  if (input.parallelism !== "pass" && input.parallelism !== "revise") {
+    fail("planner review input.parallelism must equal pass or revise");
+  }
+  const changes = requireStringArray(input.changes, "planner review input.changes");
+  const tooComplex = requireBoolean(input.too_complex, "planner review input.too_complex");
+  const tooSimple = requireBoolean(input.too_simple, "planner review input.too_simple");
+  const decision = input.parallelism === "pass" && !tooComplex && !tooSimple && changes.length === 0
+    ? "pass"
+    : "revise";
+  const review: PlannerReview = {
+    contract: "PLANNER_REVIEW_V1",
+    round: plan.revision,
+    plan_ref: planPath,
+    plan_digest: digestFile(planPath),
+    context_ref: contextPath,
+    context_digest: digestFile(contextPath),
+    decision,
+    parallelism: input.parallelism,
+    too_complex: tooComplex,
+    too_simple: tooSimple,
+    changes,
+  };
+  parsePlannerReview(review, planPath, plan);
+  const reviewPath = plannerReviewPath(planPath, plan.revision);
+  const status = writeImmutableJson(reviewPath, review);
+  process.stdout.write(`${JSON.stringify({
+    contract: "PLANNER_REVIEW_RECEIPT_V1",
+    status: decision === "revise" && plan.revision >= 2 ? "needs_main" : status,
+    decision,
+    round: plan.revision,
+    review_ref: reviewPath,
+    review_digest: digestFile(reviewPath),
+  })}\n`);
+}
+
+function planReviseCommand(goalArgument: string, planArgument: string): void {
+  const goalPath = resolve(goalArgument);
+  const planPath = resolve(planArgument);
+  if (existsSync(statePathFor(planPath))) fail("an active Plan cannot be revised by Planner Reviewer");
+  const { plan } = parsePlan(readJson(planPath), planPath);
+  canonicalPath(plan.goal_contract_path, goalPath, "plan revise goal path");
+  if (plan.revision !== 1) fail("Planner may revise the initial draft only once");
+  const reviewPath = plannerReviewPath(planPath, 1);
+  if (!existsSync(reviewPath)) fail("Planner revision requires a submitted review");
+  const review = parsePlannerReview(readJson(reviewPath), planPath, plan);
+  if (review.decision !== "revise") fail("Planner revision requires a revise decision");
+  const input = readStructuredInput("PLAN_INPUT_V1");
+  const next = buildPlanDraft(goalPath, planPath, input, 2);
+  writeTransaction(planPath, [[planPath, next.plan], [next.plan.coverage_path, next.coverage]]);
+  process.stdout.write(`${JSON.stringify({
+    contract: "PLAN_REVISE_RECEIPT_V1",
+    status: "revised",
+    revision: 2,
+    plan_ref: planPath,
+    plan_digest: next.planDigest,
+    coverage_ref: next.plan.coverage_path,
   })}\n`);
 }
 
@@ -3493,7 +3838,7 @@ function parseSubjectState(
   value: unknown,
   subject: ExecutionSubject,
   planPath: string,
-  stateKey: "owners" | "runtime_actors",
+  stateKey: "owners" | "runtime_actors" | "reviewers",
 ): OwnerState {
   const label = `state.${stateKey}.${subject.id}`;
   const source = requireRecord(value, label);
@@ -3574,6 +3919,7 @@ function parseState(value: unknown, plan: Plan, planPath: string): RunState {
   const rawTasks = requireRecord(source.tasks, "state.tasks");
   const rawOwners = requireRecord(source.owners, "state.owners");
   const rawActors = requireRecord(source.runtime_actors, "state.runtime_actors");
+  const rawReviewers = requireRecord(source.reviewers, "state.reviewers");
   const tasks = Object.fromEntries(
     plan.tasks.map((task) => [task.id, parseTaskState(rawTasks[task.id], task, planPath)]),
   );
@@ -3589,6 +3935,11 @@ function parseState(value: unknown, plan: Plan, planPath: string): RunState {
       parseSubjectState(rawActors[actor.id], actor, planPath, "runtime_actors"),
     ]),
   );
+  const reviewTasks = plan.tasks.filter((task) => task.role === "review");
+  const reviewers = Object.fromEntries(reviewTasks.map((task) => {
+    const subject = subjectForTask(plan, task);
+    return [subject.id, parseSubjectState(rawReviewers[subject.id], subject, planPath, "reviewers")];
+  }));
   if (!Array.isArray(source.stale_executors)) fail("state.stale_executors must be an array");
   const staleExecutors = source.stale_executors.map(parseStaleExecutor);
   ensureUnique(
@@ -3599,6 +3950,9 @@ function parseState(value: unknown, plan: Plan, planPath: string): RunState {
   if (Object.keys(rawOwners).length !== plan.owners.length) fail("state owner set does not match plan owners");
   if (Object.keys(rawActors).length !== plan.runtime_actors.length) {
     fail("state runtime actor set does not match plan runtime actors");
+  }
+  if (Object.keys(rawReviewers).length !== reviewTasks.length) {
+    fail("state reviewer set does not match plan review tasks");
   }
   const rawEvidenceCache = requireRecord(source.evidence_cache, "state.evidence_cache");
   const rawOwnerRegistry = requireRecord(source.owner_registry, "state.owner_registry");
@@ -3654,6 +4008,7 @@ function parseState(value: unknown, plan: Plan, planPath: string): RunState {
     tasks,
     owners,
     runtime_actors: runtimeActors,
+    reviewers,
     evidence_cache: evidenceCache,
     review_pending: source.review_pending === undefined
       ? []
@@ -3730,6 +4085,23 @@ function parseState(value: unknown, plan: Plan, planPath: string): RunState {
         completedTask === undefined || completedTask.runtime_actor_id !== actor.id ||
         result.tasks[completedTaskId].status !== "completed"
       ) fail(`state.runtime_actors.${actor.id}.completed_task_ids is inconsistent`);
+    }
+  }
+  for (const task of reviewTasks) {
+    const subjectId = taskSubjectId(task);
+    const reviewerState = result.reviewers[subjectId];
+    if (reviewerState.current_task_id !== null && reviewerState.current_task_id !== task.id) {
+      fail(`state.reviewers.${subjectId}.current_task_id is outside reviewer`);
+    }
+    if (reviewerState.current_task_id !== null && reviewerState.status !== result.tasks[task.id].status) {
+      fail(`state reviewer/task active status mismatch: ${subjectId}/${task.id}`);
+    }
+    const allowedResult = result.tasks[task.id].result_ref;
+    if (reviewerState.result_refs.some((ref) => ref !== allowedResult)) {
+      fail(`state.reviewers.${subjectId}.result_refs is outside reviewer result`);
+    }
+    if (reviewerState.completed_task_ids.some((id) => id !== task.id || result.tasks[id].status !== "completed")) {
+      fail(`state.reviewers.${subjectId}.completed_task_ids is inconsistent`);
     }
   }
   for (const [verificationId, evidence] of Object.entries(result.evidence_cache)) {
@@ -3930,6 +4302,17 @@ function initializeState(planPath: string, plan: Plan): RunState {
       result_refs: [],
     }]),
   );
+  const reviewers: Record<string, OwnerState> = Object.fromEntries(
+    plan.tasks.filter((task) => task.role === "review").map((task) => [taskSubjectId(task), {
+      generation: 1,
+      bound_executor_id: null,
+      status: "unbound",
+      current_task_id: null,
+      capsule_ref: null,
+      completed_task_ids: [],
+      result_refs: [],
+    }]),
+  );
   return {
     contract: "DAG_RUN_STATE_V5",
     plan_digest: digestFile(planPath),
@@ -3965,6 +4348,7 @@ function initializeState(planPath: string, plan: Plan): RunState {
     }])),
     owners,
     runtime_actors: runtimeActors,
+    reviewers,
     evidence_cache: {},
     review_pending: [],
     stale_executors: [],
@@ -4136,6 +4520,7 @@ function goalValidateCommand(goalArgument: string): void {
     goal_id: payload.goal.goal_id,
     goal_path: goalPath,
     goal_state_path: goalStatePath,
+    thread_titles: goalThreadTitles(payload.goal),
     ...continuationPayloadFor(goalPath),
     ...(payload.status === "source_changed"
       ? {
@@ -4165,6 +4550,7 @@ function validateCommand(planArgument: string): void {
           ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(existingStateValue),
         }),
     });
+    if (existingStateValue === null) acceptedPlannerReview(planPath, plan);
     if (!existsSync(goalStatePath)) fail("goal state is not initialized; run goal-validate first");
     const goal = parseGoal(readJson(plan.goal_contract_path));
     const goalState = parseGoalState(readJson(goalStatePath), goal);
@@ -4385,7 +4771,7 @@ function renderCommand(planArgument: string): void {
     "flowchart LR",
   ];
   for (const task of tasks) {
-    const kind = task.owner_id === null ? "actor" : "owner";
+    const kind = task.role === "review" ? "review" : task.owner_id === null ? "actor" : "owner";
     const hierarchy = task.node_type === "composite"
       ? ` · composite:${(task.subgraph as TaskSubgraph).task_ids.length}`
       : task.parent_task_id === null ? "" : ` · child-of:${task.parent_task_id}`;
@@ -4760,8 +5146,32 @@ function threadKey(
   return result;
 }
 
-function threadTitle(subject: ExecutionSubject): string {
-  return `[GA][TASK][${isOwnerDefinition(subject) ? "OWNER" : "RUNTIME"}] ${subject.id}`;
+function threadTitle(task: TaskDefinition, subject?: ExecutionSubject): string {
+  void subject;
+  return task.role === "review"
+    ? `[GA][任务][实现审查] ${task.title}`
+    : `[GA][任务][责任域] ${task.title}`;
+}
+
+function goalThreadTitles(goal: GoalContract): Record<string, string> {
+  return {
+    main: `[GA][任务][主控] ${goal.objective}`,
+    planner: `[GA][任务][规划] ${goal.objective}`,
+    planner_reviewer: `[GA][任务][规划审查] ${goal.objective}`,
+    supervisor: `[GA][任务][监督] ${goal.objective}`,
+  };
+}
+
+function compositePlannerThreadTitle(task: TaskDefinition): string {
+  return `[GA][任务][子图规划] ${task.title}`;
+}
+
+function acceptedResultUserMessage(task: TaskDefinition, result: WorkerResultV5): string {
+  const title = threadTitle(task);
+  const summary = compactUserSummary(result.summary);
+  return result.status === "completed"
+    ? `${title}任务完成：${summary}`
+    : `${title}结果已验收：${summary}`;
 }
 
 function effectiveWritablePaths(task: TaskDefinition, taskState: TaskState): string[] {
@@ -4795,6 +5205,16 @@ function reviewContextForTask(
       };
     }),
   };
+}
+
+function runtimeProfileForTask(
+  goal: GoalContract,
+  task: TaskDefinition,
+): WorkerProfile {
+  const config = loadThreadWorkflowConfig(goal.workspace.root);
+  if (task.role === "review") return config.profiles.review;
+  if (task.owner_id === null) fail(`runtime actor ${task.runtime_actor_id} is script-only`);
+  return config.profiles.owner;
 }
 
 function taskBinding(
@@ -4894,12 +5314,12 @@ function taskBinding(
     },
     thread: {
       key: canonicalThreadKey,
-      title: threadTitle(subject),
-      profile: subject.runtime_profile,
+      title: threadTitle(task, subject),
+      profile: runtimeProfileForTask(goal, task),
     },
     subject: {
       id: subject.id,
-      kind: moduleOwner ? "owner" : "runtime",
+      kind: task.role === "review" ? "review" : moduleOwner ? "owner" : "runtime",
       responsibility: subject.responsibility,
       context: subject.worker_context,
     },
@@ -4999,7 +5419,7 @@ function reserveCommand(
       const taskState = state.tasks[task.id];
       dependencyInputsForTask(plan, state, task);
       const reservationToken = randomUUID();
-      if (task.owner_id !== null) {
+      if (task.owner_id !== null && task.role !== "review") {
         const lease = acquireOwnerLease(goal, statePath, task, reservationToken);
         if (!lease.acquired) {
           ownerBusy.push({
@@ -5033,30 +5453,41 @@ function reserveCommand(
       taskState.accepted_change_seq = null;
       ownerState.status = "reserved";
       ownerState.current_task_id = task.id;
-      const action = ownerState.bound_executor_id === null ? "create_thread" : "reuse_thread";
-      const canonicalThreadKey = threadKey(
-        planPath,
-        plan,
-        goal,
-        task,
-        subjectForTask(plan, task),
-        ownerState,
-        taskState,
-      );
-      actions.push({
-        action,
-        task_id: task.id,
-        owner_id: task.owner_id,
-        runtime_actor_id: task.runtime_actor_id,
-        execution_subject_id: taskSubjectId(task),
-        owner_generation: ownerState.generation,
-        executor_id: ownerState.bound_executor_id,
-        thread_key: canonicalThreadKey,
-        thread_title: threadTitle(subjectForTask(plan, task)),
-        reservation_token: taskState.reservation_token,
-        critical_score: scores.get(task.id),
-        binding: taskBinding(planPath, plan, goal, state, task),
-      });
+      if (task.owner_id === null) {
+        actions.push({
+          action: "run_script",
+          task_id: task.id,
+          runtime_actor_id: task.runtime_actor_id,
+          reservation_token: taskState.reservation_token,
+          command: `runtime-execute ${JSON.stringify(planPath)} ${JSON.stringify(statePath)} ${task.id} ${taskState.reservation_token}`,
+        });
+      } else {
+        const action = ownerState.bound_executor_id === null ? "create_thread" : "reuse_thread";
+        const subject = subjectForTask(plan, task);
+        const canonicalThreadKey = threadKey(
+          planPath,
+          plan,
+          goal,
+          task,
+          subject,
+          ownerState,
+          taskState,
+        );
+        actions.push({
+          action,
+          task_id: task.id,
+          owner_id: task.owner_id,
+          runtime_actor_id: null,
+          execution_subject_id: subject.id,
+          owner_generation: ownerState.generation,
+          executor_id: ownerState.bound_executor_id,
+          thread_key: canonicalThreadKey,
+          thread_title: threadTitle(task, subject),
+          reservation_token: taskState.reservation_token,
+          critical_score: scores.get(task.id),
+          binding: taskBinding(planPath, plan, goal, state, task),
+        });
+      }
       selected.push(task);
       slots -= 1;
     }
@@ -5076,20 +5507,16 @@ function reserveCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function bindCommand(
-  planArgument: string,
-  stateArgument: string,
-  taskId: string,
+function bindTaskState(
+  planPath: string,
+  plan: Plan,
+  goal: GoalContract,
+  state: RunState,
+  task: TaskDefinition,
   reservationToken: string,
   executorId: string,
-): void {
-  const planPath = resolve(planArgument);
-  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
-  const payload = withStateLock(statePath, () => {
-    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
-    assertGoalMutable(planPath, plan, goal);
-    const task = plan.tasks.find((candidate) => candidate.id === taskId);
-    if (task === undefined) fail(`unknown task: ${taskId}`);
+): Record<string, unknown> {
+    const taskId = task.id;
     const taskState = state.tasks[taskId];
     const ownerState = subjectStateForTask(state, task);
     const subjectId = taskSubjectId(task);
@@ -5107,6 +5534,7 @@ function bindCommand(
     for (const [otherId, other] of [
       ...Object.entries(state.owners),
       ...Object.entries(state.runtime_actors),
+      ...Object.entries(state.reviewers),
     ]) {
       if (otherId !== subjectId && other.bound_executor_id === actualExecutorId) {
         fail(`executor ${actualExecutorId} is already bound to execution subject ${otherId}`);
@@ -5129,7 +5557,6 @@ function bindCommand(
       executor_id: actualExecutorId,
       status: "running",
     });
-    writeJson(statePath, state);
     return {
       task_id: taskId,
       owner_id: task.owner_id,
@@ -5138,8 +5565,35 @@ function bindCommand(
       owner_generation: ownerState.generation,
       executor_id: actualExecutorId,
       status: "running",
-      binding: taskBinding(planPath, plan, goal, state, task),
+      ...(task.owner_id === null ? {} : { binding: taskBinding(planPath, plan, goal, state, task) }),
     };
+}
+
+function bindCommand(
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+  executorId: string,
+): void {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const payload = withStateLock(statePath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+    assertGoalMutable(planPath, plan, goal);
+    const task = plan.tasks.find((candidate) => candidate.id === taskId);
+    if (task === undefined) fail(`unknown task: ${taskId}`);
+    const result = bindTaskState(
+      planPath,
+      plan,
+      goal,
+      state,
+      task,
+      reservationToken,
+      executorId,
+    );
+    writeJson(statePath, state);
+    return result;
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
@@ -5183,7 +5637,7 @@ function abandonCommand(
     taskState.accepted_change_seq = null;
     ownerState.status = ownerState.bound_executor_id === null ? "unbound" : "idle";
     ownerState.current_task_id = null;
-    if (task.owner_id !== null) {
+    if (task.owner_id !== null && task.role !== "review") {
       const owner = subjectForTask(plan, task) as OwnerDefinition;
       const capsule = interruptCapsule(
         owner,
@@ -5304,7 +5758,7 @@ function checkpointCommand(
     assertGoalMutable(planPath, plan, goal);
     const task = plan.tasks.find((candidate) => candidate.id === taskId);
     if (task === undefined) fail(`unknown task: ${taskId}`);
-    if (task.owner_id === null) fail("runtime actor tasks do not have persistent Owner checkpoints");
+    if (task.owner_id === null) fail("runtime actor tasks do not have checkpoints");
     const taskState = state.tasks[taskId];
     if (taskState.status !== "running") fail(`task ${taskId} is not running`);
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
@@ -5350,6 +5804,15 @@ function checkpointCommand(
       checkpointValue = readJson(checkpointPath);
     }
     const checkpoint = parseCheckpoint(checkpointValue, task, taskState);
+    if (task.role === "review") {
+      return {
+        task_id: taskId,
+        owner_id: task.owner_id,
+        owner_generation: ownerState.generation,
+        checkpoint_ref: checkpointPath,
+        capsule_ref: null,
+      };
+    }
     const owner = subjectForTask(plan, task) as OwnerDefinition;
     const capsule = loadOwnerCapsule(
       owner,
@@ -6555,6 +7018,20 @@ function ownerAttestationFor(
   const candidates = plan.tasks
     .filter((task) => task.owner_id === ownerId && state.tasks[task.id].status === "completed")
     .reverse();
+  let latestOwnerChangeSeq = 0;
+  for (const task of candidates) {
+    const taskState = state.tasks[task.id];
+    if (taskState.result_ref === null || taskState.accepted_change_seq === null) continue;
+    const result = parseWorkerResult(
+      readJson(taskState.result_ref),
+      task,
+      subjectForTask(plan, task),
+      taskState,
+    );
+    if (result.changed_files.length > 0) {
+      latestOwnerChangeSeq = Math.max(latestOwnerChangeSeq, taskState.accepted_change_seq);
+    }
+  }
   for (const task of candidates) {
     const taskState = state.tasks[task.id];
     if (taskState.result_ref === null || taskState.result_digest === null) continue;
@@ -6574,7 +7051,10 @@ function ownerAttestationFor(
       ).map(normalizePathPattern).sort(compareStableStrings);
       if (
         body.owner_id === ownerId && body.producer_task_id === task.id &&
-        body.workspace_change_seq === state.workspace_change_seq &&
+        typeof body.workspace_change_seq === "number" &&
+        Number.isInteger(body.workspace_change_seq) &&
+        body.workspace_change_seq >= latestOwnerChangeSeq &&
+        body.workspace_change_seq <= state.workspace_change_seq &&
         body.conclusion === "approved" &&
         serializedJson(bodyChangedFiles) === serializedJson(changedFiles)
       ) {
@@ -6590,8 +7070,8 @@ function ownerAttestationFor(
     }
   }
   fail(
-    `owner ${ownerId} has no COMMIT_ATTESTATION_V1 for workspace_change_seq ` +
-    `${state.workspace_change_seq} and files: ${changedFiles.join(", ")}`,
+    `owner ${ownerId} has no current COMMIT_ATTESTATION_V1 after owner change sequence ` +
+    `${latestOwnerChangeSeq} for files: ${changedFiles.join(", ")}`,
   );
 }
 
@@ -7005,7 +7485,8 @@ function finishCommand(
         executor_id: taskState.executor_id,
         status: taskState.status,
         result_ref: acceptedResultPath,
-        owner_reusable: true,
+        user_message: acceptedResultUserMessage(task, acceptedResult),
+        owner_reusable: isOwnerDefinition(owner),
         idempotent: true,
       };
     }
@@ -7126,6 +7607,7 @@ function finishCommand(
       executor_id: ownerState.bound_executor_id,
       status: result.status,
       result_ref: acceptedResultPath,
+      user_message: acceptedResultUserMessage(task, result),
       owner_reusable: isOwnerDefinition(owner),
       changed_files: automaticallyAttributedChanges,
       workspace_change_seq: state.workspace_change_seq,
@@ -7637,7 +8119,6 @@ function ownerDefinitionFromApproved(owner: ApprovedOwnerSnapshot): OwnerDefinit
     writable_paths: owner.scope_patterns,
     excluded_paths: owner.scope_excludes,
     worker_context: owner.worker_context,
-    runtime_profile: owner.runtime_profile,
     reuse_policy: "owner_affinity",
   };
 }
@@ -8084,6 +8565,17 @@ function applyDeltaCommand(
         expanded_writable_paths: [],
         accepted_change_seq: null,
       };
+      if (task.role === "review") {
+        state.reviewers[taskSubjectId(task)] = {
+          generation: 1,
+          bound_executor_id: null,
+          status: "unbound",
+          current_task_id: null,
+          capsule_ref: null,
+          completed_task_ids: [],
+          result_refs: [],
+        };
+      }
     }
     for (const repair of delta.repairs) {
       state.tasks[repair.task_id].status = "superseded";
@@ -8336,6 +8828,18 @@ function activeReservationRecords(
     .map((task) => {
       const taskState = state.tasks[task.id];
       const ownerState = subjectStateForTask(state, task);
+      if (task.owner_id === null) {
+        return {
+          action: "run_script",
+          phase: taskState.status === "running" ? "running_script" : "reserved_script",
+          task_id: task.id,
+          runtime_actor_id: task.runtime_actor_id,
+          status: taskState.status,
+          reservation_token: taskState.reservation_token,
+          result_path: taskState.result_path,
+          command: `runtime-execute ${JSON.stringify(planPath)} ${JSON.stringify(statePathFor(planPath))} ${task.id} ${taskState.reservation_token}`,
+        };
+      }
       const binding = taskBinding(planPath, plan, goal, state, task);
       const action = taskState.status === "running"
         ? "wait_or_redeliver"
@@ -8367,7 +8871,7 @@ function activeReservationRecords(
           ownerState,
           taskState,
         ),
-        thread_title: threadTitle(subjectForTask(plan, task)),
+        thread_title: threadTitle(task, subjectForTask(plan, task)),
         binding,
       };
     });
@@ -8596,7 +9100,7 @@ function reclaimCommand(
         reclaimed_at: new Date().toISOString(),
       });
     }
-    if (task.owner_id !== null) {
+    if (task.owner_id !== null && task.role !== "review") {
       const owner = subjectForTask(plan, task) as OwnerDefinition;
       const capsule = interruptCapsule(
         owner,
@@ -8806,7 +9310,7 @@ function dashboardSnapshotRead(planPath: string, statePath: string): Record<stri
             expanded_from_attempt: task.subgraph.expanded_from_attempt,
           },
           subject: {
-            kind: task.owner_id === null ? "actor" : "owner",
+            kind: task.role === "review" ? "review" : task.owner_id === null ? "actor" : "owner",
             id: taskSubjectId(task),
           },
           status: aggregateStatus,
@@ -9438,6 +9942,14 @@ function sendDashboardResponse(
   response.end(request.method === "HEAD" ? undefined : body);
 }
 
+function sendDashboardEvent(
+  response: ServerResponse,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  response.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
 function dashboardCommand(args: string[]): void {
   const options = parseDashboardServeOptions(args);
   dashboardSnapshot(options.planPath, options.statePath);
@@ -9450,6 +9962,7 @@ function dashboardCommand(args: string[]): void {
   );
   if (!existsSync(assetPath)) fail(`dashboard asset is missing: ${assetPath}`);
   const dashboardHtml = readFileSync(assetPath, "utf8");
+  const liveResponses = new Set<ServerResponse>();
   const server = createServer((request, response) => {
     try {
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -9468,6 +9981,22 @@ function dashboardCommand(args: string[]): void {
         const snapshot = dashboardSnapshot(options.planPath, options.statePath);
         const body = `${JSON.stringify(snapshot)}\n`;
         sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", body);
+        return;
+      }
+      if (pathname === "/api/live") {
+        const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+        setDashboardHeaders(response);
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        response.setHeader("Connection", "keep-alive");
+        if (request.method === "HEAD") {
+          response.end();
+          return;
+        }
+        response.flushHeaders();
+        liveResponses.add(response);
+        sendDashboardEvent(response, "snapshot", snapshot);
+        request.once("close", () => liveResponses.delete(response));
         return;
       }
       if (pathname === "/api/progress-document") {
@@ -9524,15 +10053,42 @@ function dashboardCommand(args: string[]): void {
     process.stderr.write(`error: dashboard server failed: ${error.message}\n`);
     process.exitCode = 1;
   });
-  const progressInterval = setInterval(() => {
+  let pendingRefresh: ReturnType<typeof setTimeout> | null = null;
+  const watchedFiles = new Set([
+    "goal.json",
+    "goal-state.json",
+    "plan.json",
+    "coverage.json",
+    "state.json",
+  ]);
+  const pushChangedSnapshot = () => {
+    pendingRefresh = null;
     try {
       refreshProgressDocument(options.planPath, options.statePath);
+      const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+      for (const response of liveResponses) {
+        sendDashboardEvent(response, "snapshot", snapshot);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      process.stderr.write(`warning: dashboard progress document refresh failed: ${message}\n`);
+      process.stderr.write(`warning: dashboard live refresh failed: ${message}\n`);
+      for (const response of liveResponses) {
+        sendDashboardEvent(response, "dashboard-error", { message });
+      }
     }
-  }, 1_000);
-  progressInterval.unref();
+  };
+  const dashboardWatcher = watch(dirname(options.planPath), (eventType, filename) => {
+    const changedName = filename === null ? "" : basename(filename.toString());
+    if (
+      changedName &&
+      ![...watchedFiles].some((name) => changedName === name || changedName.startsWith(`${name}.`))
+    ) return;
+    if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+    pendingRefresh = setTimeout(pushChangedSnapshot, 50);
+  });
+  dashboardWatcher.on("error", (error) => {
+    process.stderr.write(`warning: dashboard file watcher failed: ${error.message}\n`);
+  });
   server.listen(options.port, options.host, () => {
     const address = server.address();
     const actualPort = typeof address === "object" && address !== null ? address.port : options.port;
@@ -9549,11 +10105,16 @@ function dashboardCommand(args: string[]): void {
       progress_document_url: `http://${urlHost}:${actualPort}/api/progress-document`,
       progress_events_path: progressEventsPathFor(options.planPath),
       progress_events_url: `http://${urlHost}:${actualPort}/api/progress-events`,
+      live_updates_url: `http://${urlHost}:${actualPort}/api/live`,
+      update_transport: "sse",
       network_visible: options.allowRemote,
     })}\n`);
   });
   const shutdown = () => {
-    clearInterval(progressInterval);
+    if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+    dashboardWatcher.close();
+    for (const response of liveResponses) response.end();
+    liveResponses.clear();
     server.close();
   };
   process.once("SIGINT", shutdown);
@@ -9781,7 +10342,7 @@ function expandTaskScopeCommand(
     assertGoalMutable(planPath, plan, goal);
     const task = plan.tasks.find((candidate) => candidate.id === taskId);
     if (task === undefined) fail(`unknown task: ${taskId}`);
-    if (task.owner_id === null) fail("runtime actor task scope cannot be expanded");
+    if (task.role !== "work" || task.owner_id === null) fail("only Owner work task scope can expand");
     const taskState = state.tasks[task.id];
     const reopenRepair = taskState.status === "needs_repair";
     if (!reopenRepair && taskState.status !== "reserved" && taskState.status !== "running") {
@@ -10008,8 +10569,8 @@ function expandTaskSubgraphInput(
     ["contract", "children", "entry", "exit", "safety", "safety_reasons"],
     "task subgraph input",
   );
-  if (parent.owner_id === null) {
-    fail("runtime actor task cannot expand through TASK_SUBGRAPH_INPUT_V1");
+  if (parent.role !== "work" || parent.owner_id === null) {
+    fail("only Owner work task can expand through TASK_SUBGRAPH_INPUT_V1");
   }
   if (!Array.isArray(value.children) || value.children.length === 0) {
     fail("task subgraph input.children must be a non-empty array");
@@ -10229,7 +10790,20 @@ function expandSubgraphCommand(
       .filter((task) => state.tasks[task.id]?.status !== "superseded")
       .map((task) => task.id));
     validateGraph(nextPlan, goal, false, liveTaskIds);
-    for (const child of expansion.children) state.tasks[child.id] = pendingTaskState(state.source_revision);
+    for (const child of expansion.children) {
+      state.tasks[child.id] = pendingTaskState(state.source_revision);
+      if (child.role === "review") {
+        state.reviewers[taskSubjectId(child)] = {
+          generation: 1,
+          bound_executor_id: null,
+          status: "unbound",
+          current_task_id: null,
+          capsule_ref: null,
+          completed_task_ids: [],
+          result_refs: [],
+        };
+      }
+    }
     parentState.status = "pending";
     parentState.reservation_token = null;
     parentState.owner_generation = null;
@@ -10303,6 +10877,9 @@ function subgraphRequestCommand(
     if (task === undefined) fail(`unknown task: ${taskId}`);
     const taskState = state.tasks[taskId];
     if (task.node_type !== "leaf") fail(`task ${taskId} is already composite`);
+    if (task.role !== "work" || task.owner_id === null) {
+      fail(`task ${taskId} is not an Owner work task`);
+    }
     if (taskState.status !== "running") fail(`task ${taskId} is not running`);
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
     if (
@@ -10330,6 +10907,7 @@ function subgraphRequestCommand(
       contract: "TASK_SUBGRAPH_REQUEST_RECEIPT_V1",
       status,
       task_id: task.id,
+      thread_title: compositePlannerThreadTitle(task),
       request_ref: requestPath,
       request_digest: digestFile(requestPath),
     };
@@ -10338,6 +10916,7 @@ function subgraphRequestCommand(
 }
 
 const SCRIPT_MANAGED_JSON_BASENAMES = new Set([
+  "config.json",
   "state.json",
   "goal-state.json",
   "progress.json",
@@ -10404,10 +10983,19 @@ function validateThreadRegistry(value: Record<string, unknown>): void {
     );
     threadIds.push(requireString(thread.thread_id, `thread registry.threads.${threadKeyValue}.thread_id`));
     requireString(thread.host_id, `thread registry.threads.${threadKeyValue}.host_id`);
-    if (!["owner", "runtime", "planner", "review", "supervisor", "dag_view"].includes(
+    if (!["owner", "planner", "planner_reviewer", "review", "supervisor"].includes(
       String(thread.role),
     )) fail(`thread registry.threads.${threadKeyValue}.role is invalid`);
-    if (!["idle", "running", "lost"].includes(String(thread.status))) {
+    if (![
+      "idle",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "archived",
+      "needs_attention",
+      "lost",
+    ].includes(String(thread.status))) {
       fail(`thread registry.threads.${threadKeyValue}.status is invalid`);
     }
   }
@@ -10535,6 +11123,338 @@ function threadRegistryCommand(action: string, args: string[]): void {
     fail(`unknown thread-registry action: ${action}`);
   });
   process.stdout.write(`${JSON.stringify({ contract: "THREAD_REGISTRY_RECEIPT_V1", ...receipt })}\n`);
+}
+
+const SUPERVISOR_TERMINAL_STATES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "archived",
+  "needs_attention",
+]);
+
+function supervisorPaths(goalDirectoryArgument: string): {
+  goalDirectory: string;
+  planPath: string;
+  statePath: string;
+  threadsPath: string;
+} {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const threadsPath = join(goalDirectory, "threads.json");
+  for (const path of [planPath, statePath, threadsPath]) {
+    if (!existsSync(path)) fail(`supervisor runtime file is missing: ${path}`);
+  }
+  return { goalDirectory, planPath, statePath, threadsPath };
+}
+
+function readThreadRegistry(path: string, goalId: string): Record<string, unknown> {
+  const registry = requireRecord(readJson(path), "thread registry");
+  validateThreadRegistry(registry);
+  if (registry.goal_id !== goalId) fail("thread registry goal_id mismatch");
+  return registry;
+}
+
+function registeredThreadForExecutor(
+  threads: Record<string, unknown>,
+  executorId: string,
+): { key: string; thread: Record<string, unknown> } | null {
+  const matches = Object.entries(threads).filter(([, value]) =>
+    requireRecord(value, "thread registry thread").thread_id === executorId
+  );
+  if (matches.length > 1) fail(`executor ${executorId} has duplicate thread registry entries`);
+  return matches.length === 0
+    ? null
+    : { key: matches[0][0], thread: requireRecord(matches[0][1], "thread registry thread") };
+}
+
+function taskBindingSnapshotPath(
+  goalDirectory: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+): string {
+  return join(goalDirectory, "bindings", `${task.id}-attempt-${taskState.attempt}.json`);
+}
+
+function supervisorResultNotice(
+  plan: Plan,
+  task: TaskDefinition,
+  taskState: TaskState,
+): { result_ref: string | null; summary: string } {
+  if (taskState.result_path === null || !existsSync(taskState.result_path)) {
+    return { result_ref: null, summary: "线程已结束，但尚未生成有效结果" };
+  }
+  try {
+    const result = parseWorkerResult(
+      readJson(taskState.result_path),
+      task,
+      subjectForTask(plan, task),
+      taskState,
+    );
+    const summary = compactUserSummary(result.summary);
+    return summary === ""
+      ? { result_ref: null, summary: "线程已结束，但尚未生成有效结果" }
+      : { result_ref: taskState.result_path, summary };
+  } catch {
+    return { result_ref: null, summary: "线程已结束，但尚未生成有效结果" };
+  }
+}
+
+function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: string): void {
+  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  const limit = limitArgument === undefined
+    ? MAX_PARALLEL_THREADS
+    : requireParallelCount(Number(limitArgument), "supervisor limit");
+  const payload = withStateLock(statePath, () => withStateLock(threadsPath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+    const registry = readThreadRegistry(threadsPath, plan.goal_id);
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const watches = registry.watches as Record<string, unknown>[];
+    const create: Record<string, unknown>[] = [];
+
+    for (const task of plan.tasks) {
+      if (create.length >= limit) break;
+      const taskState = state.tasks[task.id];
+      if (taskState.status !== "reserved" || task.owner_id === null) continue;
+      const subject = subjectForTask(plan, task);
+      const subjectState = subjectStateForTask(state, task);
+      const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
+      const canonicalThread = Object.hasOwn(threads, key)
+        ? requireRecord(threads[key], `thread registry.threads.${key}`)
+        : null;
+      const reusableThread = subjectState.bound_executor_id === null
+        ? null
+        : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
+      const registered = canonicalThread ?? reusableThread?.thread ?? null;
+      if (subjectState.bound_executor_id !== null && registered === null) {
+        fail(`bound executor ${subjectState.bound_executor_id} is missing from thread registry`);
+      }
+      const profile = runtimeProfileForTask(goal, task);
+      create.push({
+        task: task.id,
+        attempt: taskState.attempt,
+        title: threadTitle(task, subject),
+        model: profile.model,
+        effort: profile.reasoning_effort,
+        thread: registered?.thread_id ?? null,
+        host: registered?.host_id ?? null,
+      });
+    }
+
+    const waitActions: Record<string, unknown>[] = [];
+    const notifications: Record<string, unknown>[] = [];
+    for (const watch of watches) {
+      const taskId = requireIdentifier(watch.task_id, "thread registry watch.task_id");
+      const attempt = requirePositiveInteger(watch.attempt, "thread registry watch.attempt");
+      const taskState = state.tasks[taskId];
+      if (taskState === undefined || taskState.attempt !== attempt) continue;
+      const threadKeyValue = requireString(watch.thread_key, "thread registry watch.thread_key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      const status = requireString(thread.status, `thread registry.threads.${threadKeyValue}.status`);
+      const compact = {
+        task: taskId,
+        attempt,
+        thread: requireString(thread.thread_id, "thread id"),
+        host: requireString(thread.host_id, "thread host"),
+        title: threadTitle(plan.tasks.find((candidate) => candidate.id === taskId) ??
+          fail(`unknown watched task: ${taskId}`)),
+      };
+      if (status === "running" && waitActions.length < limit) {
+        waitActions.push({
+          ...compact,
+          cursor: requireNullableString(watch.cursor, "thread registry watch.cursor"),
+        });
+      } else if (SUPERVISOR_TERMINAL_STATES.has(status) && notifications.length < limit) {
+        const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
+          fail(`unknown watched task: ${taskId}`);
+        notifications.push({
+          ...compact,
+          status,
+          ...supervisorResultNotice(plan, task, taskState),
+        });
+      }
+    }
+    const main = requireRecord(registry.main, "thread registry.main");
+    return {
+      main: {
+        thread: requireString(main.thread_id, "thread registry.main.thread_id"),
+        host: requireString(main.host_id, "thread registry.main.host_id"),
+      },
+      create,
+      wait: waitActions,
+      notify: notifications,
+    };
+  }));
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function supervisorRecordCommand(
+  goalDirectoryArgument: string,
+  event: string,
+  args: string[],
+): void {
+  const { goalDirectory, planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  if (event === "binding") {
+    if (args.length !== 3) fail("supervisor-record binding requires <task> <attempt> <thread_id>");
+    const [taskId, attemptArgument, executorId] = args;
+    const binding = withStateLock(statePath, () => {
+      const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+      const task = plan.tasks.find((candidate) => candidate.id === taskId);
+      if (task === undefined) fail(`unknown task: ${taskId}`);
+      const taskState = state.tasks[taskId];
+      if (taskState.status !== "running") fail(`task ${taskId} is not running`);
+      if (taskState.attempt !== requirePositiveInteger(Number(attemptArgument), "attempt")) {
+        fail("task attempt mismatch");
+      }
+      if (taskState.executor_id !== requireString(executorId, "thread_id")) {
+        fail("task executor mismatch");
+      }
+      const canonical = taskBinding(planPath, plan, goal, state, task);
+      writeJson(taskBindingSnapshotPath(goalDirectory, task, taskState), canonical);
+      return canonical;
+    });
+    process.stdout.write(`${JSON.stringify(binding)}\n`);
+    return;
+  }
+
+  const receipt = withStateLock(statePath, () => withStateLock(threadsPath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+    const registry = readThreadRegistry(threadsPath, plan.goal_id);
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const watches = registry.watches as Record<string, unknown>[];
+    const main = requireRecord(registry.main, "thread registry.main");
+    const mainRoute = {
+      thread: requireString(main.thread_id, "thread registry.main.thread_id"),
+      host: requireString(main.host_id, "thread registry.main.host_id"),
+    };
+
+    if (event === "created") {
+      if (args.length !== 4) {
+        fail("supervisor-record created requires <task> <attempt> <thread_id> <host_id>");
+      }
+      const [taskId, attemptArgument, executorId, hostId] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const task = plan.tasks.find((candidate) => candidate.id === taskId);
+      if (task === undefined) fail(`unknown task: ${taskId}`);
+      if (task.owner_id === null) fail(`task ${taskId} is script-only`);
+      const taskState = state.tasks[taskId];
+      if (taskState.attempt !== attempt) fail("task attempt mismatch");
+      const subject = subjectForTask(plan, task);
+      const subjectState = subjectStateForTask(state, task);
+      const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
+      const actualExecutorId = requireString(executorId, "thread_id");
+      const actualHostId = requireString(hostId, "host_id");
+      let binding: Record<string, unknown>;
+      if (taskState.status === "reserved") {
+        binding = bindTaskState(
+          planPath,
+          plan,
+          goal,
+          state,
+          task,
+          requireString(taskState.reservation_token, "reservation token"),
+          actualExecutorId,
+        ).binding as Record<string, unknown>;
+      } else if (taskState.status === "running" && taskState.executor_id === actualExecutorId) {
+        binding = taskBinding(planPath, plan, goal, state, task);
+      } else {
+        fail(`task ${taskId} cannot record created from status ${taskState.status}`);
+      }
+      threads[key] = {
+        thread_id: actualExecutorId,
+        host_id: actualHostId,
+        role: task.role === "review" ? "review" : "owner",
+        status: "running",
+      };
+      const watch = { task_id: taskId, attempt, thread_key: key, cursor: null };
+      const watchIndex = watches.findIndex((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watchIndex < 0) watches.push(watch);
+      else watches[watchIndex] = watch;
+      validateThreadRegistry(registry);
+      const bindingRef = taskBindingSnapshotPath(goalDirectory, task, taskState);
+      writeTransaction(statePath, [
+        [bindingRef, binding],
+        [statePath, state],
+        [threadsPath, registry],
+      ]);
+      const dispatchCommand = [
+        "node",
+        fileURLToPath(import.meta.url),
+        "supervisor-record",
+        goalDirectory,
+        "binding",
+        taskId,
+        String(attempt),
+        actualExecutorId,
+      ].map((value) => JSON.stringify(value)).join(" ");
+      return {
+        status: "created",
+        task: taskId,
+        attempt,
+        thread: actualExecutorId,
+        main: mainRoute,
+        dispatch: `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取 canonical TASK_BINDING_V6，再执行。`,
+        binding_ref: bindingRef,
+        binding_digest: digestFile(bindingRef),
+      };
+    }
+
+    if (event === "observed") {
+      if (args.length !== 4) {
+        fail("supervisor-record observed requires <task> <attempt> <cursor|-> <status>");
+      }
+      const [taskId, attemptArgument, cursorArgument, statusArgument] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const status = requireString(statusArgument, "observed status");
+      if (status !== "running" && !SUPERVISOR_TERMINAL_STATES.has(status)) {
+        fail(`observed status is invalid: ${status}`);
+      }
+      const watch = watches.find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watch === undefined) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
+      const threadKeyValue = requireString(watch.thread_key, "thread key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      watch.cursor = cursorArgument === "-" ? null : requireString(cursorArgument, "cursor");
+      thread.status = status;
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return {
+        status: "observed",
+        task: taskId,
+        attempt,
+        terminal: SUPERVISOR_TERMINAL_STATES.has(status),
+        main: mainRoute,
+      };
+    }
+
+    if (event === "notified") {
+      if (args.length !== 2) fail("supervisor-record notified requires <task> <attempt>");
+      const [taskId, attemptArgument] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const index = watches.findIndex((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (index < 0) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
+      const threadKeyValue = requireString(watches[index].thread_key, "thread key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      const terminalStatus = requireString(thread.status, "thread status");
+      if (!SUPERVISOR_TERMINAL_STATES.has(terminalStatus)) {
+        fail(`thread is not terminal: ${terminalStatus}`);
+      }
+      registry.watches = watches.filter((_, candidateIndex) => candidateIndex !== index);
+      thread.status = "idle";
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return { status: "notified", task: taskId, attempt };
+    }
+
+    fail(`unknown supervisor record event: ${event}`);
+  }));
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
 function validateStructuredWrite(value: Record<string, unknown>, expectedContract: string): void {
@@ -10776,6 +11696,112 @@ function resultSubmitCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+function runSelfJson(args: string[], input?: Record<string, unknown>): Record<string, unknown> {
+  const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], {
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+    ...(input === undefined ? {} : { input: JSON.stringify(input) }),
+  });
+  if (result.error !== undefined || result.status !== 0) {
+    const detail = result.error?.message ?? String(result.stderr).trim();
+    fail(`runtime script failed (${args[0]}): ${detail || `exit ${result.status}`}`);
+  }
+  try {
+    return requireRecord(JSON.parse(result.stdout), `${args[0]} receipt`);
+  } catch (error) {
+    fail(`runtime script returned invalid JSON (${args[0]}): ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function runtimeExecuteCommand(
+  planArgument: string,
+  stateArgument: string,
+  taskId: string,
+  reservationToken: string,
+): void {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const rawState = readJson(statePath);
+  const plan = parsePlan(readJson(planPath), planPath, {
+    liveTaskIds: liveTaskIdsFromRawState(rawState),
+    ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(rawState),
+  }).plan;
+  const task = plan.tasks.find((candidate) => candidate.id === taskId);
+  if (task === undefined) fail(`unknown task: ${taskId}`);
+  if (task.owner_id !== null || task.runtime_actor_id === null) {
+    fail(`task ${taskId} is not a script runtime task`);
+  }
+  let state = parseState(rawState, plan, planPath);
+  let taskState = state.tasks[taskId];
+  if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
+  if (taskState.status === "completed") {
+    process.stdout.write(`${JSON.stringify({
+      contract: "RUNTIME_TASK_RECEIPT_V1",
+      status: "completed",
+      task_id: taskId,
+      result_ref: taskState.result_ref,
+      idempotent: true,
+    })}\n`);
+    return;
+  }
+  const executorId = `runtime-script-${task.runtime_actor_id}`;
+  if (taskState.status === "reserved") {
+    runSelfJson(["bind", planPath, statePath, taskId, reservationToken, executorId]);
+    state = parseState(readJson(statePath), plan, planPath);
+    taskState = state.tasks[taskId];
+  }
+  if (taskState.status !== "running" || taskState.executor_id !== executorId) {
+    fail(`runtime task ${taskId} is not running under ${executorId}`);
+  }
+  if (taskState.result_path === null) fail(`runtime task ${taskId} result path is missing`);
+  let audit: Record<string, unknown> | null = null;
+  if (!existsSync(taskState.result_path)) {
+    if (task.runtime_actor_id === "source-audit") {
+      audit = runSelfJson(
+        ["source-audit-auto", planPath, statePath, taskId, reservationToken],
+        { contract: "SOURCE_AUDIT_INPUT_V1", non_requirements: {} },
+      );
+    } else if (task.runtime_actor_id === "diff-audit") {
+      audit = runSelfJson(["diff-audit", planPath, statePath, taskId, reservationToken]);
+    } else {
+      audit = runSelfJson(["commit-readiness", planPath, statePath, taskId, reservationToken]);
+    }
+    const verificationId = requireIdentifier(audit.verification_id, "runtime audit.verification_id");
+    const artifactRef = requireString(audit.artifact_ref, "runtime audit.artifact_ref");
+    runSelfJson(
+      ["result-submit", planPath, statePath, taskId, reservationToken],
+      {
+        contract: "TASK_RESULT_INPUT_V2",
+        status: "completed",
+        summary: `${verificationId} passed by runtime script`,
+        evidence: [{
+          id: verificationId,
+          outcome: "passed",
+          summary: `${verificationId} passed`,
+          artifact: artifactRef,
+        }],
+      },
+    );
+  }
+  const finished = runSelfJson([
+    "finish",
+    planPath,
+    statePath,
+    taskId,
+    reservationToken,
+    taskState.result_path,
+  ]);
+  process.stdout.write(`${JSON.stringify({
+    contract: "RUNTIME_TASK_RECEIPT_V1",
+    status: finished.status,
+    task_id: taskId,
+    result_ref: finished.result_ref,
+    verification_id: audit?.verification_id ?? task.verification_ids[0] ?? null,
+    idempotent: false,
+  })}\n`);
+}
+
 function main(argv: string[]): void {
   const [command, ...args] = argv;
   if (command === "goal-create" && args.length === 2) return goalCreateCommand(args[0], args[1]);
@@ -10784,7 +11810,16 @@ function main(argv: string[]): void {
     return refreshGoalCommand(args[0], args[1], args[2], args[3]);
   }
   if (command === "plan-create" && args.length === 2) return planCreateCommand(args[0], args[1]);
-  if (command === "validate" && args.length === 1) return validateCommand(args[0]);
+  if (command === "plan-revise" && args.length === 2) return planReviseCommand(args[0], args[1]);
+  if (command === "planner-review-context" && args.length === 1) {
+    return plannerReviewContextCommand(args[0]);
+  }
+  if (command === "planner-review-submit" && args.length === 1) {
+    return plannerReviewSubmitCommand(args[0]);
+  }
+  if ((command === "activate" || command === "validate") && args.length === 1) {
+    return validateCommand(args[0]);
+  }
   if (command === "render" && args.length === 1) return renderCommand(args[0]);
   if (command === "reserve" && (args.length === 2 || args.length === 3)) {
     return reserveCommand(args[0], args[1], args[2]);
@@ -10872,14 +11907,25 @@ function main(argv: string[]): void {
   if (command === "thread-registry" && args.length >= 2) {
     return threadRegistryCommand(args[0], args.slice(1));
   }
+  if (command === "supervisor-next" && (
+    args.length === 1 || (args.length === 3 && args[1] === "--limit")
+  )) {
+    return supervisorNextCommand(args[0], args[2]);
+  }
+  if (command === "supervisor-record" && args.length >= 2) {
+    return supervisorRecordCommand(args[0], args[1], args.slice(2));
+  }
   if (command === "json-write" && (args.length === 2 || args.length === 3)) {
     return jsonWriteCommand(args[0], args[1], args[2]);
   }
   if (command === "result-submit" && args.length === 4) {
     return resultSubmitCommand(args[0], args[1], args[2], args[3]);
   }
+  if (command === "runtime-execute" && args.length === 4) {
+    return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
+  }
   fail(
-    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
+    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | plan-revise <goal.json> <plan.json> | planner-review-context <plan.json> | planner-review-submit <plan.json> | activate <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] | runtime-execute <plan.json> <state.json> <task_id> <reservation_token> | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | supervisor-next <goal-dir> [--limit <1-8>] | supervisor-record <goal-dir> <created|binding|observed|notified> ... | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
   );
 }
 

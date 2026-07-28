@@ -1,6 +1,6 @@
 # 线程恢复与收据
 
-聊天不是事实源。恢复只读取 runtime State、`threads.json`、canonical result 和 Owner Capsule。
+聊天不是事实源。Main 恢复时通过 runtime 命令读取 State，并把 result_ref 交给 `finish`，不得直接读取 canonical result；Supervisor 恢复时只调用 `supervisor-next`，不得直接读取任何原始文件。
 
 ## THREAD_REGISTRY_V1
 
@@ -22,26 +22,18 @@ thread-registry show <path>
 | 状态 | 动作 |
 |---|---|
 | `reserved` 且未 bind | 创建/找到登记线程，bind 后投递 canonical binding |
+| `reserved` 且 action 为 `run_script` | Main 直接调用 `runtime-execute`，不创建线程 |
 | `running` 且无结果 | wait；投递不确定时只重发同一 binding |
 | canonical result 已存在 | 直接 `finish` |
-| 三次等待无变化 | 监督线程发 `TASK_STALLED`；主线程检查 |
+| Supervisor 上下文恢复 | 重新调用 `supervisor-next <goal-dir> --limit 8` |
 | 线程确认丢失 | `reclaim`，旧线程标 `lost`，再创建新 generation |
 | source 变化 | drain active，`goal-refresh`，应用局部 delta |
 | Owner 变化 | 暂停当前 DAG，等待用户批准并完成 transition |
 
 任何恢复都先运行 `status -> reconcile`。不得从聊天推算 attempt、token、路径或 scope。
 
-## 监督线程通知
-
-只允许两种通知，均不含结果内容：
-
-```text
-[GA][TASK][SUPERVISOR] TASK_END task_id=<id> attempt=<n> thread_id=<id> state=<state>；请主线程检查。
-[GA][TASK][SUPERVISOR] TASK_STALLED task_id=<id> attempt=<n> thread_id=<id>；连续三次等待无变化，请主线程检查。
-```
-
 ## 收据
 
-`result-submit` 返回 `THREAD_TASK_RECEIPT_V1`，只含：`status`、`task_id`、`attempt`、`result_ref`、`result_digest`、`blocking_count`。完整 `WORKER_RESULT_V5` 只保存在 `result_ref`。
+`result-submit` 返回 `THREAD_TASK_RECEIPT_V1`，只含：`status`、`task_id`、`attempt`、`result_ref`、`result_digest`、`blocking_count`。完整 `WORKER_RESULT_V5` 只保存在 `result_ref`；Binding 同样由脚本保存到 `bindings/`。
 
-主线程最终只报告已经 `finish` 接受的 task 结果；DAG 视图线程只报告 Dashboard URL，不向主线程复制 Mermaid 或完整 DAG。
+所有脚本 JSON 都是机器收据，不复制到聊天。Main 最终只使用 `finish.user_message` 报告已接受的 task 结果；Dashboard URL 只报告一次，不复制 Mermaid 或完整 DAG。

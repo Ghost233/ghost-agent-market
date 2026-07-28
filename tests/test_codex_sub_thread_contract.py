@@ -30,12 +30,15 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "skills/sub-thread-coordination/agents/openai.yaml"
         )
         cls.planner = read("skills/parallel-task-planner/SKILL.md")
+        cls.planner_reviewer = read("skills/planner-reviewer/SKILL.md")
         cls.worker = read("skills/sub-thread-goal-worker/SKILL.md")
         cls.worker_reference = read("skills/sub-thread-goal-worker/references/templates.md")
         cls.supervisor = read("skills/sub-thread-task-supervisor/SKILL.md")
         cls.supervisor_metadata = read(
             "skills/sub-thread-task-supervisor/agents/openai.yaml"
         )
+        cls.setup = read("skills/setup-sub-thread-workflow/SKILL.md")
+        cls.setup_metadata = read("skills/setup-sub-thread-workflow/agents/openai.yaml")
         cls.git_commit = read("skills/git-commit/SKILL.md")
         cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
         cls.direct_model_test = read("skills/git-commit-direct-model-test/SKILL.md")
@@ -43,50 +46,52 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "skills/git-commit-direct-model-test/agents/openai.yaml"
         )
 
-    def test_codex_workflow_uses_persistent_threads_and_dedicated_supervision(self) -> None:
-        combined = f"{self.coordinator}\n{self.coordinator_metadata}"
+    def test_codex_workflow_uses_persistent_threads_and_scripted_supervisor(self) -> None:
+        combined = (
+            f"{self.coordinator}\n{self.coordinator_metadata}\n"
+            f"{self.supervisor}\n{self.supervisor_metadata}"
+        )
         for requirement in (
             "长期子线程",
-            "监督线程",
-            "DAG 视图线程",
-            "gpt-5.6-luna/low",
-            "THREAD_TASK_RECEIPT_V1",
-            "thread-registry init",
+            "supervisor-next",
+            "supervisor-record",
+            "gpt-5.6-luna/medium",
+            "gpt-5.6-sol/high",
+            "runtime-execute",
         ):
             self.assertIn(requirement, combined)
-        self.assertIn("禁止使用 subagent", self.coordinator)
+        self.assertIn("禁止 subagent", self.coordinator)
         self.assertIn("系统 key", self.coordinator)
-        self.assertIn("[GA][TASK][OWNER]", self.coordinator)
-        self.assertIn("[GA][TASK][RUNTIME]", self.coordinator)
-        self.assertIn("[GA][TASK][SUPERVISOR]", self.coordinator)
-        self.assertIn("[GA][TASK][DAG_VIEW]", self.coordinator)
-        self.assertIn("[GA][TASK][MAIN]", self.coordinator)
-        self.assertIn("不使用 nonce", self.coordinator)
+        self.assertIn("[GA][任务][责任域]", self.coordinator)
+        self.assertIn("[GA][任务][规划审查]", self.coordinator)
+        self.assertIn("[GA][任务][主控]", self.coordinator)
         self.assertIn("必须恰好一个", self.coordinator)
         self.assertIn("TASK_BINDING_V6", self.coordinator)
         self.assertIn("$sub-thread-goal-worker", self.coordinator)
         self.assertIn("$parallel-task-planner", self.coordinator)
+        self.assertIn("$sub-thread-task-supervisor", self.coordinator)
+        self.assertIn("禁止 `cat/read/open`", self.supervisor)
+        self.assertIn("脚本 stdout JSON 仅是机器收据", self.supervisor)
+        self.assertIn("不超过 100 字", combined)
+        self.assertIn("用户可见消息不含 `result_ref`", self.supervisor)
         self.assertIn("default_prompt:", self.coordinator_metadata)
         self.assertIn("allow_implicit_invocation: false", self.coordinator_metadata)
         self.assertIn("standalone_thread", combined)
 
-    def test_task_supervisor_only_waits_and_notifies_main(self) -> None:
-        combined = f"{self.supervisor}\n{self.supervisor_metadata}"
+    def test_setup_skill_manages_profiles_and_parallel_by_script(self) -> None:
+        combined = f"{self.setup}\n{self.setup_metadata}"
         for requirement in (
-            "gpt-5.6-luna/low",
-            "wait_threads",
-            "send_message_to_thread",
-            "不透明内容",
-            "active watch 非空",
-            "请主线程检查",
-            "TASK_STALLED",
-            "连续三次",
-            "$sub-thread-task-supervisor",
+            "workflow-config.mjs init",
+            "set-parallel",
+            "set-profile",
+            "gpt-5.6-sol/high",
+            "parallel: 8",
+            "$setup-sub-thread-workflow",
             "allow_implicit_invocation: false",
         ):
             self.assertIn(requirement, combined)
-        self.assertIn("禁止实施、分析、验收、调度", self.supervisor)
-        self.assertIn("不得自行废弃、关闭或重启线程", self.supervisor)
+        self.assertIn("不得手写", self.setup)
+        self.assertIn("最多 8 个", self.coordinator)
 
     def test_owner_affinity_is_permanent_and_fenced(self) -> None:
         combined = "\n".join(
@@ -102,7 +107,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "Owner Capsule",
             "generation",
             "approved Owner Registry",
-            "可继续 Goal",
+            "继续 Goal",
             "reclaim",
         ):
             self.assertIn(invariant, combined)
@@ -122,7 +127,18 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("runtime 自动补齐 identity", combined)
         self.assertIn("不要填写 task identity", combined)
         self.assertIn("checkpoint-save", combined)
-        self.assertIn("source-audit-auto", combined)
+        self.assertIn("source/diff/commit readiness 不由模型执行", combined)
+
+    def test_planner_reviewer_is_a_pre_activation_two_round_gate(self) -> None:
+        combined = f"{self.coordinator}\n{self.planner_reviewer}"
+        for requirement in (
+            "PLANNER_REVIEW_CONTEXT_V1",
+            "planner-review-submit",
+            "profiles.review",
+            "第二轮",
+            "不是 DAG 节点",
+        ):
+            self.assertIn(requirement, combined)
 
     def test_goal_is_optional_and_native_bridge_follows_local_finalize(self) -> None:
         combined = f"{self.coordinator}\n{self.goal_contract}"
@@ -137,8 +153,8 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("`running` 且无结果", combined)
         self.assertIn("reclaim", self.coordinator)
         self.assertIn("status -> reconcile", self.coordinator_reference)
-        self.assertIn("canonical binding", self.coordinator)
-        self.assertIn("TASK_STALLED", combined)
+        self.assertIn("TASK_BINDING_V6", self.coordinator)
+        self.assertIn("supervisor-next <goal-dir> --limit 8", combined)
 
     def test_expected_skill_directories_are_present(self) -> None:
         actual_skills = {
@@ -152,6 +168,8 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 "git-commit",
                 "git-commit-direct-model-test",
                 "parallel-task-planner",
+                "planner-reviewer",
+                "setup-sub-thread-workflow",
                 "start-dag-dashboard",
                 "sub-thread-coordination",
                 "sub-thread-goal-worker",
@@ -254,7 +272,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.0\.8\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.1\.3\+codex\.")
         self.assertIn("长期 Codex 子线程", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

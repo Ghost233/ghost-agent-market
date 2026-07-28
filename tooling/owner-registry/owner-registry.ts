@@ -9,11 +9,6 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-type RuntimeProfile = {
-  model: string;
-  reasoning_effort: string;
-} | null;
-
 type OwnerLineage = {
   parent_owner_ids: string[];
   created_by_request_digest: string;
@@ -27,7 +22,6 @@ type OwnerDefinition = {
   scope_patterns: string[];
   scope_excludes: string[];
   worker_context: string;
-  runtime_profile: RuntimeProfile;
   lineage: OwnerLineage;
 };
 
@@ -300,15 +294,6 @@ function sorted(values: string[]): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
-function parseProfile(value: unknown, label: string): RuntimeProfile {
-  if (value === null) return null;
-  const source = record(value, label);
-  return {
-    model: stringValue(source.model, `${label}.model`),
-    reasoning_effort: stringValue(source.reasoning_effort, `${label}.reasoning_effort`),
-  };
-}
-
 function parseRequestedOwner(value: unknown, index: number): RequestedOwner {
   const source = record(value, `new_owners[${index}]`);
   const scopePatterns = unique(
@@ -333,7 +318,6 @@ function parseRequestedOwner(value: unknown, index: number): RequestedOwner {
     scope_patterns: scopePatterns,
     scope_excludes: scopeExcludes,
     worker_context: stringValue(source.worker_context, `new_owners[${index}].worker_context`),
-    runtime_profile: parseProfile(source.runtime_profile, `new_owners[${index}].runtime_profile`),
   };
 }
 
@@ -765,7 +749,6 @@ function requestChangeCommand(args: string[]): void {
         worker_context: stringValue(args[index + 3], `owner ${id} worker_context`),
         scope_patterns: [],
         scope_excludes: [],
-        runtime_profile: null,
       });
       index += 4;
       continue;

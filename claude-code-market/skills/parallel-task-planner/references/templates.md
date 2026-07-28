@@ -8,6 +8,7 @@
 - `PLAN_INPUT_V1.tasks[]` 常用字段：`id/title/owner/work/after/write/done/verify/gates/items`。
 - `role/actor/risk/review/review_batch/review_reason/reviews/priority/cost/parent/locks` 仅在默认值不合适时填写。
 - 调用 `goal-dag.mjs plan-create <goal> <plan>`；脚本生成 `PLAN_COVERAGE_V1` 和 `DAG_PLAN_V5`。
+- draft 创建后由 Planner Reviewer 审查；如需修改，只能把第二份 `PLAN_INPUT_V1` 送入一次 `plan-revise`。
 - task 标题包含中文；work 有 writable scope，review/verify 没有 writable scope。
 - immediate Review 节点依赖 subject，subject 的业务下游经过该 Review。
 

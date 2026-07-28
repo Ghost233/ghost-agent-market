@@ -17,9 +17,11 @@ PLUGIN = MARKET / "plugins/ghost-agent-workflow"
 RUNTIME = PLUGIN / "scripts/goal-dag.mjs"
 SKILLS = (
     "parallel-task-planner",
+    "planner-reviewer",
+    "setup-sub-thread-workflow",
     "sub-thread-coordination",
-    "sub-thread-goal-worker",
     "sub-thread-task-supervisor",
+    "sub-thread-goal-worker",
     "git-commit",
     "start-dag-dashboard",
 )
@@ -38,7 +40,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
     def test_kimi_plugin_manifest_is_current(self) -> None:
         manifest = json.loads(read("kimi.plugin.json"))
         self.assertEqual(manifest["name"], "ghost-agent-workflow")
-        self.assertEqual(manifest["version"], "0.2.5")
+        self.assertEqual(manifest["version"], "0.3.0")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("长期子线程", manifest["description"])
         self.assertIn("Review", manifest["description"])
@@ -65,19 +67,26 @@ class KimiWorkflowContractTests(unittest.TestCase):
         contract = read("skills/sub-thread-coordination/references/goal-contract.md")
         self.assertIn("standalone_thread", contract)
         self.assertIn("长期子线程", coordinator)
-        self.assertIn("禁止使用 subagent", coordinator)
-        self.assertIn("零个或多个立即停止", coordinator)
+        self.assertIn("禁止 subagent", coordinator)
+        self.assertIn("发现多个时立即停止", coordinator)
 
     def test_kimi_workflow_contract_has_supervisor_review_and_script_writes(self) -> None:
         combined = "\n".join(
-            self.skill_texts[name]
-            for name in ("sub-thread-coordination", "parallel-task-planner", "sub-thread-goal-worker")
+            self.skill_texts[name] for name in (
+                "sub-thread-coordination",
+                "parallel-task-planner",
+                "setup-sub-thread-workflow",
+                "sub-thread-goal-worker",
+                "sub-thread-task-supervisor",
+            )
         )
         for requirement in (
-            "监督线程",
-            "DAG 视图线程",
-            "thread-registry init",
-            "THREAD_TASK_RECEIPT_V1",
+            "supervisor-next",
+            "supervisor-record",
+            "gpt-5.6-luna/medium",
+            "gpt-5.6-sol/high",
+            "workflow-config.mjs",
+            "runtime-execute",
             "review_upgrade",
             "review_upgrades[]",
             "subgraph-request",
@@ -85,14 +94,9 @@ class KimiWorkflowContractTests(unittest.TestCase):
             "approve-change",
         ):
             self.assertIn(requirement, combined)
-        self.assertIn("禁止使用 subagent", combined)
-        self.assertIn("主线程不输出 Mermaid", combined)
-
-        supervisor = self.skill_texts["sub-thread-task-supervisor"]
-        self.assertIn("gpt-5.6-luna/low", supervisor)
-        self.assertIn("不透明内容", supervisor)
-        self.assertIn("TASK_STALLED", supervisor)
-        self.assertIn("请主线程检查", supervisor)
+        self.assertIn("禁止 subagent", combined)
+        self.assertIn("完整 DAG/Mermaid", combined)
+        self.assertIn("planner-review-submit", combined)
 
     def test_runtime_is_compiled_for_kimi(self) -> None:
         self.assertIn('COMPILED_PLATFORM = "kimi"', self.runtime)
@@ -123,6 +127,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
         self.assertIn("sync-thread-skills.mjs", text)
         self.assertIn("tooling/goal-dag/build.mjs", text)
         self.assertIn("tooling/owner-registry/build.mjs", text)
+        self.assertIn("tooling/workflow-config/build.mjs", text)
         self.assertIn("python3 -m unittest", text)
         self.assertLess(text.index("Validate workflow contracts"), text.index("Build plugin zip"))
 

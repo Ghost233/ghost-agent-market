@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-workflow",
       "source": "./",
-      "description": "Persistent sub-thread Owner DAGs with explicit Review nodes and script-managed state; fails closed without durable sub-thread APIs.",
-      "version": "0.5.6",
+      "description": "A script-driven Supervisor manages up to eight persistent sub-threads with a pre-activation Planner Reviewer and explicit Review nodes.",
+      "version": "0.6.1",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -27,6 +27,8 @@
         "thread-coordination",
         "explicit-review-dag",
         "sub-thread-coordination",
+        "workflow-setup",
+        "planner-reviewer",
         "task-supervisor"
       ]
     }

@@ -4,9 +4,11 @@
 
 - `ghost-agent-workflow`
 
-`ghost-agent-workflow` 包含六个 skill：
+`ghost-agent-workflow` 包含八个 skill：
 
 - `parallel-task-planner`
+- `planner-reviewer`
+- `setup-sub-thread-workflow`
 - `sub-thread-coordination`
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
@@ -21,15 +23,15 @@
 
 Kimi Code 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。显式 `/skill:sub-thread-coordination` 是公开 DAG 控制器；当目标未完成时，它返回 runtime 生成的单行续跑提示（`/skill:sub-thread-coordination 继续 <goal.json绝对路径>`），请逐字使用。
 
-只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行。标准 Agent 禁止作为回退；缺少子线程 API 时在规划后 fail closed。每个 Owner generation 使用一个长期子线程，并额外维护 `gpt-5.6-luna/low` 极简任务监督子线程和 DAG 视图子线程。监督子线程加载 `sub-thread-task-supervisor`，只等待结束并通知主线程检查。
+只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行。标准 Agent 禁止作为回退；缺少能力时在规划后 fail closed。`gpt-5.6-luna/medium` Supervisor 只通过脚本创建、等待和通知最多 8 个执行子线程；配置包含四组 profile，机械 gate 由脚本执行。
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 
-子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`；只允许小写字母、数字和下划线，禁止中括号、连字符、空格、中文与随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。主线程检查通知并完成机械验收后才报告 task 最终结果。
+用户可见标题统一为 `[GA][任务][角色] <中文任务>`；新线程取得正式 threadId 后自行设置 canonical 标题。脚本 JSON 只作机器收据，主线程完成机械验收后才报告 task 最终结果。
 
 Review 是显式 DAG 节点，机械验收由 runtime 执行，共享验证由 verify 节点生成可复用 evidence。所有 JSON、JSONL、YAML、TOML 与配置都通过脚本写入；完整结果只落盘，子线程聊天只返回紧凑 receipt。
 
-需要把实时只读进度页放到后台时，使用 `/skill:start-dag-dashboard <plan.json绝对路径>`。它通过 Python 启动器分离服务进程，不执行或修改执行批次；runtime 原子维护紧凑的 `progress.json` 当前快照与追加式 `events.jsonl` 历史，网页 `/api/progress-document` 提供快照，`/api/progress-events` 提供分页事件。
+初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 通过 `/skill:start-dag-dashboard` 调用后台 Node 启动器；启动器从工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。网页通过文件监听和 SSE 接收 runtime 数据更新。
 
 Owner 是仓库级永久代码模块主体。新增、分裂或 scope 变化必须由脚本验证并等待用户对精确 digest 的批准；工作流等待用户操作时不启动空模型回合累计 blocked 次数。
 

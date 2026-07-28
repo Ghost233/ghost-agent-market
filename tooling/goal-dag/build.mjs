@@ -6,24 +6,24 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const sourcePath = resolve(root, "tooling/goal-dag/goal-dag.ts");
 const dashboardSourcePath = resolve(root, "tooling/goal-dag/dashboard.html");
-const dashboardStarterSourcePath = resolve(root, "tooling/goal-dag/start-dashboard.py");
+const dashboardStarterSourcePath = resolve(root, "tooling/goal-dag/start-dashboard.mjs");
 const targets = [
   {
     path: resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"),
     dashboardPath: resolve(root, "codex-market/plugins/ghost-agent-workflow/assets/goal-dag-dashboard.html"),
-    dashboardStarterPath: resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/start-dashboard.py"),
+    dashboardStarterPath: resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/start-dashboard.mjs"),
     executionPlatform: "codex",
   },
   {
     path: resolve(root, "claude-code-market/scripts/goal-dag.mjs"),
     dashboardPath: resolve(root, "claude-code-market/assets/goal-dag-dashboard.html"),
-    dashboardStarterPath: resolve(root, "claude-code-market/scripts/start-dashboard.py"),
+    dashboardStarterPath: resolve(root, "claude-code-market/scripts/start-dashboard.mjs"),
     executionPlatform: "claude_code",
   },
   {
     path: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"),
     dashboardPath: resolve(root, "kimi-market/plugins/ghost-agent-workflow/assets/goal-dag-dashboard.html"),
-    dashboardStarterPath: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/start-dashboard.py"),
+    dashboardStarterPath: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/start-dashboard.mjs"),
     executionPlatform: "kimi",
   },
 ];

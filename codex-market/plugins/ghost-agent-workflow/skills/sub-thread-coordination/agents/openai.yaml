@@ -1,6 +1,6 @@
 interface:
   display_name: "子线程 DAG 控制器"
-  short_description: "长期 Owner 子线程、显式 Review、递归子图和只读进度页。"
+  short_description: "最多八个长期子线程、显式 Review、递归子图和进度页。"
   default_prompt: "使用 $sub-thread-coordination，以长期子线程完整执行 ./plan.md；默认不创建 Goal。"
 
 policy:

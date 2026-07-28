@@ -5,6 +5,8 @@
 内置 skill：
 
 - `parallel-task-planner`
+- `planner-reviewer`
+- `setup-sub-thread-workflow`
 - `sub-thread-coordination`
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
@@ -23,13 +25,13 @@ Codex 默认不需要原生 `/goal`，直接输入：
 使用 $sub-thread-coordination，以持久子线程 DAG 完整执行 `./plan.md`。
 ```
 
-`sub-thread-coordination` 是唯一协调入口。工作流为每个 Owner generation 维护一个可长期复用的子线程，并额外维护一个 `gpt-5.6-luna/low` 极简任务监督子线程和一个 DAG 视图子线程。监督子线程通过专用 `sub-thread-task-supervisor` Skill 只等待任务结束并通知主线程检查，不解析结果、不验收、不调度 Review。完整 DAG、进度与历史事件由网页 Dashboard 展示。
+`sub-thread-coordination` 是唯一协调入口。`gpt-5.6-luna/medium` Supervisor 只通过脚本创建、等待和通知最多 8 个执行子线程；Main 负责 reserve 与结果验收。`setup-sub-thread-workflow` 配置 `parallel` 与 Planner、Owner、Review、Supervisor 四组 profile；其它 LLM 子线程默认使用 `gpt-5.6-sol/high`，机械 gate 由脚本执行。
 
 运行中的叶子任务如果发现需要插接多步工作，可在修改业务文件前发出 fenced 子图请求。runtime 原子把 T2 转成保留外层依赖边界的 composite，并在内部加入 T2-1、T2-2…递归 DAG；下游仍只依赖 T2，网页可折叠/展开子图并显示父节点聚合状态。
 
-子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`；只允许小写字母、数字和下划线，禁止中括号、连字符、空格、中文与随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。
+子线程系统 key 只允许小写字母、数字和下划线。用户可见标题统一为 `[GA][任务][角色] <中文任务>`，例如 `[GA][任务][监督] 跟踪登录系统改造`；每个新线程取得正式 threadId 后自行调用 `set_thread_title`。脚本 JSON 只作机器收据，不复制到聊天。
 
-可用 `$start-dag-dashboard` 调用 `python3 <plugin-root>/scripts/start-dashboard.py <plan.json> [state.json]`，把零依赖、只读的实时页面放入独立后台进程；重复调用会复用同一服务并返回 URL。`progress.json` 只保存当前紧凑快照，历史写入追加式 `events.jsonl`，两者都由 runtime 脚本原子更新，模型不得直接编辑；`/api/progress-events` 提供分页抓取。页面默认监听 `127.0.0.1:7357`。
+初始 DAG 先由 runtime 机械校验，再由独立 Planner Reviewer 只审查并行度和结构复杂度；最多允许 Planner 修订一次。Plan/State 激活后，Main 用 `$start-dag-dashboard` 调用后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 均由 runtime 脚本维护，模型不得直接编辑；网页通过文件监听和 SSE 推送更新，默认监听 `127.0.0.1:7357`。
 
 模型 Review 不再是每个 task 的隐式步骤。Planner 必须把 Review 设计为显式 DAG 节点，并为 task 声明风险、Review 策略、批次和阻塞范围。机械验收由脚本执行；全仓验证与 dry-run matrix 由独立 verify 节点生成可复用证据，最终门禁只补跑失效证据。
 
@@ -39,7 +41,7 @@ Codex 默认不需要原生 `/goal`，直接输入：
 
 Claude Code 与 Kimi Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才执行该工作流；标准 Agent 禁止作为回退，缺少能力时 fail closed。
 
-使用工作流的项目只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、结果和审计产物都应加入 `.gitignore`。
+使用工作流的项目持久化并提交 `.ghost-agent-workflow/config.json` 与 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、结果和审计产物都应加入 `.gitignore`。
 
 上游子模块：
 
@@ -61,9 +63,10 @@ ghost-agent-market/
 │   ├── .claude-plugin/marketplace.json
 │   └── skills/
 │       ├── parallel-task-planner/
+│       ├── planner-reviewer/
+│       ├── setup-sub-thread-workflow/
 │       ├── sub-thread-coordination/
 │       ├── sub-thread-goal-worker/
-│       ├── sub-thread-task-supervisor/
 │       └── git-commit/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
@@ -72,9 +75,10 @@ ghost-agent-market/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
         │       ├── parallel-task-planner/
+        │       ├── planner-reviewer/
+        │       ├── setup-sub-thread-workflow/
         │       ├── sub-thread-coordination/
         │       ├── sub-thread-goal-worker/
-        │       ├── sub-thread-task-supervisor/
         │       ├── start-dag-dashboard/
         │       ├── git-commit/
         │       └── git-commit-direct-model-test/
@@ -96,9 +100,10 @@ kimi-market/
         ├── scripts/goal-dag.mjs
         └── skills/
             ├── parallel-task-planner/
+            ├── planner-reviewer/
+            ├── setup-sub-thread-workflow/
             ├── sub-thread-coordination/
             ├── sub-thread-goal-worker/
-            ├── sub-thread-task-supervisor/
             ├── start-dag-dashboard/
             └── git-commit/
 ```

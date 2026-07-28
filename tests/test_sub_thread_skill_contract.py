@@ -11,8 +11,10 @@ PLATFORMS = {
 ACTIVE_DAG_SKILLS = (
     "sub-thread-coordination",
     "parallel-task-planner",
-    "sub-thread-goal-worker",
+    "planner-reviewer",
+    "setup-sub-thread-workflow",
     "sub-thread-task-supervisor",
+    "sub-thread-goal-worker",
 )
 
 
@@ -43,9 +45,12 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         for platform in PLATFORMS:
             coordinator = self.skill(platform, "sub-thread-coordination")
             self.assertIn("唯一协调入口", coordinator)
-            self.assertIn("禁止使用 subagent", coordinator)
+            self.assertIn("禁止 subagent", coordinator)
             self.assertIn("standalone_thread", coordinator)
-            self.assertIn("codex_native", coordinator)
+            if platform == "codex":
+                self.assertIn("codex_native", coordinator)
+            else:
+                self.assertNotIn("codex_native", coordinator)
             self.assertIn("TASK_BINDING_V6", coordinator)
             self.assertIn("$sub-thread-goal-worker", coordinator)
             self.assertIn("$parallel-task-planner", coordinator)
@@ -53,10 +58,18 @@ class ThreadDagSkillContractTests(unittest.TestCase):
     def test_main_discovery_is_simple_and_fail_closed(self) -> None:
         for platform in PLATFORMS:
             coordinator = self.skill(platform, "sub-thread-coordination")
-            self.assertIn("[GA][TASK][MAIN] <goal_id>", coordinator)
+            self.assertIn("[GA][任务][主控] <中文目标>", coordinator)
             self.assertIn("必须恰好一个", coordinator)
-            self.assertIn("不使用 nonce", coordinator)
-            self.assertIn("零个或多个立即停止", coordinator)
+            self.assertIn("发现多个时立即停止", coordinator)
+
+    def test_new_threads_rename_themselves_after_creation(self) -> None:
+        for platform in PLATFORMS:
+            coordinator = self.skill(platform, "sub-thread-coordination")
+            self.assertIn("`create_thread` 不接受 `title` 或 `name`", coordinator)
+            self.assertIn("若只返回 clientThreadId，则等待初始化完成", coordinator)
+            self.assertIn("创建者通过 send_message_to_thread 通知新线程自己的 threadId", coordinator)
+            self.assertIn("新线程立即调用 set_thread_title({ threadId, title })", coordinator)
+            self.assertIn("设置成功后再登记、bind 和执行任务", coordinator)
 
     def test_registry_changes_use_domain_commands(self) -> None:
         for platform in PLATFORMS:
@@ -80,7 +93,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             coordinator = self.skill(platform, "sub-thread-coordination")
             worker = self.skill(platform, "sub-thread-goal-worker")
             template = self.reference(platform, "sub-thread-goal-worker")
-            self.assertIn("模型只提供业务判断和最小语义输入", coordinator)
+            self.assertIn("模型只提交最小语义输入", coordinator)
             self.assertIn("TASK_RESULT_INPUT_V2", worker)
             self.assertIn("不要构造 `WORKER_RESULT_V5`", worker)
             self.assertIn("runtime 自动补齐 identity", worker)
@@ -93,6 +106,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         for platform in PLATFORMS:
             combined = "\n".join((
                 self.skill(platform, "sub-thread-coordination"),
+                self.reference(platform, "sub-thread-coordination", "goal-contract.md"),
                 self.skill(platform, "parallel-task-planner"),
                 self.reference(platform, "parallel-task-planner"),
             ))
@@ -115,6 +129,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         for platform in PLATFORMS:
             combined = "\n".join((
                 self.skill(platform, "sub-thread-coordination"),
+                self.reference(platform, "sub-thread-coordination", "goal-contract.md"),
                 self.skill(platform, "parallel-task-planner"),
                 self.skill(platform, "sub-thread-goal-worker"),
                 self.reference(platform, "parallel-task-planner"),
@@ -126,10 +141,10 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 self.assertIn(contract, combined)
             for command in (
                 "goal-create", "plan-create", "apply-delta", "expand-subgraph",
-                "checkpoint-save", "source-audit-auto",
+                "checkpoint-save", "runtime-execute",
             ):
                 self.assertIn(command, combined)
-            self.assertIn("正常流程禁止 `json-write`", combined)
+            self.assertIn("不调用 `json-write`", combined)
 
     def test_owner_change_uses_script_and_pauses_one_goal(self) -> None:
         for platform in PLATFORMS:
@@ -142,33 +157,70 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("不要启动空模型回合累计 blocked", owner)
             self.assertIn("可以继续 Goal", owner)
 
-    def test_supervisor_is_wait_only_and_reports_stalls(self) -> None:
+    def test_supervisor_waits_by_script_and_setup_controls_profiles(self) -> None:
         for platform in PLATFORMS:
+            coordinator = self.skill(platform, "sub-thread-coordination")
+            setup = self.skill(platform, "setup-sub-thread-workflow")
             supervisor = self.skill(platform, "sub-thread-task-supervisor")
             for requirement in (
-                "gpt-5.6-luna/low",
                 "wait_threads",
-                "send_message_to_thread",
-                "禁止 `read_thread`",
-                "TASK_END",
-                "TASK_STALLED",
-                "连续三次",
-                "不得自行废弃、关闭或重启线程",
+                "supervisor-next",
+                "supervisor-record",
+                "gpt-5.6-luna/medium",
+                "gpt-5.6-sol/high",
             ):
-                self.assertIn(requirement, supervisor)
+                self.assertIn(requirement, coordinator)
+            for requirement in (
+                "workflow-config.mjs init",
+                "set-parallel",
+                "set-profile",
+                "THREAD_WORKFLOW_CONFIG_RECEIPT_V1",
+                "supervisor",
+            ):
+                self.assertIn(requirement, setup)
+            for forbidden in (
+                "`plan.json`",
+                "`state.json`",
+                "`threads.json`",
+                "Worker 聊天",
+                "结果正文",
+            ):
+                self.assertIn(forbidden, supervisor)
+            self.assertIn("--limit 8", supervisor)
+            self.assertIn("timeout 为 60000 ms", supervisor)
+            self.assertIn("脚本 stdout JSON 仅是机器收据", supervisor)
+            self.assertIn("线程已结束，但尚未生成有效结果", supervisor)
+            self.assertIn("[GA][任务][责任域] <中文任务>", coordinator)
 
     def test_progress_is_script_owned_and_main_does_not_print_dag(self) -> None:
         for platform in PLATFORMS:
             coordinator = self.skill(platform, "sub-thread-coordination")
-            self.assertIn("自动刷新固定 `progress.json`", coordinator)
-            self.assertIn("追加 `events.jsonl`", coordinator)
-            self.assertIn("主线程不输出 Mermaid", coordinator)
-            self.assertIn("最终 task 结果", coordinator)
+            self.assertIn("自动维护 `progress.json`", coordinator)
+            self.assertIn("events.jsonl", coordinator)
+            self.assertIn("完整 DAG/Mermaid", coordinator)
+            self.assertIn("task 最终结果", coordinator)
+
+    def test_planner_reviewer_is_pre_activation_and_bounded(self) -> None:
+        for platform in PLATFORMS:
+            combined = "\n".join((
+                self.skill(platform, "sub-thread-coordination"),
+                self.skill(platform, "planner-reviewer"),
+            ))
+            for requirement in (
+                "planner-review-context",
+                "planner-review-submit",
+                "plan-revise",
+                "profiles.review",
+                "不是 DAG 节点",
+                "第二轮",
+            ):
+                self.assertIn(requirement, combined)
 
     def test_portable_skill_copies_are_synchronized(self) -> None:
         portable = (
             "parallel-task-planner/SKILL.md",
             "parallel-task-planner/references/templates.md",
+            "planner-reviewer/SKILL.md",
             "sub-thread-goal-worker/SKILL.md",
             "sub-thread-goal-worker/references/templates.md",
             "sub-thread-task-supervisor/SKILL.md",
@@ -181,6 +233,14 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             for platform in ("claude", "kimi"):
                 actual = (PLATFORMS[platform] / "skills" / relative).read_text(encoding="utf-8")
                 self.assertEqual(actual, expected, f"{platform}:{relative}")
+
+    def test_setup_skill_body_is_synchronized_with_platform_frontmatter(self) -> None:
+        bodies = {
+            platform: self.skill(platform, "setup-sub-thread-workflow").split("---\n", 2)[2]
+            for platform in PLATFORMS
+        }
+        self.assertEqual(bodies["claude"], bodies["codex"])
+        self.assertEqual(bodies["kimi"], bodies["codex"])
 
 
 if __name__ == "__main__":

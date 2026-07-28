@@ -16,17 +16,22 @@ class StartDagDashboardSkillTests(unittest.TestCase):
         for text in (codex, claude, kimi):
             self.assertIn("只负责启动", text)
             self.assertIn("不要创建 Goal", text)
-            self.assertIn("不得继续轮询", text)
+            self.assertIn("不持续轮询", text)
             self.assertIn("DAG_DASHBOARD_START_V1", text)
             self.assertIn("progress.json", text)
             self.assertIn("events.jsonl", text)
-            self.assertIn("progress_document_url", text)
-            self.assertIn("progress_events_url", text)
-            self.assertIn("--allow-remote", text)
-        self.assertIn("python3 <plugin-root>/scripts/start-dashboard.py", codex)
-        self.assertIn("python3 <plugin-root>/scripts/start-dashboard.py", claude)
+            self.assertIn("文件监听", text)
+            self.assertIn("SSE", text)
+            self.assertIn("远程访问", text)
         self.assertIn(
-            "python3 ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.py", kimi
+            "node <plugin-root>/scripts/start-dashboard.mjs <workspace>", codex
+        )
+        self.assertIn(
+            "node <plugin-root>/scripts/start-dashboard.mjs <workspace>", claude
+        )
+        self.assertIn(
+            "node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs <workspace>",
+            kimi,
         )
         self.assertIn("disable-model-invocation: true", claude)
         self.assertIn("whenToUse:", kimi)
