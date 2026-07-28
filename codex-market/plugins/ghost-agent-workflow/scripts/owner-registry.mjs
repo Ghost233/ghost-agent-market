@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -673,6 +674,39 @@ function parsePersistentCapsule(value         , ownerId        )                
   };
 }
 
+function capsuleContainsChange(
+  capsule                        ,
+  registryRevision        ,
+  requestDigest        ,
+)          {
+  return capsule.registry_revision === registryRevision &&
+    capsule.history.some((entry) => entry.request_digest === requestDigest);
+}
+
+function activeGoalCount(workspaceRoot        )         {
+  const workflowRoot = join(workspaceRoot, ".ghost-agent-workflow");
+  if (!existsSync(workflowRoot)) return 0;
+  let count = 0;
+  const visit = (directory        )       => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else if (entry.isFile() && entry.name === "goal-state.json") {
+        try {
+          const goalState = record(readJson(path), `goal state ${path}`);
+          if (goalState.status === "active") count += 1;
+        } catch {
+          fail(`cannot inspect active Goal state: ${path}`);
+        }
+      }
+    }
+  };
+  visit(workflowRoot);
+  return count;
+}
+
 function validateCommand(registryArgument        )       {
   const registryPath = resolve(registryArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath);
@@ -689,7 +723,16 @@ function initCommand(workspaceArgument        )       {
   const workspaceRoot = resolve(workspaceArgument);
   gitFiles(workspaceRoot);
   const registryPath = join(workspaceRoot, ".ghost-agent-workflow", "owners", "registry.json");
-  if (existsSync(registryPath)) fail(`owner registry already exists: ${registryPath}`);
+  if (existsSync(registryPath)) {
+    const current = parseRegistry(readJson(registryPath), registryPath, false);
+    process.stdout.write(`${JSON.stringify({
+      status: current.owners.length === 0 ? "pending_owner_approval" : "current",
+      registry_ref: registryPath,
+      registry_digest: digestFile(registryPath),
+      revision: current.revision,
+    })}\n`);
+    return;
+  }
   const registry                = {
     contract: "OWNER_REGISTRY_V2",
     workspace_root: workspaceRoot,
@@ -925,37 +968,64 @@ function applyChangeCommand(
   if (validation.contract !== "OWNER_CHANGE_VALIDATION_V2" || validation.status !== "passed") {
     fail("owner change validation is not passed");
   }
-  const currentRegistryDigest = digestFile(registryPath);
-  const recomputed = nextRegistry(registry, request, currentRegistryDigest);
   const requestDigest = digestJson(request);
   if (requestDigest !== validation.request_digest || requestDigest !== approval.request_digest) {
     fail("owner change request digest mismatch");
   }
-  if (currentRegistryDigest !== validation.base_registry_digest) {
-    fail("owner registry changed after validation");
-  }
   if (digestFile(validationPath) !== approval.validation_digest) {
     fail("owner change validation digest mismatch");
   }
-  const nextDigest = digestJson(recomputed);
+  const approvedRegistry = parseRegistry(validation.next_registry, registryPath, false);
+  const nextDigest = digestJson(approvedRegistry);
   if (
     nextDigest !== validation.next_registry_digest ||
-    nextDigest !== approval.next_registry_digest ||
-    nextDigest !== digestJson(validation.next_registry)
+    nextDigest !== approval.next_registry_digest
   ) fail("approved next owner registry digest mismatch");
+  const currentRegistryDigest = digestFile(registryPath);
+  if (currentRegistryDigest === nextDigest) {
+    for (const requested of request.new_owners) {
+      const path = capsulePath(registryPath, requested.id);
+      if (!existsSync(path)) fail(`applied owner capsule is missing: ${path}`);
+      const capsule = parsePersistentCapsule(readJson(path), requested.id);
+      if (!capsuleContainsChange(capsule, approvedRegistry.revision, requestDigest)) {
+        fail(`owner capsule does not contain the approved change: ${path}`);
+      }
+    }
+    process.stdout.write(`${JSON.stringify({
+      status: "current",
+      operation: request.operation,
+      revision: approvedRegistry.revision,
+      registry_digest: nextDigest,
+    })}\n`);
+    return;
+  }
+  if (currentRegistryDigest !== validation.base_registry_digest) {
+    fail("owner registry changed after validation");
+  }
+  if (activeGoalCount(registry.workspace_root) > 1) {
+    fail("owner change requires only one active Goal; complete the other active Goals first");
+  }
+  const recomputed = nextRegistry(registry, request, currentRegistryDigest);
+  if (digestJson(recomputed) !== nextDigest) fail("approved owner registry no longer reproduces");
   const inheritedById = new Map                                ();
   for (const sourceOwnerId of request.source_owner_ids) {
     const path = capsulePath(registryPath, sourceOwnerId);
     if (!existsSync(path)) fail(`source owner capsule is missing: ${path}`);
     inheritedById.set(sourceOwnerId, parsePersistentCapsule(readJson(path), sourceOwnerId));
   }
+  const alreadyApplied = new Set        ();
   for (const requested of request.new_owners) {
     const path = capsulePath(registryPath, requested.id);
-    if (existsSync(path) && !request.source_owner_ids.includes(requested.id)) {
+    if (!existsSync(path)) continue;
+    const capsule = parsePersistentCapsule(readJson(path), requested.id);
+    if (capsuleContainsChange(capsule, recomputed.revision, requestDigest)) {
+      alreadyApplied.add(requested.id);
+    } else if (!request.source_owner_ids.includes(requested.id)) {
       fail(`new owner capsule path already exists: ${path}`);
     }
   }
   for (const requested of request.new_owners) {
+    if (alreadyApplied.has(requested.id)) continue;
     const owner = recomputed.owners.find((candidate) => candidate.id === requested.id)                   ;
     const inherited = request.operation === "transfer" || request.operation === "expand" ||
         request.operation === "shrink"

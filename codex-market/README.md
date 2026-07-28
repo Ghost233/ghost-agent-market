@@ -31,7 +31,7 @@
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层入边/出边，内部使用 T2-1、T2-2…表达依赖并可递归扩展；Dashboard 支持折叠、展开与父状态聚合。
 
-Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Planner 为每个 task 声明风险、策略、批次、阻塞范围和原因；机械验收由 runtime 执行，共享验证由 verify 节点生成以 tree/scope/command/config digest 为键的可复用 evidence。
+Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Planner 为每个 task 声明风险、策略、批次、阻塞范围和原因；机械验收由 runtime 执行，verify 证据由脚本登记且默认不跨 task 复用。
 
 所有结构化文件与配置只通过脚本写入。完整 `WORKER_RESULT_V5` 落盘，子线程聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程不输出 Mermaid、DAG diff 或普通 running 状态，只向用户报告已经机械接受的 task 最终结果与追踪入口。
 

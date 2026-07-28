@@ -29,7 +29,7 @@ Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `st
 
 用户可见标题统一为 `[GA][任务][角色] <中文任务>`；新线程取得正式 threadId 后自行设置 canonical 标题。脚本 JSON 只作机器收据，主线程完成机械验收后才报告 task 最终结果。
 
-`sub-thread-coordination` 是唯一协调入口。Planner 把 Review 设计为显式 DAG 节点，为每个 task 声明风险、策略、批次和阻塞范围；机械验收由 runtime 执行，共享验证由 verify 节点生成可复用 evidence。
+`sub-thread-coordination` 是唯一协调入口。Planner 把 Review 设计为显式 DAG 节点，为每个 task 声明风险、策略、批次和阻塞范围；机械验收由 runtime 执行，verify 证据由脚本登记且默认不跨 task 复用。
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 

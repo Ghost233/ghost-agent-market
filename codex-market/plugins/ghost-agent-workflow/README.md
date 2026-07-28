@@ -18,9 +18,9 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 
 首次 `goal-validate` 保存轻量 `WORKSPACE_FENCE_V1`：Git tree/index digest 与当时的非 clean 项，不复制全部受管理文件。planner 为每个 plan item 写 source refs 和 required effects；active leaf 可在任何可归因修改前扩展为 T2-1、T2-2…递归子 DAG，父节点保留外层依赖边界。
 
-Review 与机械验收分离：每个 task 声明 risk、policy、batch、阻塞范围和原因，Planner 把 Review 设计成显式 DAG node。共享全仓测试和 dry-run matrix 由 verify 节点生成可复用 evidence；最终门禁只补跑缺失或失效证据。
+Review 与机械验收分离：每个 task 声明 risk、policy、batch、阻塞范围和原因，Planner 把 Review 设计成显式 DAG node。verify 证据由脚本登记；当前默认不跨 task 复用，避免把未验证的旧结果当成缓存命中。
 
-所有 JSON、JSONL、YAML、TOML、配置、Plan、State、Result、Progress 与 Review 状态只通过脚本写入。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程不输出 DAG 图或普通 running 状态，只报告已经机械接受的 task 最终结果。
+工作流自有的 JSON、JSONL、配置、Plan、State、Result、Progress 与 Review 状态只通过脚本写入；业务项目的 YAML/TOML 仍使用对应领域工具修改。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程不输出 DAG 图或普通 running 状态，只报告已经机械接受的 task 最终结果。
 
 Owner 变化必须由脚本验证并等待用户对精确 digest 批准。Goal 模式下 runtime 进入 `awaiting_owner_action`，提示用户暂停 Goal 完成操作；应用后明确提示“可以继续 Goal”，不会用空模型回合累计 blocked 次数。
 

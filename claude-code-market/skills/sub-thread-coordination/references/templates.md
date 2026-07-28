@@ -15,7 +15,7 @@ thread-registry remove-watch <path> <task_id> <attempt> <key>
 thread-registry show <path>
 ```
 
-每个 thread 只保存 `thread_id`、`host_id`、`role`、`status`；每个 watch 只保存 `task_id`、`attempt`、`thread_key`、`cursor`。标题、模型配置、generation 和 receipt digest 可由 Plan/binding/宿主查询得到，不重复写入 Registry。
+每个 thread 只保存 `thread_id`、`host_id`、`role`、`status`；每个 watch 只保存 `task_id`、`attempt`、`thread_key`、`cursor`、`unchanged_waits`。标题、模型配置、generation 和 receipt digest 可由 Plan/binding/宿主查询得到，不重复写入 Registry。
 
 ## 恢复动作
 
@@ -26,7 +26,9 @@ thread-registry show <path>
 | `running` 且无结果 | wait；投递不确定时只重发同一 binding |
 | canonical result 已存在 | 直接 `finish` |
 | Supervisor 上下文恢复 | 重新调用 `supervisor-next <goal-dir> --limit 8` |
-| 线程确认丢失 | `reclaim`，旧线程标 `lost`，再创建新 generation |
+| 三次 wait 无 cursor 变化 | Supervisor 通知 Main 并记录 `stalled-notified` |
+| 用户确认线程丢失且 Main 已关闭线程 | `supervisor-recover <goal-dir> <task> <attempt> <reason>` |
+| 用户让 attention/stalled 线程继续 | `supervisor-record <goal-dir> resumed <task> <attempt>` |
 | source 变化 | drain active，`goal-refresh`，应用局部 delta |
 | Owner 变化 | 暂停当前 DAG，等待用户批准并完成 transition |
 

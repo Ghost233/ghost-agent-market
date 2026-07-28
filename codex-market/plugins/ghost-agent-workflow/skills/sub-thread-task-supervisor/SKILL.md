@@ -20,14 +20,17 @@ goal-dag.mjs supervisor-record <goal-dir> <event> <标量参数...>
 2. `create` 项的 `thread` 为空时调用 `create_thread`，初始提示只要求等待正式任务。取得正式 threadId 后，把正式 threadId 和动作给出的中文标题发给新线程，要求它自行调用 `set_thread_title`；只有返回 clientThreadId 时等待初始化完成，禁止把 clientThreadId 当正式 id。
 3. `create` 项已有 `thread` 时复用，但也必须先通知该线程把标题改成当前动作的中文标题。改名确认后调用 `supervisor-record ... created <task> <attempt> <thread> <host>`，再把 receipt 中的 `dispatch` 原样发送给该线程；不得读取 binding。
 4. 将 `wait` 项一次性交给 `wait_threads`，沿用 cursor，timeout 为 60000 ms。只把新 cursor 与宿主状态作为标量传给 `supervisor-record ... observed`。
-5. 对 `notify` 项向 receipt 给出的 Main 路由直接发送机器通知：
+5. 对 `stalled` 项向 Main 发送 `THREAD_STALLED task=<id> attempt=<n> thread=<id>`，成功后调用 `supervisor-record ... stalled-notified <task> <attempt>`。Supervisor 不关闭或 reclaim；等待 Main 获得用户决定。
+6. 对 `notify` 项向 receipt 给出的 Main 路由直接发送机器通知：
 
 ```text
 THREAD_FINISHED task=<id> attempt=<n> thread=<id> status=<status> result_ref=<ref|-> summary=<脚本摘要>
 ```
 
 `summary` 与 `result_ref` 必须逐字取自脚本动作；不得自行读取 Result、概括或猜测。发送成功后调用 `supervisor-record ... notified <task> <attempt>`。
-6. 重新调用 `supervisor-next`。上下文恢复后的第一步也必须如此；无动作时等待 Main 下一次唤醒。
+`needs_attention` 通知成功后，脚本保留 watch。用户选择继续时，Main 让线程恢复后调用 `supervisor-record ... resumed <task> <attempt>`；用户选择废弃时，由 Main 关闭线程并调用 `supervisor-recover`。
+
+7. 重新调用 `supervisor-next`。上下文恢复后的第一步也必须如此；无动作时等待 Main 下一次唤醒。
 
 ## 静默输出
 

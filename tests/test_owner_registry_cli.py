@@ -166,6 +166,9 @@ class OwnerRegistryCliTests(unittest.TestCase):
             initialized = self.run_json("init", root)
             self.assertEqual(initialized["status"], "pending_owner_approval")
             registry_path = Path(initialized["registry_ref"])
+            repeated_init = self.run_json("init", root)
+            self.assertEqual(repeated_init["status"], "pending_owner_approval")
+            self.assertEqual(repeated_init["registry_digest"], initialized["registry_digest"])
             registry = json.loads(registry_path.read_text(encoding="utf-8"))
             self.assertNotEqual(self.run_cli("validate", registry_path).returncode, 0)
 
@@ -232,6 +235,49 @@ class OwnerRegistryCliTests(unittest.TestCase):
             )
             self.assertEqual(applied["added_owner_ids"], ["report-module"])
             self.assertTrue((registry_path.parent / "report-module/capsule.json").exists())
+            repeated = self.run_json(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            self.assertEqual(repeated["status"], "current")
+
+    def test_apply_change_recovers_after_capsules_were_written_before_registry(self) -> None:
+        with self.workspace() as (_, registry_path, registry):
+            request_path = registry_path.parent / "request.json"
+            validation_path = registry_path.parent / "validation.json"
+            approval_path = registry_path.parent / "approval.json"
+            request = self.write_request(request_path, registry)
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+            self.approve(request, validation_path, validation, approval_path)
+            self.run_json(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            registry_path.write_text(serialized(registry), encoding="utf-8")
+            recovered = self.run_json(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            self.assertEqual(recovered["status"], "applied")
+            self.assertEqual(digest_json(json.loads(registry_path.read_text(encoding="utf-8"))),
+                             validation["next_registry_digest"])
+
+    def test_apply_change_rejects_multiple_active_goals(self) -> None:
+        with self.workspace() as (root, registry_path, registry):
+            for goal_id in ("one", "two"):
+                state_path = root / ".ghost-agent-workflow/runtime" / goal_id / "goal-state.json"
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(serialized({"status": "active"}), encoding="utf-8")
+            request_path = registry_path.parent / "request.json"
+            validation_path = registry_path.parent / "validation.json"
+            approval_path = registry_path.parent / "approval.json"
+            request = self.write_request(request_path, registry)
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+            self.approve(request, validation_path, validation, approval_path)
+            rejected = self.run_cli(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("only one active Goal", rejected.stderr)
 
     def test_request_and_approval_are_generated_by_domain_commands(self) -> None:
         with self.workspace() as (_, registry_path, _):

@@ -27,7 +27,7 @@ workflow-config.mjs init <workspace>
 workflow-config.mjs show <workspace>
 ```
 
-配置只有 `parallel` 及 `profiles.planner/owner/review/supervisor`。创建任何新 LLM 子线程前必须再次 `show`，使用户的实时修改对新线程生效；已经存在的线程不强制更换。
+配置只有 `parallel` 及 `profiles.planner/owner/review/supervisor`。每轮 reserve 和创建任何新 LLM 子线程前必须再次 `show`：`parallel` 立即影响后续 reserve，profile 只影响之后新建的线程；已经存在的线程不强制更换。
 
 - Planner、Composite Planner：`profiles.planner`
 - Owner Worker：`profiles.owner`
@@ -43,10 +43,14 @@ workflow-config.mjs show <workspace>
 
 ```text
 配置 init + show
+→ owner-registry init；已有 Registry 则幂等读取
+→ Registry 无已批准 Owner 时走 Owner 创建与用户批准流程
+→ owner-registry validate
 → goal-create + goal-validate
+→ thread-registry init，登记唯一 Main 路由
 → Planner 生成 PLAN_INPUT_V1
 → plan-create 机械校验并保存 DAG draft
-→ planner-review-context
+→ planner-review-context --compact
 → Planner Reviewer 独立审查
 → planner-review-submit
 → activate
@@ -92,9 +96,9 @@ Planner 生成的 task `title` 必须包含中文，否则 runtime 拒绝 Plan�
 每轮严格执行：
 
 ```text
-status
-→ reconcile
-→ reserve，最多补满 config.parallel 个 active task
+status --compact
+→ reconcile --compact
+→ reserve --compact，最多补满 config.parallel 个 active task
 → 立即执行所有 run_script action
 → 用 Goal 目录唤醒 Supervisor
 → Supervisor 调用 supervisor-next，创建/复用、bind 并投递模型线程
@@ -112,7 +116,7 @@ Supervisor 的机器通知可以包含 result_ref，但用户可见消息不得�
 
 - 需要传给其他线程的内容直接使用 `send_message_to_thread`，当前聊天不重复。
 - 线程之间只传必要标量、文件引用和不超过 100 字的脚本摘要；禁止粘贴 JSON 代码块、完整 stdout、DAG、任务正文、代码、diff、结果或日志。
-- `supervisor-next` 的 create/wait/notify 每类最多 8 项。没有状态变化时不发用户可见消息。
+- `supervisor-next` 的 create/wait/stalled/notify 每类最多 8 项。没有状态变化时不发用户可见消息。
 - 创建或监控集合变化时，Main 可以列出最多 8 个脚本生成的中文标题。
 - 错误只报告一句原因与脚本给出的日志路径。原始 JSON 只有用户明确要求时才能展示。
 
@@ -131,6 +135,6 @@ runtime 校验并 `expand-subgraph` 后，由普通 Owner Worker 执行子节点
 
 Planner Reviewer 是激活前门禁，不是 DAG 节点。Implementation Review 仍是显式 `role: review` 节点，并使用独立 Review 线程；机械验收不是 Review。
 
-Owner 变化是用户决策，期间暂停当前 DAG：`request → validate-change → 用户确认 → approve-change → apply-change → owner transition delta`。所有文件由脚本写入。
+Owner 变化是用户决策，期间暂停当前 DAG：`request → validate-change → 用户确认 → approve-change → apply-change → owner transition delta`。所有文件由脚本写入；仓库存在多个 active Goal 时脚本拒绝变更，先完成其他 active Goal。
 
 只有 coverage、Implementation Review/verify、blocking findings、scope 与 delivery gate 全部通过才 `finalize`。Main 只向用户报告 Dashboard URL、Owner 决策、真实阻塞、疑似挂死、已验收 task 最终结果和 Goal 完成；不得持续报告普通 running 状态、Planner 过程、测试过程、Delta 准备或完整 DAG/Mermaid。

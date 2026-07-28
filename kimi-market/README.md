@@ -29,13 +29,13 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 
 用户可见标题统一为 `[GA][任务][角色] <中文任务>`；新线程取得正式 threadId 后自行设置 canonical 标题。脚本 JSON 只作机器收据，主线程完成机械验收后才报告 task 最终结果。
 
-Review 是显式 DAG 节点，机械验收由 runtime 执行，共享验证由 verify 节点生成可复用 evidence。所有 JSON、JSONL、YAML、TOML 与配置都通过脚本写入；完整结果只落盘，子线程聊天只返回紧凑 receipt。
+Review 是显式 DAG 节点，机械验收由 runtime 执行，verify 证据由脚本登记且默认不跨 task 复用。工作流自有结构化状态通过脚本写入；业务项目 YAML/TOML 使用对应领域工具。完整结果只落盘，子线程聊天只返回紧凑 receipt。
 
 初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 通过 `/skill:start-dag-dashboard` 调用后台 Node 启动器；启动器从工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。网页通过文件监听和 SSE 接收 runtime 数据更新。
 
 Owner 是仓库级永久代码模块主体。新增、分裂或 scope 变化必须由脚本验证并等待用户对精确 digest 的批准；工作流等待用户操作时不启动空模型回合累计 blocked 次数。
 
-只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 是临时执行状态，应加入 `.gitignore`。Owner 新增或分裂必须经脚本冲突验证和用户对精确 digest 的明确批准。
+持久化并提交 `.ghost-agent-workflow/config.json` 与 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 是临时执行状态，应加入 `.gitignore`。Owner 新增或分裂必须经脚本冲突验证和用户对精确 digest 的明确批准。
 
 ## 安装
 

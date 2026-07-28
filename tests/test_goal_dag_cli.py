@@ -791,7 +791,7 @@ class GoalDagCliTests(unittest.TestCase):
 
             pending = self.run_json("supervisor-next", root, "--limit", 8)
             self.assertEqual(
-                set(pending), {"main", "create", "wait", "notify"}
+                set(pending), {"main", "create", "wait", "stalled", "notify"}
             )
             self.assertEqual(pending["main"], {"thread": "main-thread", "host": "local"})
             self.assertEqual(len(pending["create"]), 1)
@@ -946,6 +946,62 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(full_result["task_id"], action["task_id"])
             self.assertEqual(full_result["reservation_token"], action["reservation_token"])
             self.assertNotIn("task_id", minimal)
+            submitted_events = [
+                event for event in self.read_progress_events(plan_path)
+                if event["type"] == "task_result_submitted"
+                and event["task_id"] == action["task_id"]
+            ]
+            self.assertEqual(len(submitted_events), 1)
+            self.assertEqual(submitted_events[0]["result_digest"], receipt["result_digest"])
+
+    def test_supervisor_persists_stall_count_and_recovers_closed_thread(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            threads_path = root / "threads.json"
+            self.run_json(
+                "thread-registry", "init", threads_path,
+                json.loads(goal_path.read_text(encoding="utf-8"))["goal_id"],
+                "main-thread", "local",
+            )
+            action = self.reserve_one(plan_path, state_path)
+            self.run_json(
+                "supervisor-record", root, "created", action["task_id"], 1,
+                "worker-thread", "local",
+            )
+            self.run_json(
+                "supervisor-record", root, "observed", action["task_id"], 1,
+                "cursor-1", "running",
+            )
+            for expected in range(1, 4):
+                observed = self.run_json(
+                    "supervisor-record", root, "observed", action["task_id"], 1,
+                    "cursor-1", "running",
+                )
+                self.assertEqual(observed["unchanged_waits"], expected)
+            stalled = self.run_json("supervisor-next", root)
+            self.assertEqual(stalled["wait"], [])
+            self.assertEqual(stalled["stalled"][0]["task"], action["task_id"])
+            self.run_json(
+                "supervisor-record", root, "stalled-notified", action["task_id"], 1
+            )
+            quiet = self.run_json("supervisor-next", root)
+            self.assertEqual(quiet["wait"], [])
+            self.assertEqual(quiet["stalled"], [])
+
+            recovered = self.run_json(
+                "supervisor-recover", root, action["task_id"], 1, "用户确认线程已关闭"
+            )
+            self.assertEqual(recovered["status"], "recovered")
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["tasks"][action["task_id"]]["status"], "pending")
+            self.assertEqual(state["stale_executors"], [])
+            registry = json.loads(threads_path.read_text(encoding="utf-8"))
+            self.assertEqual(registry["watches"], [])
+            self.assertEqual(registry["threads"][next(iter(registry["threads"]))]["status"], "lost")
+            repeated = self.run_json(
+                "supervisor-recover", root, action["task_id"], 1, "用户确认线程已关闭"
+            )
+            self.assertEqual(repeated["removed_watches"], 0)
 
     def test_supervisor_uses_validated_sanitized_result_summary(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
@@ -1029,7 +1085,7 @@ class GoalDagCliTests(unittest.TestCase):
                 {gate["id"] for gate in existing["verification_gates"]},
             )
 
-    def test_goal_create_uses_script_managed_parallel_default(self) -> None:
+    def test_goal_create_keeps_eight_as_the_runtime_parallel_ceiling(self) -> None:
         with self.workspace() as (_, goal_path, _):
             existing = json.loads(goal_path.read_text(encoding="utf-8"))
             workspace_root = Path(existing["workspace"]["root"])
@@ -1060,7 +1116,36 @@ class GoalDagCliTests(unittest.TestCase):
                 workspace_root,
             )
             generated = json.loads(goal_path.read_text(encoding="utf-8"))
-            self.assertEqual(generated["execution"]["max_concurrency"], 6)
+            self.assertEqual(generated["execution"]["max_concurrency"], 8)
+
+    def test_reserve_reloads_live_parallel_config_and_compact_receipts(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            subprocess.run(
+                ["node", str(WORKFLOW_CONFIG_SCRIPT), "set-parallel", workspace_root, "1"],
+                check=True, capture_output=True, text=True,
+            )
+            state_path = self.initialize(goal_path, plan_path)
+            first = self.run_json("reserve", plan_path, state_path, "--compact")
+            self.assertEqual(len(first["actions"]), 1)
+            self.assertNotIn("binding", first["actions"][0])
+            compact_status = self.run_json("status", plan_path, state_path, "--compact")
+            self.assertNotIn("binding", compact_status["active_reservations"][0])
+
+            subprocess.run(
+                ["node", str(WORKFLOW_CONFIG_SCRIPT), "set-parallel", workspace_root, "3"],
+                check=True, capture_output=True, text=True,
+            )
+            expanded = self.run_json("reserve", plan_path, state_path, "--compact")
+            self.assertGreater(len(expanded["actions"]), 0)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            active = [
+                value for value in state["tasks"].values()
+                if value["status"] in {"reserved", "running"}
+            ]
+            self.assertEqual(len(active), 2)
 
     def test_plan_create_expands_short_tasks_and_writes_coverage_atomically(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):

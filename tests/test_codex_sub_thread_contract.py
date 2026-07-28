@@ -272,7 +272,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.1\.3\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.1\.4\+codex\.")
         self.assertIn("长期 Codex 子线程", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

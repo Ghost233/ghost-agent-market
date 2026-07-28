@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.1.3+codex.20260728083319",
+  "version": "1.1.4+codex.20260728093155",
   "description": "以最多八个长期 Codex 子线程执行 Owner DAG、Planner Reviewer、显式 Review 和递归子图；脚本化 Supervisor 静默创建、中文命名、等待和通知。",
   "author": {
     "name": "Ghost233",

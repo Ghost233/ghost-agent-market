@@ -26,6 +26,8 @@ node <plugin-root>/scripts/workflow-config.mjs init <workspace>
 `init` 幂等；已有合法配置时保持不变。
 该文件是仓库级配置，应持久化并提交；只有 `.ghost-agent-workflow/runtime/**` 属于临时执行状态。
 
+`parallel` 修改后立即影响下一轮 reserve；Goal 只保留 8 的安全上限。profile 修改只影响之后新建的线程，不强制替换已存在的线程。
+
 ## 修改
 
 只调用以下命令：

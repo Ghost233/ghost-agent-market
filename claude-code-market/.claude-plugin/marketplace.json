@@ -11,7 +11,7 @@
       "name": "ghost-agent-workflow",
       "source": "./",
       "description": "A script-driven Supervisor manages up to eight persistent sub-threads with a pre-activation Planner Reviewer and explicit Review nodes.",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"

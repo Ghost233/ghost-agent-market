@@ -5,7 +5,7 @@ description: 仅供 sub-thread-coordination 在初始 DAG draft 激活前使用�
 
 # Planner Reviewer
 
-只审查脚本生成的 `PLANNER_REVIEW_CONTEXT_V1`，不得读取 Planner 聊天、业务代码或执行线程记录。协调器必须在创建本线程前重新读取 `profiles.review`；默认 `gpt-5.6-sol/high`。
+只审查 `planner-review-context --compact` 收据中 `context_ref` 指向的 `PLANNER_REVIEW_CONTEXT_V1`，不得读取 Planner 聊天、业务代码或执行线程记录。协调器必须在创建本线程前重新读取 `profiles.review`；默认 `gpt-5.6-sol/high`。
 
 只判断：
 

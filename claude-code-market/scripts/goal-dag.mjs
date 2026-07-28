@@ -1946,7 +1946,6 @@ function goalCreateCommand(targetArgument        , workspaceArgument        )   
     ? resolve(sourceValue)
     : resolve(workspaceRoot, sourceValue);
   if (!existsSync(sourcePath)) fail(`goal source does not exist: ${sourcePath}`);
-  const workflowConfig = loadThreadWorkflowConfig(workspaceRoot);
   const controller = (input.controller ?? "standalone_thread")                  ;
   if (!new Set                (["codex_native", "standalone_thread", "local_fallback"]).has(controller)) {
     fail(`goal input.controller is invalid: ${String(input.controller)}`);
@@ -2005,7 +2004,7 @@ function goalCreateCommand(targetArgument        , workspaceArgument        )   
     execution: {
       mode: "thread",
       max_concurrency: input.max_concurrency === undefined
-        ? workflowConfig.parallel
+        ? MAX_PARALLEL_THREADS
         : requireParallelCount(input.max_concurrency, "goal input.max_concurrency"),
       reuse_policy: "owner_affinity",
     },
@@ -2677,7 +2676,7 @@ function buildPlannerReviewContext(planPath        , plan      )                
   };
 }
 
-function plannerReviewContextCommand(planArgument        )       {
+function plannerReviewContextCommand(planArgument        , compact = false)       {
   const planPath = resolve(planArgument);
   if (existsSync(statePathFor(planPath))) fail("planner review is only allowed before Plan activation");
   const { plan } = parsePlan(readJson(planPath), planPath);
@@ -2692,7 +2691,7 @@ function plannerReviewContextCommand(planArgument        )       {
     thread_title: goalThreadTitles(goal).planner_reviewer,
     context_ref: contextPath,
     context_digest: digestFile(contextPath),
-    context,
+    ...(compact ? {} : { context }),
   })}\n`);
 }
 
@@ -5378,6 +5377,7 @@ function reserveCommand(
   planArgument        ,
   stateArgument        ,
   capacityArgument         ,
+  compact = false,
 )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
@@ -5390,10 +5390,15 @@ function reserveCommand(
     if (state.stale_executors.length > 0) {
       fail("stale executors are stop-pending; confirm them before reserve");
     }
+    const workflowConfig = loadThreadWorkflowConfig(goal.workspace.root);
     const requestedCapacity = capacityArgument === undefined
-      ? goal.execution.max_concurrency
+      ? workflowConfig.parallel
       : requirePositiveInteger(Number(capacityArgument), "capacity");
-    const capacity = Math.min(requestedCapacity, goal.execution.max_concurrency);
+    const capacity = Math.min(
+      requestedCapacity,
+      workflowConfig.parallel,
+      goal.execution.max_concurrency,
+    );
     const currentActive = activeTasks(plan, state);
     let slots = Math.max(0, capacity - currentActive.length);
     const selected = [...currentActive];
@@ -5474,9 +5479,11 @@ function reserveCommand(
           ownerState,
           taskState,
         );
+        const binding = taskBinding(planPath, plan, goal, state, task);
         actions.push({
           action,
           task_id: task.id,
+          attempt: taskState.attempt,
           owner_id: task.owner_id,
           runtime_actor_id: null,
           execution_subject_id: subject.id,
@@ -5486,7 +5493,7 @@ function reserveCommand(
           thread_title: threadTitle(task, subject),
           reservation_token: taskState.reservation_token,
           critical_score: scores.get(task.id),
-          binding: taskBinding(planPath, plan, goal, state, task),
+          ...(compact ? {} : { binding }),
         });
       }
       selected.push(task);
@@ -8878,6 +8885,19 @@ function activeReservationRecords(
     });
 }
 
+function compactActiveReservationRecords(records                           )                            {
+  return records.map((record) => ({
+    action: record.action,
+    phase: record.phase,
+    task_id: record.task_id,
+    status: record.status,
+    attempt: record.attempt ?? null,
+    reservation_token: record.reservation_token,
+    executor_id: record.executor_id ?? null,
+    ...(record.action === "run_script" ? { command: record.command } : {}),
+  }));
+}
+
 function nextActionFor(
   planPath        ,
   plan      ,
@@ -9006,7 +9026,7 @@ function pendingReviewUpgrades(state          )                                 
   });
 }
 
-function reconcileCommand(planArgument        , stateArgument        )       {
+function reconcileCommand(planArgument        , stateArgument        , compact = false)       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -9032,7 +9052,10 @@ function reconcileCommand(planArgument        , stateArgument        )       {
       owner_change: state.owner_change,
       review_upgrades: reviewUpgrades,
       subgraph_requests: subgraphRequests,
-      active_reservations: activeReservationRecords(planPath, plan, goal, state),
+      active_reservations: (() => {
+        const records = activeReservationRecords(planPath, plan, goal, state);
+        return compact ? compactActiveReservationRecords(records) : records;
+      })(),
       stale_executors: state.stale_executors,
     };
   });
@@ -9167,7 +9190,7 @@ function confirmStaleExecutorCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-function statusCommand(planArgument        , stateArgument        )       {
+function statusCommand(planArgument        , stateArgument        , compact = false)       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const payload = withStateLock(statePath, () => {
@@ -9221,7 +9244,10 @@ function statusCommand(planArgument        , stateArgument        )       {
       subgraph_requests: subgraphRequests,
       summary: summarizeState(state),
       coverage: summarizeCoverage(plan, coverage, state),
-      active_reservations: activeReservationRecords(planPath, plan, goal, state),
+      active_reservations: (() => {
+        const records = activeReservationRecords(planPath, plan, goal, state);
+        return compact ? compactActiveReservationRecords(records) : records;
+      })(),
       stale_executors: state.stale_executors,
       completion_problems: inspection.problems,
       owners,
@@ -9448,6 +9474,7 @@ function dashboardSnapshotRead(planPath        , statePath        )             
 
 
 
+
 function progressDocumentPathFor(planPath        )         {
   return join(dirname(planPath), "progress.json");
 }
@@ -9526,6 +9553,9 @@ function observeProgressSources(planPath        , statePath        )            
     .sort(([left], [right]) => compareStableStrings(left, right))
     .map(([taskId, value]) => {
       const taskState = requireRecord(value, `progress state.tasks.${taskId}`);
+      const resultPath = typeof taskState.result_path === "string" && taskState.result_path
+        ? taskState.result_path
+        : null;
       return {
         task_id: taskId,
         status: requireString(taskState.status, `progress state.tasks.${taskId}.status`),
@@ -9534,6 +9564,9 @@ function observeProgressSources(planPath        , statePath        )            
           taskState.source_revision,
           `progress state.tasks.${taskId}.source_revision`,
         ),
+        submitted_result_digest: resultPath !== null && existsSync(resultPath)
+          ? digestFile(resultPath)
+          : null,
         result_digest: typeof taskState.result_digest === "string" && taskState.result_digest
           ? taskState.result_digest
           : null,
@@ -9748,6 +9781,18 @@ function refreshProgressDocument(
         );
         for (const taskState of confirmed.taskStates) {
           const prior = previousTaskStates.get(taskState.task_id);
+          if (
+            taskState.submitted_result_digest !== null &&
+            prior?.submitted_result_digest !== taskState.submitted_result_digest
+          ) {
+            appendEvent({
+              type: "task_result_submitted",
+              task_id: taskState.task_id,
+              attempt: taskState.attempt,
+              source_revision: taskState.source_revision,
+              result_digest: taskState.submitted_result_digest,
+            });
+          }
           if (
             prior === undefined || prior.status !== taskState.status ||
             prior.attempt !== taskState.attempt || prior.source_revision !== taskState.source_revision
@@ -10995,6 +11040,8 @@ function validateThreadRegistry(value                         )       {
       "cancelled",
       "archived",
       "needs_attention",
+      "attention_notified",
+      "stalled",
       "lost",
     ].includes(String(thread.status))) {
       fail(`thread registry.threads.${threadKeyValue}.status is invalid`);
@@ -11005,9 +11052,10 @@ function validateThreadRegistry(value                         )       {
   const watchIds           = [];
   value.watches.forEach((watchValue, index) => {
     const watch = requireRecord(watchValue, `thread registry.watches[${index}]`);
+    if (!Object.hasOwn(watch, "unchanged_waits")) watch.unchanged_waits = 0;
     assertExactFields(
       watch,
-      ["task_id", "attempt", "thread_key", "cursor"],
+      ["task_id", "attempt", "thread_key", "cursor", "unchanged_waits"],
       `thread registry.watches[${index}]`,
     );
     const taskId = requireIdentifier(watch.task_id, `thread registry.watches[${index}].task_id`);
@@ -11021,6 +11069,10 @@ function validateThreadRegistry(value                         )       {
     }
     watchIds.push(`${taskId}\u0000${attempt}\u0000${threadKeyValue}`);
     requireNullableString(watch.cursor, `thread registry.watches[${index}].cursor`);
+    requireNonNegativeInteger(
+      watch.unchanged_waits,
+      `thread registry.watches[${index}].unchanged_waits`,
+    );
   });
   ensureUnique(watchIds, "thread registry watch identity");
 }
@@ -11093,7 +11145,13 @@ function threadRegistryCommand(action        , args          )       {
       const threadKeyValue = requireString(args[3], "thread_key");
       if (!Object.hasOwn(threads, threadKeyValue)) fail(`unknown thread key: ${threadKeyValue}`);
       const cursor = args[4] === undefined || args[4] === "-" ? null : requireString(args[4], "cursor");
-      const next = { task_id: taskId, attempt, thread_key: threadKeyValue, cursor };
+      const next = {
+        task_id: taskId,
+        attempt,
+        thread_key: threadKeyValue,
+        cursor,
+        unchanged_waits: 0,
+      };
       const index = watches.findIndex((watch) =>
         watch.task_id === taskId && watch.attempt === attempt && watch.thread_key === threadKeyValue
       );
@@ -11131,6 +11189,10 @@ const SUPERVISOR_TERMINAL_STATES = new Set([
   "failed",
   "cancelled",
   "archived",
+]);
+
+const SUPERVISOR_NOTIFY_STATES = new Set([
+  ...SUPERVISOR_TERMINAL_STATES,
   "needs_attention",
 ]);
 
@@ -11227,7 +11289,12 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       const reusableThread = subjectState.bound_executor_id === null
         ? null
         : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
-      const registered = canonicalThread ?? reusableThread?.thread ?? null;
+      const reusableStatuses = new Set(["idle", "running"]);
+      const registered = canonicalThread !== null && reusableStatuses.has(String(canonicalThread.status))
+        ? canonicalThread
+        : reusableThread !== null && reusableStatuses.has(String(reusableThread.thread.status))
+        ? reusableThread.thread
+        : null;
       if (subjectState.bound_executor_id !== null && registered === null) {
         fail(`bound executor ${subjectState.bound_executor_id} is missing from thread registry`);
       }
@@ -11245,6 +11312,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
 
     const waitActions                            = [];
     const notifications                            = [];
+    const stalledActions                            = [];
     for (const watch of watches) {
       const taskId = requireIdentifier(watch.task_id, "thread registry watch.task_id");
       const attempt = requirePositiveInteger(watch.attempt, "thread registry watch.attempt");
@@ -11261,18 +11329,26 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
         title: threadTitle(plan.tasks.find((candidate) => candidate.id === taskId) ??
           fail(`unknown watched task: ${taskId}`)),
       };
-      if (status === "running" && waitActions.length < limit) {
+      const unchangedWaits = requireNonNegativeInteger(
+        watch.unchanged_waits,
+        "thread registry watch.unchanged_waits",
+      );
+      if (status === "running" && unchangedWaits >= 3 && stalledActions.length < limit) {
+        stalledActions.push({ ...compact, unchanged_waits: unchangedWaits });
+      } else if (status === "running" && waitActions.length < limit) {
         waitActions.push({
           ...compact,
           cursor: requireNullableString(watch.cursor, "thread registry watch.cursor"),
         });
-      } else if (SUPERVISOR_TERMINAL_STATES.has(status) && notifications.length < limit) {
+      } else if (SUPERVISOR_NOTIFY_STATES.has(status) && notifications.length < limit) {
         const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
           fail(`unknown watched task: ${taskId}`);
         notifications.push({
           ...compact,
           status,
-          ...supervisorResultNotice(plan, task, taskState),
+          ...(status === "needs_attention"
+            ? { result_ref: null, summary: "线程需要用户处理" }
+            : supervisorResultNotice(plan, task, taskState)),
         });
       }
     }
@@ -11284,6 +11360,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       },
       create,
       wait: waitActions,
+      stalled: stalledActions,
       notify: notifications,
     };
   }));
@@ -11368,7 +11445,13 @@ function supervisorRecordCommand(
         role: task.role === "review" ? "review" : "owner",
         status: "running",
       };
-      const watch = { task_id: taskId, attempt, thread_key: key, cursor: null };
+      const watch = {
+        task_id: taskId,
+        attempt,
+        thread_key: key,
+        cursor: null,
+        unchanged_waits: 0,
+      };
       const watchIndex = watches.findIndex((candidate) =>
         candidate.task_id === taskId && candidate.attempt === attempt
       );
@@ -11410,7 +11493,7 @@ function supervisorRecordCommand(
       const [taskId, attemptArgument, cursorArgument, statusArgument] = args;
       const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
       const status = requireString(statusArgument, "observed status");
-      if (status !== "running" && !SUPERVISOR_TERMINAL_STATES.has(status)) {
+      if (status !== "running" && !SUPERVISOR_NOTIFY_STATES.has(status)) {
         fail(`observed status is invalid: ${status}`);
       }
       const watch = watches.find((candidate) =>
@@ -11419,7 +11502,14 @@ function supervisorRecordCommand(
       if (watch === undefined) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
       const threadKeyValue = requireString(watch.thread_key, "thread key");
       const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
-      watch.cursor = cursorArgument === "-" ? null : requireString(cursorArgument, "cursor");
+      const nextCursor = cursorArgument === "-" ? null : requireString(cursorArgument, "cursor");
+      const previousCursor = requireNullableString(watch.cursor, "cursor");
+      watch.cursor = nextCursor;
+      watch.unchanged_waits = status === "running"
+        ? previousCursor === nextCursor
+          ? requireNonNegativeInteger(watch.unchanged_waits, "unchanged_waits") + 1
+          : 0
+        : 0;
       thread.status = status;
       validateThreadRegistry(registry);
       writeJson(threadsPath, registry);
@@ -11428,8 +11518,49 @@ function supervisorRecordCommand(
         task: taskId,
         attempt,
         terminal: SUPERVISOR_TERMINAL_STATES.has(status),
+        unchanged_waits: watch.unchanged_waits,
         main: mainRoute,
       };
+    }
+
+    if (event === "resumed") {
+      if (args.length !== 2) fail("supervisor-record resumed requires <task> <attempt>");
+      const [taskId, attemptArgument] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const watch = watches.find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watch === undefined) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
+      const threadKeyValue = requireString(watch.thread_key, "thread key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      if (thread.status !== "attention_notified" && thread.status !== "stalled") {
+        fail(`thread cannot resume from ${String(thread.status)}`);
+      }
+      thread.status = "running";
+      watch.unchanged_waits = 0;
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return { status: "resumed", task: taskId, attempt };
+    }
+
+    if (event === "stalled-notified") {
+      if (args.length !== 2) fail("supervisor-record stalled-notified requires <task> <attempt>");
+      const [taskId, attemptArgument] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const watch = watches.find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watch === undefined) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
+      if (requireNonNegativeInteger(watch.unchanged_waits, "unchanged_waits") < 3) {
+        fail("thread has not reached the stalled threshold");
+      }
+      const threadKeyValue = requireString(watch.thread_key, "thread key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      if (thread.status !== "running") fail(`thread cannot become stalled from ${String(thread.status)}`);
+      thread.status = "stalled";
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return { status: "stalled_notified", task: taskId, attempt };
     }
 
     if (event === "notified") {
@@ -11443,8 +11574,14 @@ function supervisorRecordCommand(
       const threadKeyValue = requireString(watches[index].thread_key, "thread key");
       const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
       const terminalStatus = requireString(thread.status, "thread status");
-      if (!SUPERVISOR_TERMINAL_STATES.has(terminalStatus)) {
-        fail(`thread is not terminal: ${terminalStatus}`);
+      if (!SUPERVISOR_NOTIFY_STATES.has(terminalStatus)) {
+        fail(`thread does not require notification: ${terminalStatus}`);
+      }
+      if (terminalStatus === "needs_attention") {
+        thread.status = "attention_notified";
+        validateThreadRegistry(registry);
+        writeJson(threadsPath, registry);
+        return { status: "attention_notified", task: taskId, attempt };
       }
       registry.watches = watches.filter((_, candidateIndex) => candidateIndex !== index);
       thread.status = "idle";
@@ -11456,6 +11593,101 @@ function supervisorRecordCommand(
     fail(`unknown supervisor record event: ${event}`);
   }));
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function supervisorRecoverCommand(
+  goalDirectoryArgument        ,
+  taskIdArgument        ,
+  attemptArgument        ,
+  reasonArgument        ,
+)       {
+  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  const taskId = requireIdentifier(taskIdArgument, "task_id");
+  const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+  const reason = requireString(reasonArgument, "reason");
+  const snapshot = withStateLock(statePath, () => withStateLock(threadsPath, () => {
+    const { plan, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+    const registry = readThreadRegistry(threadsPath, plan.goal_id);
+    const taskState = state.tasks[taskId] ?? fail(`unknown task: ${taskId}`);
+    if (taskState.attempt !== attempt) fail("task attempt mismatch");
+    const watches = registry.watches                             ;
+    const watch = watches.find((candidate) =>
+      candidate.task_id === taskId && candidate.attempt === attempt
+    );
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const threadKeyValue = watch === undefined
+      ? null
+      : requireString(watch.thread_key, "thread key");
+    const thread = threadKeyValue === null
+      ? null
+      : requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+    const executorId = taskState.executor_id ?? (
+      thread === null ? null : requireString(thread.thread_id, "thread id")
+    );
+    return {
+      task_status: taskState.status,
+      reservation_token: taskState.reservation_token,
+      last_reclaimed_token: taskState.last_reclaimed_token,
+      executor_id: executorId,
+      thread_key: threadKeyValue,
+      thread_status: thread?.status ?? null,
+    };
+  }));
+
+  const taskStatus = requireString(snapshot.task_status, "task status");
+  const reservationToken = requireNullableString(snapshot.reservation_token, "reservation token");
+  if (taskStatus === "reserved" || taskStatus === "running") {
+    if (snapshot.thread_key === null) fail("active task has no supervisor watch");
+    const threadStatus = requireString(snapshot.thread_status, "thread status");
+    if (!["stalled", "attention_notified", "needs_attention", "lost"].includes(threadStatus)) {
+      fail(`thread must be stalled or awaiting user action before recovery: ${threadStatus}`);
+    }
+    if (reservationToken === null) fail("active task reservation token is missing");
+    runSelfJson(["reclaim", planPath, statePath, taskId, reservationToken, reason]);
+  } else if (taskStatus !== "pending") {
+    fail(`task ${taskId} cannot be recovered from ${taskStatus}`);
+  }
+
+  const executorId = requireNullableString(snapshot.executor_id, "executor id");
+  if (executorId !== null) {
+    runSelfJson(["confirm-stale-executor", planPath, statePath, executorId]);
+  }
+
+  const registryReceipt = withStateLock(threadsPath, () => {
+    const plan = parsePlan(readJson(planPath), planPath).plan;
+    const registry = readThreadRegistry(threadsPath, plan.goal_id);
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const watches = registry.watches                             ;
+    const removed = watches.filter((candidate) =>
+      candidate.task_id === taskId && candidate.attempt === attempt
+    );
+    registry.watches = watches.filter((candidate) => !(
+      candidate.task_id === taskId && candidate.attempt === attempt
+    ));
+    const affectedKeys = new Set(removed.map((watch) => requireString(watch.thread_key, "thread key")));
+    const snapshotThreadKey = requireNullableString(snapshot.thread_key, "thread key");
+    if (snapshotThreadKey !== null) affectedKeys.add(snapshotThreadKey);
+    const remainingWatches = registry.watches                             ;
+    let lostThreads = 0;
+    for (const key of affectedKeys) {
+      if (remainingWatches.some((watch) => watch.thread_key === key)) continue;
+      const thread = requireRecord(threads[key], `thread registry.threads.${key}`);
+      thread.status = "lost";
+      lostThreads += 1;
+    }
+    validateThreadRegistry(registry);
+    if (removed.length > 0 || affectedKeys.size > 0) writeJson(threadsPath, registry);
+    return { removed_watches: removed.length, lost_threads: lostThreads };
+  });
+
+  process.stdout.write(`${JSON.stringify({
+    contract: "SUPERVISOR_RECOVERY_RECEIPT_V1",
+    status: "recovered",
+    task: taskId,
+    attempt,
+    executor: executorId,
+    ...registryReceipt,
+  })}\n`);
 }
 
 function validateStructuredWrite(value                         , expectedContract        )       {
@@ -11684,6 +11916,7 @@ function resultSubmitCommand(
     );
     validateReviewResultBinding(plan, state, task, result);
     writeImmutableJson(taskState.result_path, result);
+    refreshProgressDocument(planPath, statePath);
     return {
       contract: "THREAD_TASK_RECEIPT_V1",
       status: result.status,
@@ -11812,8 +12045,10 @@ function main(argv          )       {
   }
   if (command === "plan-create" && args.length === 2) return planCreateCommand(args[0], args[1]);
   if (command === "plan-revise" && args.length === 2) return planReviseCommand(args[0], args[1]);
-  if (command === "planner-review-context" && args.length === 1) {
-    return plannerReviewContextCommand(args[0]);
+  if (command === "planner-review-context" && (
+    args.length === 1 || (args.length === 2 && args[1] === "--compact")
+  )) {
+    return plannerReviewContextCommand(args[0], args[1] === "--compact");
   }
   if (command === "planner-review-submit" && args.length === 1) {
     return plannerReviewSubmitCommand(args[0]);
@@ -11822,8 +12057,13 @@ function main(argv          )       {
     return validateCommand(args[0]);
   }
   if (command === "render" && args.length === 1) return renderCommand(args[0]);
-  if (command === "reserve" && (args.length === 2 || args.length === 3)) {
-    return reserveCommand(args[0], args[1], args[2]);
+  if (command === "reserve" && args.length >= 2 && args.length <= 4) {
+    const compact = args.includes("--compact");
+    if (args.filter((value) => value === "--compact").length > 1) fail("duplicate --compact flag");
+    const positional = args.filter((value) => value !== "--compact");
+    if (positional.length === 2 || positional.length === 3) {
+      return reserveCommand(positional[0], positional[1], positional[2], compact);
+    }
   }
   if (command === "bind" && args.length === 5) {
     return bindCommand(args[0], args[1], args[2], args[3], args[4]);
@@ -11864,8 +12104,10 @@ function main(argv          )       {
   if (command === "apply-delta" && args.length === 3) {
     return applyDeltaCommand(args[0], args[1], args[2]);
   }
-  if (command === "reconcile" && args.length === 2) {
-    return reconcileCommand(args[0], args[1]);
+  if (command === "reconcile" && (
+    args.length === 2 || (args.length === 3 && args[2] === "--compact")
+  )) {
+    return reconcileCommand(args[0], args[1], args[2] === "--compact");
   }
   if (command === "reclaim" && args.length === 5) {
     return reclaimCommand(args[0], args[1], args[2], args[3], args[4]);
@@ -11873,7 +12115,9 @@ function main(argv          )       {
   if (command === "confirm-stale-executor" && args.length === 3) {
     return confirmStaleExecutorCommand(args[0], args[1], args[2]);
   }
-  if (command === "status" && args.length === 2) return statusCommand(args[0], args[1]);
+  if (command === "status" && (
+    args.length === 2 || (args.length === 3 && args[2] === "--compact")
+  )) return statusCommand(args[0], args[1], args[2] === "--compact");
   if (command === "dashboard-snapshot" && args.length === 2) {
     return dashboardSnapshotCommand(args[0], args[1]);
   }
@@ -11916,6 +12160,9 @@ function main(argv          )       {
   if (command === "supervisor-record" && args.length >= 2) {
     return supervisorRecordCommand(args[0], args[1], args.slice(2));
   }
+  if (command === "supervisor-recover" && args.length === 4) {
+    return supervisorRecoverCommand(args[0], args[1], args[2], args[3]);
+  }
   if (command === "json-write" && (args.length === 2 || args.length === 3)) {
     return jsonWriteCommand(args[0], args[1], args[2]);
   }
@@ -11926,7 +12173,7 @@ function main(argv          )       {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | plan-revise <goal.json> <plan.json> | planner-review-context <plan.json> | planner-review-submit <plan.json> | activate <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] | runtime-execute <plan.json> <state.json> <task_id> <reservation_token> | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | supervisor-next <goal-dir> [--limit <1-8>] | supervisor-record <goal-dir> <created|binding|observed|notified> ... | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
+    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | plan-revise <goal.json> <plan.json> | planner-review-context <plan.json> [--compact] | planner-review-submit <plan.json> | activate <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] [--compact] | runtime-execute <plan.json> <state.json> <task_id> <reservation_token> | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | supervisor-next <goal-dir> [--limit <1-8>] | supervisor-record <goal-dir> <created|binding|observed|resumed|stalled-notified|notified> ... | supervisor-recover <goal-dir> <task_id> <attempt> <reason> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> [--compact] | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> [--compact] | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
   );
 }
 

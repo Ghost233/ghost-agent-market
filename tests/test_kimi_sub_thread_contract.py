@@ -40,7 +40,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
     def test_kimi_plugin_manifest_is_current(self) -> None:
         manifest = json.loads(read("kimi.plugin.json"))
         self.assertEqual(manifest["name"], "ghost-agent-workflow")
-        self.assertEqual(manifest["version"], "0.3.0")
+        self.assertEqual(manifest["version"], "0.3.1")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("长期子线程", manifest["description"])
         self.assertIn("Review", manifest["description"])

@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "脚本化 Supervisor 静默管理最多八个中文命名长期子线程的 Owner DAG、Planner Reviewer、显式 Review 和递归子图；缺少持久子线程 API 时 fail closed。",
   "author": {
     "name": "Ghost233",
