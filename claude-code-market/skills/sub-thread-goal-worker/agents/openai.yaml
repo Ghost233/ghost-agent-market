@@ -1,0 +1,6 @@
+interface:
+  display_name: "子线程 Goal Worker"
+  short_description: "在已绑定的持久子线程内执行一个 fenced task attempt。"
+
+policy:
+  allow_implicit_invocation: false

@@ -1,279 +1,35 @@
-# Claude Code Coverage、Plan 与 Delta 模板
+# Planner 最小契约
 
-## PLAN_COVERAGE_V1
+不要复制完整 canonical schema。Planner 只提供脚本无法推导的语义；所有对象直接送入命令 stdin，不创建中间 JSON 文件。
 
-先读取 runtime 生成并由 `goal-state.source_blocks` 绑定的 `SOURCE_BLOCKS_V1`。每个计划项都要引用至少一个当前 block，并声明完成它真正需要的 effect：
+## 顶层 Plan
 
-```json
-{
-  "contract": "PLAN_COVERAGE_V1",
-  "source_path": "/absolute/path/to/plan.md",
-  "source_digest": "<plan.md sha256>",
-  "source_revision": 1,
-  "plan_path": "/absolute/goal/plan.json",
-  "plan_digest": "<plan.json sha256>",
-  "plan_revision": 1,
-  "required_plan_items": [
-    {
-      "id": "PI-owner-state",
-      "description": "实现并验证 Owner affinity、generation fencing 与 Capsule checkpoint",
-      "source_refs": ["L12-0123456789ab", "L13-abcdef012345"],
-      "required_effects": ["implementation", "verification"]
-    },
-    {
-      "id": "PI-workflow-proof",
-      "description": "以完整 smoke 证明覆盖率、证据和完成顺序",
-      "source_refs": ["L28-fedcba987654"],
-      "required_effects": ["verification"]
-    }
-  ]
-}
-```
+- `PLAN_INPUT_V1.items[]`：`id/description/source_refs/effects`。
+- `PLAN_INPUT_V1.tasks[]` 常用字段：`id/title/owner/work/after/write/done/verify/gates/items`。
+- `role/actor/risk/review/review_batch/review_reason/reviews/priority/cost/parent/locks` 仅在默认值不合适时填写。
+- 调用 `goal-dag.mjs plan-create <goal> <plan>`；脚本生成 `PLAN_COVERAGE_V1` 和 `DAG_PLAN_V5`。
+- task 标题包含中文；work 有 writable scope，review/verify 没有 writable scope。
+- immediate Review 节点依赖 subject，subject 的业务下游经过该 Review。
 
-`source_refs` 只能引用当前 `SOURCE_BLOCKS_V1.blocks[].id`。`required_effects` 只能包含 `implementation`、`verification`；`audit` 是 gate task 的 effect，不是 coverage requirement。coverage 按 `(item, effect)` 计数，不能用一个 implementation task 冒充 verification。
+## Review 升级 Delta
 
-## DAG_PLAN_V5
+`DAG_DELTA_INPUT_V1.review[]` 每项只有：
 
 ```json
-{
-  "contract": "DAG_PLAN_V5",
-  "planner": "parallel-task-planner",
-  "plan_format_version": 5,
-  "revision": 1,
-  "execution_platform": "claude_code",
-  "goal_contract_path": "/absolute/goal/goal.json",
-  "goal_digest": "<goal.json sha256>",
-  "goal_id": "runtime-owner-reuse",
-  "plan_source": {
-    "path": "/absolute/path/to/plan.md",
-    "digest": "<plan.md sha256>",
-    "revision": 1
-  },
-  "coverage_path": "/absolute/goal/coverage.json",
-  "owners": [
-    {
-      "id": "runtime-core",
-      "role": "work",
-      "responsibility": "负责任务状态机与并发不变量",
-      "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
-      "excluded_paths": [],
-      "worker_context": "保持 reservation、attempt、source revision 与 Capsule 更新原子",
-      "runtime_profile": null,
-      "reuse_policy": "owner_affinity"
-    }
-  ],
-  "runtime_actors": [
-    {
-      "id": "source-audit",
-      "role": "verify",
-      "responsibility": "机械审计 source blocks 覆盖",
-      "worker_context": "只运行 source-audit，不读取模块实现",
-      "runtime_profile": null
-    },
-    {
-      "id": "diff-audit",
-      "role": "verify",
-      "responsibility": "机械审计真实工作区差异",
-      "worker_context": "只运行 diff-audit，不形成模块建议",
-      "runtime_profile": null
-    },
-    {
-      "id": "commit-readiness",
-      "role": "verify",
-      "responsibility": "机械生成提交交付清单",
-      "worker_context": "只运行 commit-readiness",
-      "runtime_profile": null
-    }
-  ],
-  "tasks": [
-    {
-      "id": "T0",
-      "logical_id": "source.coverage-audit",
-      "title": "审计源计划覆盖",
-      "role": "verify",
-      "owner_id": null,
-      "runtime_actor_id": "source-audit",
-      "task": "分类全部 source blocks，并运行 source-audit 生成 artifact",
-      "depends_on": [],
-      "writable_paths": [],
-      "resource_locks": ["source-coverage-audit"],
-      "done_when": ["每个 source block 已映射或有明确 non-requirement 理由"],
-      "verification_ids": ["source-coverage-audit"],
-      "satisfies_goal_gates": ["source-coverage-audit"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"],
-      "coverage_effect": "audit",
-      "priority": 30,
-      "estimated_cost": 1
-    },
-    {
-      "id": "T1",
-      "logical_id": "runtime.owner-state",
-      "title": "实现 Owner 状态机",
-      "role": "work",
-      "owner_id": "runtime-core",
-      "runtime_actor_id": null,
-      "task": "实现 Owner affinity、generation fencing 和 Capsule checkpoint",
-      "depends_on": ["T0"],
-      "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
-      "resource_locks": ["goal-dag-runtime"],
-      "done_when": ["Owner 可复用也可安全换 Agent"],
-      "verification_ids": ["runtime-unit"],
-      "satisfies_goal_gates": ["runtime-unit"],
-      "plan_item_ids": ["PI-owner-state"],
-      "coverage_effect": "implementation",
-      "priority": 20,
-      "estimated_cost": 5
-    },
-    {
-      "id": "T2",
-      "logical_id": "runtime.verify-flow",
-      "title": "验证 Goal 执行流程",
-      "role": "verify",
-      "owner_id": "runtime-core",
-      "runtime_actor_id": null,
-      "task": "只读运行完整 Goal DAG smoke，审查本模块差异并发布 COMMIT_ATTESTATION_V1",
-      "depends_on": ["T1"],
-      "writable_paths": [],
-      "resource_locks": ["goal-dag-smoke"],
-      "done_when": ["计划项 required effects 为 100% 且发布本模块提交证明"],
-      "verification_ids": ["workflow-smoke"],
-      "satisfies_goal_gates": ["workflow-smoke"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"],
-      "coverage_effect": "verification",
-      "priority": 20,
-      "estimated_cost": 2
-    },
-    {
-      "id": "T3",
-      "logical_id": "runtime.diff-scope-audit",
-      "title": "审计真实工作区差异",
-      "role": "verify",
-      "owner_id": null,
-      "runtime_actor_id": "diff-audit",
-      "task": "运行 diff-audit，核对 baseline、真实工作区与 accepted work results",
-      "depends_on": ["T2"],
-      "writable_paths": [],
-      "resource_locks": ["diff-scope-audit"],
-      "done_when": ["runtime 生成的 DIFF_SCOPE_AUDIT_V1 通过"],
-      "verification_ids": ["diff-scope-audit"],
-      "satisfies_goal_gates": ["diff-scope-audit"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"],
-      "coverage_effect": "audit",
-      "priority": 10,
-      "estimated_cost": 1
-    },
-    {
-      "id": "T4",
-      "logical_id": "delivery.commit-readiness",
-      "title": "生成提交就绪清单",
-      "role": "verify",
-      "owner_id": null,
-      "runtime_actor_id": "commit-readiness",
-      "task": "运行 commit-readiness 并生成 DELIVERY_MANIFEST_V1",
-      "depends_on": ["T3"],
-      "writable_paths": [],
-      "resource_locks": ["commit-readiness"],
-      "done_when": ["Git、Registry、Owner attestation 与真实工作区全部一致"],
-      "verification_ids": ["commit-readiness"],
-      "satisfies_goal_gates": ["commit-readiness"],
-      "plan_item_ids": ["PI-workflow-proof"],
-      "coverage_effect": "audit",
-      "priority": 5,
-      "estimated_cost": 1
-    }
-  ],
-  "safety": {
-    "status": "sequential_only",
-    "reasons": ["source audit 必须先于 work，最终 audit 必须晚于 accepted work results"]
-  }
-}
+{"task":"T2","review_task":"T2R","reason":"公共接口变化"}
 ```
 
-模块 Owner 必须逐字来自 Registry include/exclude；同模块全部 mode 复用同一 Owner，三个机械主体只放 `runtime_actors[]`。平台差异：Claude Code profile 为 `null`，Codex 才固定 `gpt-5.6-sol/high`。work 依赖 source audit，最终依次执行 Owner attestation、diff audit 与 commit readiness。
+`T2R` 同时出现在 `tasks`。通过 `goal-dag.mjs apply-delta <plan> <state> -` 应用；runtime 自动补元数据、修改 subject policy、重连下游并清除 pending 状态。
 
-## DAG_DELTA_V1：source revision 刷新
+## 子图 Expansion
 
-只有 `goal-refresh` 已完成原子刷新并令 state 进入 `goal_refresh_pending` 后，才生成 source delta：
+`TASK_SUBGRAPH_INPUT_V1` 只提供 `children/entry/exit` 和可选 safety。通过 `expand-subgraph ... -` 应用；父 id/token 来自命令参数，request/ref/digest/reason/revision 由 runtime 绑定。runtime 校验：
 
-```json
-{
-  "contract": "DAG_DELTA_V1",
-  "base_plan_digest": "<当前 plan.json sha256>",
-  "revision": 2,
-  "coverage_update": {
-    "required_plan_items": [
-      {
-        "id": "PI-owner-state",
-        "description": "实现并验证 Owner affinity、generation fencing 与 Capsule checkpoint",
-        "source_refs": ["L14-111111111111"],
-        "required_effects": ["implementation", "verification"]
-      },
-      {
-        "id": "PI-workflow-proof",
-        "description": "以完整 smoke 证明覆盖率、证据和完成顺序",
-        "source_refs": ["L31-222222222222"],
-        "required_effects": ["verification"]
-      }
-    ]
-  },
-  "source_dispositions": [
-    {"task_id": "T0", "action": "invalidate", "replacement_task_id": "T5"},
-    {"task_id": "T1", "action": "invalidate", "replacement_task_id": "T6"},
-    {"task_id": "T2", "action": "invalidate", "replacement_task_id": "T7"},
-    {"task_id": "T3", "action": "invalidate", "replacement_task_id": "T8"},
-    {"task_id": "T4", "action": "invalidate", "replacement_task_id": "T9"}
-  ],
-  "add_owners": [],
-  "add_tasks": [
-    {
-      "id": "T5", "logical_id": "source.coverage-audit-r2", "title": "重审源计划覆盖",
-      "role": "verify", "owner_id": null, "runtime_actor_id": "source-audit", "task": "分类 revision 2 的全部 source blocks",
-      "depends_on": [], "writable_paths": [], "resource_locks": ["source-coverage-audit"],
-      "done_when": ["revision 2 的 source blocks 无遗漏"],
-      "verification_ids": ["source-coverage-audit"], "satisfies_goal_gates": ["source-coverage-audit"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
-      "priority": 40, "estimated_cost": 1
-    },
-    {
-      "id": "T6", "logical_id": "runtime.owner-state-r2", "title": "更新 Owner 状态机",
-      "role": "work", "owner_id": "runtime-core", "runtime_actor_id": null, "task": "按 revision 2 更新实现",
-      "depends_on": ["T5"], "writable_paths": ["tooling/goal-dag/**", "tests/test_goal_dag_cli.py"],
-      "resource_locks": ["goal-dag-runtime"], "done_when": ["实现符合 revision 2"],
-      "verification_ids": ["runtime-unit"], "satisfies_goal_gates": ["runtime-unit"],
-      "plan_item_ids": ["PI-owner-state"], "coverage_effect": "implementation",
-      "priority": 30, "estimated_cost": 3
-    },
-    {
-      "id": "T7", "logical_id": "runtime.verify-flow-r2", "title": "复验 Goal 执行流程",
-      "role": "verify", "owner_id": "runtime-core", "runtime_actor_id": null, "task": "验证 revision 2 并发布提交证明",
-      "depends_on": ["T6"], "writable_paths": [], "resource_locks": ["goal-dag-smoke"],
-      "done_when": ["revision 2 required effects 全部完成"],
-      "verification_ids": ["workflow-smoke"], "satisfies_goal_gates": ["workflow-smoke"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "verification",
-      "priority": 20, "estimated_cost": 2
-    },
-    {
-      "id": "T8", "logical_id": "runtime.diff-scope-audit-r2", "title": "复审真实工作区差异",
-      "role": "verify", "owner_id": null, "runtime_actor_id": "diff-audit", "task": "运行 revision 2 diff-audit",
-      "depends_on": ["T7"], "writable_paths": [], "resource_locks": ["diff-scope-audit"],
-      "done_when": ["revision 2 DIFF_SCOPE_AUDIT_V1 通过"],
-      "verification_ids": ["diff-scope-audit"], "satisfies_goal_gates": ["diff-scope-audit"],
-      "plan_item_ids": ["PI-owner-state", "PI-workflow-proof"], "coverage_effect": "audit",
-      "priority": 10, "estimated_cost": 1
-    },
-    {
-      "id": "T9", "logical_id": "delivery.commit-readiness-r2", "title": "重建提交清单",
-      "role": "verify", "owner_id": null, "runtime_actor_id": "commit-readiness", "task": "运行 revision 2 commit-readiness",
-      "depends_on": ["T8"], "writable_paths": [], "resource_locks": ["commit-readiness"],
-      "done_when": ["revision 2 DELIVERY_MANIFEST_V1 通过"],
-      "verification_ids": ["commit-readiness"], "satisfies_goal_gates": ["commit-readiness"],
-      "plan_item_ids": ["PI-workflow-proof"], "coverage_effect": "audit",
-      "priority": 5, "estimated_cost": 1
-    }
-  ],
-  "repairs": [],
-  "safety": {"status": "sequential_only", "reasons": ["revision 2 重新执行 source audit、work、verify 与 diff audit"]}
-}
-```
+- 父仍是 running leaf，token/digest 匹配且没有越界修改；
+- children 使用 `<parent>-<n>`，只依赖兄弟；
+- entry/exit 与真实内部 DAG 一致；
+- 外部边不穿透父节点。
 
-source refresh delta 必须 disposition 每个 live task，且旧 `source-coverage-audit`、`diff-scope-audit`、`commit-readiness` 都必须 invalidate。`apply-delta` 会原子清除 invalidated task 在 Capsule 当前视图中的 completed/result/evidence/checkpoint 引用。非 source refresh 的 repair/coverage delta 必须逐字段原样保留当前 `required_plan_items`（包括 `source_refs` 与 `required_effects`）。
+## Owner transition
+
+`DAG_DELTA_INPUT_V1.owner` 只写 `validation/approval/rebind`。Registry digest、文件 digest 和 Owner 定义由脚本读取，不能重复手写。

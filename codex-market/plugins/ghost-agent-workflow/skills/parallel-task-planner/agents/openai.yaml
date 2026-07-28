@@ -1,6 +1,6 @@
 interface:
-  display_name: "计划覆盖率与 v5 DAG"
-  short_description: "供子代理控制器生成 coverage、Owner/task DAG 与局部修订。"
+  display_name: "并行任务规划器"
+  short_description: "供子线程控制器生成 coverage、Owner/task DAG 与局部修订。"
 
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

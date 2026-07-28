@@ -1,22 +1,28 @@
 # Ghost Agent Workflow Kimi 插件
 
-包含四个 skill：`subagent-coordination`、`parallel-task-planner`、`subagent-goal-worker` 和 `git-commit`。前三者组成 subagent-only Goal DAG；最后一个用于安全提交当前改动。
+包含六个 skill：`sub-thread-coordination`、`parallel-task-planner`、`sub-thread-goal-worker`、`sub-thread-task-supervisor`、`start-dag-dashboard` 和 `git-commit`。前四者组成持久子线程 DAG；`start-dag-dashboard` 只在后台启动只读进度页。
 
 Kimi 推荐入口只有这一行：
 
 ```text
-/skill:subagent-coordination 执行 `./plan.md`
+/skill:sub-thread-coordination 执行 `./plan.md`
 ```
 
-Kimi 使用 `local_fallback` 生命周期与 `DAG_PLAN_V5`。Owner 是仓库级永久模块；三个机械 runtime actor 与 Owner 分离，仓库级 lease 防止跨 Goal 并发占用。首次显示完整 DAG，后续默认显示 delta diff；Goal/Plan/runtime 不进 Git，交付由 Owner attestation 与 `DELIVERY_MANIFEST_V1` 驱动。目标未完成时继续使用 runtime 返回的单行续跑提示。
+Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行；标准 Agent 禁止作为回退，缺少能力时 fail closed。每个 Owner generation 复用一个长期子线程，并额外维护 `gpt-5.6-luna/low` 极简任务监督子线程与 DAG 视图子线程。监督子线程加载 `sub-thread-task-supervisor`，只等待结束并通知主线程检查。
 
-首次 `goal-validate` 会冻结 `WORKTREE_BASELINE_V1` 并生成 `SOURCE_BLOCKS_V1`。planner 为每个 plan item 写 source refs 和 required effects，task 用 `coverage_effect` 精确覆盖；独立 source audit 必须先于所有 work，最终 diff audit 由 runtime 扫描 baseline、真实工作区与 accepted results，两个 artifact 都用 SHA-256 绑定。
+active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 
-每轮恢复先 `reconcile` 再 reserve；`status`/`reconcile` 为每个 active reservation 返回完整 canonical binding 与 action/phase，使 spawn/bind/send 崩溃后无需聊天记忆或自行重算。source drift 时停止 reserve、drain active reservation，再事务刷新 source revision、blocks、coverage/state 与 Capsule；invalidated task 的当前证据不可沿用。DAG 耗尽但 required effect coverage 不足 100% 时返回 `needs_delta`。
+子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`；只允许小写字母、数字和下划线，禁止中括号、连字符、空格、中文与随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。主线程检查通知并完成机械验收后才报告 task 最终结果。
 
-只有 coverage 达到 100%、当前 revision 的 task 与 required gate 证据全部有效，且其它 completion invariant 均成立时，`finalize` 才返回 `completed`，skill 随后向用户报告完成。
+需要在浏览器持续观察时，运行 `/skill:start-dag-dashboard <plan.json绝对路径>`；它调用 `python3 ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.py` 分离后台服务并返回 URL。runtime 脚本原子维护紧凑的 `progress.json` 当前快照和追加式 `events.jsonl` 历史；`/api/progress-document` 提供快照，`/api/progress-events` 提供分页事件。页面默认只监听 `127.0.0.1:7357`。
 
-Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体。模块开发、查找资料、审查、修复和建议都只能由同一 Owner 完成，其他 Owner 只能消费它发布的接口或结论；纯 source/diff audit 使用无代码 scope 的机械 runtime actor，不创建 Owner。执行器通过 `Agent(run_in_background: true)` 启动、`Agent(resume:)` 复用；Kimi 子代理使用平台默认 profile，不同 Goal 不复用物理 Agent。
+首次 `goal-validate` 保存轻量 `WORKSPACE_FENCE_V1`：Git tree/index digest 与当时的非 clean 项，不复制全部受管理文件。active leaf 可在任何可归因修改前扩展为 T2-1、T2-2…递归子 DAG，父 task 保持外层依赖边界。
+
+Review 是显式 DAG 节点，而不是隐形默认步骤。每个 task 声明 risk、policy、batch 和阻塞范围；机械验收由 runtime 执行，共享验证由 verify 节点生成可复用 evidence。
+
+所有 JSON、JSONL、YAML、TOML、配置、Plan、State、Result、Progress 与 Review 状态只通过脚本写入。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回紧凑 `THREAD_TASK_RECEIPT_V1`。
+
+Owner 是仓库级永久代码模块主体。新增、分裂或 scope 变化必须由脚本验证并等待用户对精确 digest 的批准；等待用户操作时不启动空模型回合累计 blocked 次数。
 
 只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、coverage、delta、reservation、result、artifact 和 session Capsule 都是临时状态，不应提交。Owner 新增或分裂必须先由脚本验证 scope 冲突，再取得用户对精确 digest 的明确批准。
 

@@ -4,24 +4,34 @@
 
 - `ghost-agent-workflow`
 
-`ghost-agent-workflow` 包含四个 skill：
+`ghost-agent-workflow` 包含六个 skill：
 
 - `parallel-task-planner`
-- `subagent-coordination`
-- `subagent-goal-worker`
+- `sub-thread-coordination`
+- `sub-thread-goal-worker`
+- `sub-thread-task-supervisor`
+- `start-dag-dashboard`
 - `git-commit`
 
 ## 推荐入口
 
 ```text
-/skill:subagent-coordination 执行 `./plan.md`,以子代理 DAG 完整执行,直到计划项覆盖率 100% 且所有验收通过。
+/skill:sub-thread-coordination 以持久子线程 DAG 执行 `./plan.md`。
 ```
 
-Kimi Code 的原生 Goal 不向插件暴露稳定的 native instance identity（无 threadId/createdAt），因此本插件使用 `local_fallback` 生命周期：显式 `/skill:subagent-coordination` 是唯一公开 DAG 控制器；当目标未完成时，它会返回 runtime 生成的单行续跑提示（`/skill:subagent-coordination 继续 <goal.json绝对路径>`），请逐字使用该提示继续执行。如果你希望获得自动外循环，也可以用原生 `/goal 每轮调用 subagent-coordination skill …` 包裹；skill 本身不调用 CreateGoal/UpdateGoal，也不依赖原生 Goal 存在。
+Kimi Code 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。显式 `/skill:sub-thread-coordination` 是公开 DAG 控制器；当目标未完成时，它返回 runtime 生成的单行续跑提示（`/skill:sub-thread-coordination 继续 <goal.json绝对路径>`），请逐字使用。
 
-控制器使用 `DAG_PLAN_V5`：模块 Owner 跨 Goal 永久存在并受仓库级 lease 互斥；三个机械 runtime actor 不属于 owners。首次显示完整 DAG，后续 delta 只显示 diff。runtime 自动归因 changes、用 workspace sequence 管理证据新鲜度，并生成 Owner attestations 驱动的 delivery manifest。
+只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行。标准 Agent 禁止作为回退；缺少子线程 API 时在规划后 fail closed。每个 Owner generation 使用一个长期子线程，并额外维护 `gpt-5.6-luna/low` 极简任务监督子线程和 DAG 视图子线程。监督子线程加载 `sub-thread-task-supervisor`，只等待结束并通知主线程检查。
 
-Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体；同一模块的开发、资料查找、审查、修复和建议永远回到同一 Owner，其他 Owner 不得读取其内部代码。Agent 只是可替换执行载体；Kimi 子代理使用平台默认 profile，不同 Goal 不复用物理 Agent。
+active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
+
+子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`；只允许小写字母、数字和下划线，禁止中括号、连字符、空格、中文与随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。主线程检查通知并完成机械验收后才报告 task 最终结果。
+
+Review 是显式 DAG 节点，机械验收由 runtime 执行，共享验证由 verify 节点生成可复用 evidence。所有 JSON、JSONL、YAML、TOML 与配置都通过脚本写入；完整结果只落盘，子线程聊天只返回紧凑 receipt。
+
+需要把实时只读进度页放到后台时，使用 `/skill:start-dag-dashboard <plan.json绝对路径>`。它通过 Python 启动器分离服务进程，不执行或修改执行批次；runtime 原子维护紧凑的 `progress.json` 当前快照与追加式 `events.jsonl` 历史，网页 `/api/progress-document` 提供快照，`/api/progress-events` 提供分页事件。
+
+Owner 是仓库级永久代码模块主体。新增、分裂或 scope 变化必须由脚本验证并等待用户对精确 digest 的批准；工作流等待用户操作时不启动空模型回合累计 blocked 次数。
 
 只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 是临时执行状态，应加入 `.gitignore`。Owner 新增或分裂必须经脚本冲突验证和用户对精确 digest 的明确批准。
 

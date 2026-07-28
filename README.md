@@ -5,8 +5,10 @@
 内置 skill：
 
 - `parallel-task-planner`
-- `subagent-coordination`
-- `subagent-goal-worker`
+- `sub-thread-coordination`
+- `sub-thread-goal-worker`
+- `sub-thread-task-supervisor`
+- `start-dag-dashboard`
 - `git-commit`
 
 Codex App 专用测试 skill：
@@ -15,17 +17,27 @@ Codex App 专用测试 skill：
 
 ## Goal DAG 入口
 
-Codex 推荐直接输入这一行：
+Codex 默认不需要原生 `/goal`，直接输入：
 
 ```text
-/goal 每轮使用 $subagent-coordination，以子代理 DAG 完整执行 `./plan.md`，直到计划项覆盖率 100% 且所有验收通过。
+使用 $sub-thread-coordination，以持久子线程 DAG 完整执行 `./plan.md`。
 ```
 
-Codex 原生 `/goal` 是持久外循环；`$subagent-coordination` 使用 `DAG_PLAN_V5` 调度永久模块 Owner 与三个机械 runtime actor。source audit 在修改前证明覆盖，diff audit 核对 runtime 自动归因，commit-readiness 最后生成 `DELIVERY_MANIFEST_V1`。首次展示完整 DAG，后续 delta 默认只展示 DAG diff。
+`sub-thread-coordination` 是唯一协调入口。工作流为每个 Owner generation 维护一个可长期复用的子线程，并额外维护一个 `gpt-5.6-luna/low` 极简任务监督子线程和一个 DAG 视图子线程。监督子线程通过专用 `sub-thread-task-supervisor` Skill 只等待任务结束并通知主线程检查，不解析结果、不验收、不调度 Review。完整 DAG、进度与历史事件由网页 Dashboard 展示。
 
-Claude Code 没有 Codex 原生 Goal 生命周期，因此使用 `local_fallback`：默认实例由 source 绝对路径+digest 定位；重复执行完全相同的 source 必须显式提供新 instance key，且永不覆盖已有目录。首次显式调用 `/ghost-agent-workflow:subagent-coordination` 执行 `./plan.md`，之后逐字使用 runtime 返回的一行同名 skill 提示和其中的 `goal.json` 绝对路径续跑。长上下文始终从本地状态恢复，不进入续跑提示。
+运行中的叶子任务如果发现需要插接多步工作，可在修改业务文件前发出 fenced 子图请求。runtime 原子把 T2 转成保留外层依赖边界的 composite，并在内部加入 T2-1、T2-2…递归 DAG；下游仍只依赖 T2，网页可折叠/展开子图并显示父节点聚合状态。
 
-逻辑 Owner 以代码模块为边界，在仓库中跨 Goal 永久存在；开发、查资料、搜索、审查、修复和建议都只能由该模块 Owner 完成。Registry V2 以 include/exclude 表达 scope，所有新增、分裂、扩张、收缩、转移和合并都先经脚本验证，再等待用户对精确 digest 批准。仓库级 lease 阻止两个 Goal 同时使用同一 Owner；跨 Owner 只能消费发布的 interface/handoff。物理 Agent 只是可替换执行载体。
+子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`；只允许小写字母、数字和下划线，禁止中括号、连字符、空格、中文与随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。
+
+可用 `$start-dag-dashboard` 调用 `python3 <plugin-root>/scripts/start-dashboard.py <plan.json> [state.json]`，把零依赖、只读的实时页面放入独立后台进程；重复调用会复用同一服务并返回 URL。`progress.json` 只保存当前紧凑快照，历史写入追加式 `events.jsonl`，两者都由 runtime 脚本原子更新，模型不得直接编辑；`/api/progress-events` 提供分页抓取。页面默认监听 `127.0.0.1:7357`。
+
+模型 Review 不再是每个 task 的隐式步骤。Planner 必须把 Review 设计为显式 DAG 节点，并为 task 声明风险、Review 策略、批次和阻塞范围。机械验收由脚本执行；全仓验证与 dry-run matrix 由独立 verify 节点生成可复用证据，最终门禁只补跑失效证据。
+
+所有 JSON、JSONL、YAML、TOML、配置、Plan、State、Result、Progress 与 Review 状态都必须通过项目脚本或 runtime 命令写入。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回紧凑 `THREAD_TASK_RECEIPT_V1`。
+
+原生 Goal 是可选桥接：默认使用 `standalone_thread`，用户可以直接回答 Owner 变化。只有用户已启动或明确要求 Goal 时才使用 `codex_native`。Goal 模式遇到 Owner 变化时进入 `awaiting_owner_action`，通知用户暂停 Goal 并处理精确变更；应用后提示“可以继续 Goal”，不通过空模型回合累计 blocked 次数。
+
+Claude Code 与 Kimi Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才执行该工作流；标准 Agent 禁止作为回退，缺少能力时 fail closed。
 
 使用工作流的项目只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、结果和审计产物都应加入 `.gitignore`。
 
@@ -49,8 +61,9 @@ ghost-agent-market/
 │   ├── .claude-plugin/marketplace.json
 │   └── skills/
 │       ├── parallel-task-planner/
-│       ├── subagent-coordination/
-│       ├── subagent-goal-worker/
+│       ├── sub-thread-coordination/
+│       ├── sub-thread-goal-worker/
+│       ├── sub-thread-task-supervisor/
 │       └── git-commit/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
@@ -59,8 +72,10 @@ ghost-agent-market/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
         │       ├── parallel-task-planner/
-        │       ├── subagent-coordination/
-        │       ├── subagent-goal-worker/
+        │       ├── sub-thread-coordination/
+        │       ├── sub-thread-goal-worker/
+        │       ├── sub-thread-task-supervisor/
+        │       ├── start-dag-dashboard/
         │       ├── git-commit/
         │       └── git-commit-direct-model-test/
         └── rtk-hook/
@@ -81,8 +96,10 @@ kimi-market/
         ├── scripts/goal-dag.mjs
         └── skills/
             ├── parallel-task-planner/
-            ├── subagent-coordination/
-            ├── subagent-goal-worker/
+            ├── sub-thread-coordination/
+            ├── sub-thread-goal-worker/
+            ├── sub-thread-task-supervisor/
+            ├── start-dag-dashboard/
             └── git-commit/
 ```
 
@@ -142,5 +159,5 @@ GitHub 一键安装（CI 从 `main` 分支构建的滚动 release zip，免克�
 插件为用户级安装，对所有项目生效；安装或更新后需要 `/reload` 或开启新会话。Goal DAG 相关 skill 需要用户机器安装 Node.js（`git-commit` 不依赖）。推荐入口：
 
 ```text
-/skill:subagent-coordination 执行 `./plan.md`，以子代理 DAG 完整执行，直到计划项覆盖率 100% 且所有验收通过。
+/skill:sub-thread-coordination 以持久子线程 DAG 执行 `./plan.md`。
 ```

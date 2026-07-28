@@ -5,29 +5,37 @@
 - `ghost-agent-workflow`
 - `rtk-hook`
 
-`ghost-agent-workflow` 包含五个 skill：
+`ghost-agent-workflow` 包含七个 skill：
 
 - `parallel-task-planner`
-- `subagent-coordination`
-- `subagent-goal-worker`
+- `sub-thread-coordination`
+- `sub-thread-goal-worker`
+- `sub-thread-task-supervisor`
+- `start-dag-dashboard`
 - `git-commit`
 - `git-commit-direct-model-test`
 
 ## 推荐入口
 
 ```text
-/goal 每轮使用 $subagent-coordination，以子代理 DAG 完整执行 `./plan.md`，直到计划项覆盖率 100% 且所有验收通过。
+使用 $sub-thread-coordination，以持久子线程 DAG 完整执行 `./plan.md`。
 ```
 
-Codex 原生 `/goal` 提供持久外循环，`$subagent-coordination` 使用 `DAG_PLAN_V5`。模块 Owner 跨 Goal 永久存在并受仓库级 lease 互斥；source/diff/commit-readiness 是独立机械 actor。runtime 自动计算 task changed files、用 workspace sequence 管理证据新鲜度，并生成 Owner attestations 驱动的 delivery manifest。
+`sub-thread-coordination` 是唯一协调入口。每个 Owner generation 对应一个长期子线程，同一 Owner 后续 task 复用该子线程；固定的 `gpt-5.6-luna/low` 任务监督子线程加载 `sub-thread-task-supervisor`，只等待任务结束并通知主线程检查，不解析结果、不验收、不调度 Review。独立 DAG 视图子线程负责 Dashboard 与变化投影。
 
-DAG 已耗尽但 required effect coverage 仍低于 100% 时进入 `needs_delta`。`status`/`reconcile` 为 active reservation 重建完整 canonical binding，崩溃恢复不依赖聊天记忆。source drift 先 drain active reservation，再事务刷新 source/blocks/coverage/state；invalidated task 的当前 Capsule evidence 被清除。结果按 task attempt 独立保存，并受 source revision、attempt、reservation token、Owner generation 和 artifact digest fencing 约束。
+默认生命周期是 `standalone_thread`，不强制创建原生 Goal。只有用户已启动或明确要求 Goal 时才桥接 `codex_native`。Goal 模式遇到 Owner 变化时进入 `awaiting_owner_action`：通知用户暂停 Goal、完成精确批准与脚本应用，再提示“可以继续 Goal”；不会启动空回合累计 blocked 次数。
 
-Owner 是仓库级、跨 Goal 永久存在的代码功能模块主体；同一模块的开发、资料查找、审查、修复和建议永远回到同一 Owner，其他 Owner 不得读取其内部代码。Agent 只是可替换执行载体；执行模式固定为 `subagent`，Codex 子代理固定使用 `gpt-5.6-sol/high`，不同 Goal 不复用物理 Agent。
+子线程系统 key 使用 `wf_<owner>_g<generation>_<goalkey>`，只允许小写字母、数字和下划线，不使用中括号、连字符、空格、中文或随机 UUID。用户可见标题使用 `[GA][TASK][OWNER] <owner_id>`、`[GA][TASK][RUNTIME] <runtime_actor_id>`、`[GA][TASK][SUPERVISOR] 任务监督` 或 `[GA][TASK][DAG_VIEW] DAG 视图`。
 
-只持久化并提交 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 是临时执行状态，应加入 `.gitignore`。Owner 新增或分裂必须经脚本冲突验证和用户对精确 digest 的明确批准。
+active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层入边/出边，内部使用 T2-1、T2-2…表达依赖并可递归扩展；Dashboard 支持折叠、展开与父状态聚合。
 
-`git-commit` 先按当前注册工具选择 `multi_agent_v1` 的 Spark/xhigh 或直接 `spawn_agent` 的 Sol/high，只运行一个只读分析子代理，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Planner 为每个 task 声明风险、策略、批次、阻塞范围和原因；机械验收由 runtime 执行，共享验证由 verify 节点生成以 tree/scope/command/config digest 为键的可复用 evidence。
+
+所有结构化文件与配置只通过脚本写入。完整 `WORKER_RESULT_V5` 落盘，子线程聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程不输出 Mermaid、DAG diff 或普通 running 状态，只向用户报告已经机械接受的 task 最终结果与追踪入口。
+
+需要实时只读进度页时，使用 `$start-dag-dashboard <plan.json绝对路径>`。后台 Python 服务读取由 runtime 原子维护的紧凑 `progress.json` 和追加式 `events.jsonl`；网页 `/api/progress-document` 提供当前快照，`/api/progress-events` 提供分页事件。只持久化并提交 `.ghost-agent-workflow/owners/**`，runtime 状态应加入 `.gitignore`。
+
+`git-commit` 先按当前注册工具选择 `multi_agent_v1` 或直接 `spawn_agent`，只运行一个明确禁用上下文 fork、沿用当前执行模型与推理配置的只读分析子代理，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 `git-commit-direct-model-test` 是 Codex App 专用的只读运行时探测：严格串行直接测试 `spawn_agent` / `create_thread` 与 Spark / Luna 的四种组合，不读取自定义 agent 定义。
 
