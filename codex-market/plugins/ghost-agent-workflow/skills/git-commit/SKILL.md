@@ -39,7 +39,7 @@ node <plugin-root>/scripts/goal-dag.mjs delivery-validate <delivery-manifest.jso
 清单模式不启动任何通用 Git 分析代理。它报告 manifest digest、`workspace_change_seq`、Owner attestation digest、提交 hash、name-only/check 结果和剩余 status；不输出模块 diff。
 
 
-主线程是唯一 Git 写入者。子代理只读分析并返回提交建议；不得让子代理暂存、提交、修改文件或继续委派。分析前先检查本会话注册的子代理工具，只选择一个确定存在的执行路径，不用失败调用探测能力，也不运行第二个分析执行单元。提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
+主线程是唯一 Git 写入者。子代理只读分析并返回提交建议；不得让子代理暂存、提交、修改文件或继续委派。所有子代理创建参数都必须显式禁用上下文 fork，并省略任何模型或推理覆盖字段，使子代理使用本次执行 `git-commit` 的主线程模型与推理配置；不得复制、继承或注入主线程历史。分析前先检查本会话注册的子代理工具，只选择一个确定存在的执行路径，不用失败调用探测能力，也不运行第二个分析执行单元。提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
 
 ## 只读分析子代理
 
@@ -66,13 +66,13 @@ const useV1 =
 tools.multi_agent_v1__spawn_agent:
   agent_type: "default"
   fork_context: false
-  model: "gpt-5.3-codex-spark"
-  reasoning_effort: "xhigh"
-  message: <只读分析包，profile_evidence 精确等于 multi_agent_v1:gpt-5.3-codex-spark/xhigh>
+  message: <只读分析包，profile_evidence 精确等于 multi_agent_v1:executor-model/no-fork>
 
 tools.multi_agent_v1__wait_agent:
   targets: [<spawn 返回的 agent_id>]
 ```
+
+不得向 `multi_agent_v1__spawn_agent` 传 `model`、`reasoning_effort` 或任何等价的 profile 覆盖字段；`fork_context` 必须精确为 `false`。
 
 若同一注册表还存在 `multi_agent_v1__close_agent`，取得完成结果后在 `exec` 返回前关闭该代理；关闭前必须先保存最终结果。`exec` 最终只向主线程返回工具选择证据、agent id 和原始终态结果。
 
@@ -81,11 +81,11 @@ tools.multi_agent_v1__wait_agent:
 ```text
 agent_type: "default"
 fork_turns: "none"
-model: "gpt-5.6-sol"
-reasoning_effort: "high"
 task_name: "ga_git_commit_analysis_<时分秒>"
-message: <只读分析包，profile_evidence 精确等于 spawn_agent:gpt-5.6-sol/high>
+message: <只读分析包，profile_evidence 精确等于 spawn_agent:executor-model/no-fork>
 ```
+
+不得向 `spawn_agent` 传 `model`、`reasoning_effort` 或任何等价的 profile 覆盖字段；`fork_turns` 必须精确为 `"none"`，不得改为 `"all"`、正整数或省略。
 
 4. 对 v1 路径使用同一 `exec` 中的 `multi_agent_v1__wait_agent`；对直接路径使用 collaboration 的 `wait_agent` 等待终态。工具已注册但创建、初始化、等待或运行失败时，在任何 Git 写操作前停止并报告原始证据；不得切换到另一条路径、创建第二个代理或退回主线程自行分析。合法 `status: "blocked"` 同样是终态，不得再次分析。契约缺失、JSON 格式错误、仓库不一致或 profile 不一致时停止，不发送格式修复请求，不创建替代执行单元。
 
@@ -113,7 +113,7 @@ message: <只读分析包，profile_evidence 精确等于 spawn_agent:gpt-5.6-so
 }
 ```
 
-`profile_evidence` 只能精确等于实际所选路径对应的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-sol/high`。不得使用 `|`、不得同时报告两个 profile。最终状态为 `blocked` 或最终分析代理失败时，在任何 Git 写操作前停止并报告原始证据。
+`profile_evidence` 只能精确等于实际所选路径对应的 `multi_agent_v1:executor-model/no-fork` 或 `spawn_agent:executor-model/no-fork`。不得使用 `|`、不得同时报告两个 profile。最终状态为 `blocked` 或最终分析代理失败时，在任何 Git 写操作前停止并报告原始证据。
 
 ## 主线程复核
 
@@ -163,7 +163,7 @@ Co-Authored-By: Nexus <nexus@xfinite.global>
 
 主线程报告：
 
-- 最终使用的 `multi_agent_v1:gpt-5.3-codex-spark/xhigh` 或 `spawn_agent:gpt-5.6-sol/high` profile evidence、工具选择证据和分析警告。
+- 最终使用的 `multi_agent_v1:executor-model/no-fork` 或 `spawn_agent:executor-model/no-fork` profile evidence、工具选择证据和分析警告。
 - 每个仓库和批次的 commit hash、提交信息与文件范围。
 - submodule 到主工程的实际提交顺序。
 - hooks 和 `git diff --cached --check` 结果。

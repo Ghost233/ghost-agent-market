@@ -8,7 +8,7 @@ description: |
 
 # Git 智能提交
 
-在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。Codex 端按注册工具选择 `multi_agent_v1` 或直接子代理的能力探测不适用于 Claude Code；这里继续由当前主会话完成分析和 Git 写入。
+在当前 checkout 中分析并提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。本实现不启动分析子代理，因此不发生上下文 fork，也不指定替代模型；分析和 Git 写入始终使用当前主会话的执行模型。Codex 端的 `fork_context: false`、`fork_turns: "none"` 和子代理能力探测不适用于 Claude Code。
 
 
 ## 永久 Owner 仓库的清单模式

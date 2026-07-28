@@ -10,7 +10,7 @@ whenToUse: |
 
 # Git 智能提交
 
-本实现仅用于 Kimi Code，依赖其 `Agent` 工具的 `explore` 只读子代理；只读约束由平台强制，不需要 Codex 端的能力探测 exec 块与模型选择。在本仓库提交此 skill 时，这项平台依赖就是 `AGENTS.md` 所要求写清的平台原因。
+本实现仅用于 Kimi Code，依赖其 `Agent` 工具的 `explore` 只读子代理；只读约束由平台强制，不需要 Codex 端的能力探测 exec 块与模型选择。Kimi 的 `Agent` 不暴露 fork 参数，因此只传显式只读分析包，不复制或注入主会话历史；同时不传模型或推理覆盖字段，使用当前执行环境的默认模型配置。在本仓库提交此 skill 时，这项平台依赖就是 `AGENTS.md` 所要求写清的平台原因。
 
 在当前 checkout 中提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
@@ -50,7 +50,7 @@ description: "[GA][审查][执行] Git 提交分析"
 prompt: <只读分析包,profile_evidence 精确等于 kimi:explore/default>
 ```
 
-`explore` 由平台强制只读，正好满足“子代理不得暂存、提交、修改文件”的硬约束。Kimi 的 `Agent` 工具没有 model、thinking 或 effort 参数，子代理固定平台默认 profile，不得传模型或思考参数。前台等待其最终结果，不使用 `run_in_background`，也不创建第二个代理。
+`explore` 由平台强制只读，正好满足“子代理不得暂存、提交、修改文件”的硬约束。Kimi 的 `Agent` 工具没有 model、thinking、effort 或 fork 参数；不得伪造这些字段，也不得在 prompt 中复制主会话历史。只传本节定义的只读分析包，使用当前执行环境的默认模型配置。前台等待其最终结果，不使用 `run_in_background`，也不创建第二个代理。
 
 工具调用失败、未返回终态结果或运行失败时，在任何 Git 写操作前停止并报告原始证据；不得创建第二个代理或退回主线程自行分析。合法 `status: "blocked"` 同样是终态，不得再次分析。契约缺失、JSON 格式错误、仓库不一致或 profile 不一致时停止，不发送格式修复请求，不创建替代执行单元。
 
