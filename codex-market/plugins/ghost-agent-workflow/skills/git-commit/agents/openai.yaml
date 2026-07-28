@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "使用只读子代理分析完整变更，由主线程复核并分批创建中文 Git 提交"
-  default_prompt: "使用 $git-commit，先按当前注册工具选择唯一的无上下文 fork 只读子代理，并沿用当前执行模型与推理配置分析 checkout，再由主线程复核、分批完成中文 Git 提交。"
+  short_description: "只读子代理分析变更，主线程复核并创建中文提交"
+  default_prompt: "使用 $git-commit，以 gpt-5.6-sol/high 且不 fork 主线程上下文的只读子代理分析变更，再由主线程复核并提交。"

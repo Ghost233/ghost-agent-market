@@ -159,37 +159,34 @@ class CodexWorkflowContractTests(unittest.TestCase):
             },
         )
 
-    def test_git_commit_selects_one_no_fork_executor_model_agent(self) -> None:
+    def test_git_commit_uses_simple_read_only_subagent_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
-        self.assertIn('agent_type: "default"', combined)
-        self.assertIn('fork_turns: "none"', self.git_commit)
-        self.assertIn('fork_context: false', self.git_commit)
-        self.assertIn("GIT_COMMIT_ANALYSIS_V1", self.git_commit)
-        self.assertIn("wait_agent", self.git_commit)
-        self.assertIn("主线程是唯一 Git 写入者", self.git_commit)
-        self.assertIn("不得让子代理暂存、提交、修改文件", self.git_commit)
-        self.assertIn('names.has("multi_agent_v1__spawn_agent")', self.git_commit)
-        self.assertIn('names.has("multi_agent_v1__wait_agent")', self.git_commit)
-        self.assertIn("multi_agent_v1:executor-model/no-fork", combined)
-        self.assertIn("spawn_agent:executor-model/no-fork", combined)
-        self.assertIn("使用本次执行 `git-commit` 的主线程模型与推理配置", self.git_commit)
-        self.assertNotIn("model:", self.git_commit)
-        self.assertNotIn("reasoning_effort:", self.git_commit)
-        for hardcoded_model in (
-            "gpt-5.3-codex-spark",
+        for requirement in (
+            "只读分析子代理",
             "gpt-5.6-sol",
-            "gpt-5.6-terra",
-            "gpt-5.6-luna",
+            "思考强度固定为 `high`",
+            'fork_turns: "none"',
+            "fork_context",
+            "不复制主线程聊天历史",
+            "子代理不得修改文件、暂存、提交、push",
+            "主线程负责复核分析",
+            "git diff --cached --check",
+            "git add -- <paths>",
+            "Co-Authored-By: Nexus <nexus@xfinite.global>",
         ):
-            self.assertNotIn(hardcoded_model, combined)
-        self.assertNotIn("create_thread", self.git_commit)
-        self.assertNotIn("list_projects", self.git_commit)
-        self.assertNotIn("wait_threads", self.git_commit)
-        self.assertNotIn("gpt-5.6-luna", self.git_commit)
-        self.assertIn("主线程复核", self.git_commit)
-        self.assertIn("DELIVERY_MANIFEST_V1", self.git_commit)
-        self.assertIn("delivery-validate", self.git_commit)
-        self.assertIn("不得读取 `git diff`", self.git_commit)
+            self.assertIn(requirement, combined)
+        for removed_constraint in (
+            "Owner",
+            "Goal",
+            "DAG",
+            "sub-thread",
+            "parallel",
+            "profile_evidence",
+            "GIT_COMMIT_ANALYSIS_V1",
+            "multi_agent_v1",
+            "delivery-validate",
+        ):
+            self.assertNotIn(removed_constraint, combined)
 
     def test_git_commit_has_no_dedicated_agent_config(self) -> None:
         matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
@@ -241,10 +238,23 @@ class CodexWorkflowContractTests(unittest.TestCase):
             (LOCAL_GIT_COMMIT / "agents/openai.yaml").read_text(encoding="utf-8"),
             self.git_commit_metadata,
         )
+        self.assertEqual(
+            (ROOT / "claude-code-market/skills/git-commit/SKILL.md").read_text(
+                encoding="utf-8"
+            ),
+            self.git_commit,
+        )
+        self.assertEqual(
+            (
+                ROOT
+                / "kimi-market/plugins/ghost-agent-workflow/skills/git-commit/SKILL.md"
+            ).read_text(encoding="utf-8"),
+            self.git_commit,
+        )
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.0\.7\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.0\.8\+codex\.")
         self.assertIn("长期 Codex 子线程", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

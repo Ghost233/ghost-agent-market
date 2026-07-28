@@ -35,7 +35,7 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 
 需要实时只读进度页时，使用 `$start-dag-dashboard <plan.json绝对路径>`。后台 Python 服务读取由 runtime 原子维护的紧凑 `progress.json` 和追加式 `events.jsonl`；网页 `/api/progress-document` 提供当前快照，`/api/progress-events` 提供分页事件。只持久化并提交 `.ghost-agent-workflow/owners/**`，runtime 状态应加入 `.gitignore`。
 
-`git-commit` 先按当前注册工具选择 `multi_agent_v1` 或直接 `spawn_agent`，只运行一个明确禁用上下文 fork、沿用当前执行模型与推理配置的只读分析子代理，再由主线程完成 Git 写入。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+`git-commit` 固定使用 `gpt-5.6-sol/high` 的只读子代理分析当前变更，并禁止 fork 主线程上下文，再由主线程复核并完成 Git 写入；不依赖 Goal、Owner、DAG 或子线程工作流。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 `git-commit-direct-model-test` 是 Codex App 专用的只读运行时探测：严格串行直接测试 `spawn_agent` / `create_thread` 与 Spark / Luna 的四种组合，不读取自定义 agent 定义。
 

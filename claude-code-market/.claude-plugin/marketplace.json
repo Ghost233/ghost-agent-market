@@ -11,7 +11,7 @@
       "name": "ghost-agent-workflow",
       "source": "./",
       "description": "Persistent sub-thread Owner DAGs with explicit Review nodes and script-managed state; fails closed without durable sub-thread APIs.",
-      "version": "0.5.5",
+      "version": "0.5.6",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"

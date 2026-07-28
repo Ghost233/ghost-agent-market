@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.0.7+codex.20260728041311",
+  "version": "1.0.8+codex.20260728044805",
   "description": "以长期 Codex 子线程执行 Owner DAG、显式 Review、递归子图和脚本生成的精简契约；原生 Goal 为可选桥接。",
   "author": {
     "name": "Ghost233",
@@ -35,7 +35,7 @@
     ],
     "defaultPrompt": [
       "使用 $sub-thread-coordination，以长期子线程完整执行 `./plan.md`；默认不创建 Goal。",
-      "使用 $git-commit；存在 Owner Registry 时只消费 delivery manifest 与 Owner attestations，否则使用旧通用分析流程。",
+      "使用 $git-commit 检查当前改动，并按职责创建清晰的 Git 提交。",
       "使用 $git-commit-direct-model-test 按固定顺序运行全部四项直接模型测试并汇总结果。",
       "使用 $start-dag-dashboard 在后台启动当前 Goal 的只读 DAG 进度网页。"
     ]

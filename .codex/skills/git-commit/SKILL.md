@@ -1,142 +1,38 @@
 ---
 name: git-commit
-description: |
-  使用只读通用子代理分析当前仓库的已暂存、未暂存和 submodule 变更，
-  再由主线程复核、按职责拆分批次并直接创建中文 Git 提交。
-  用户明确输入 `/git-commit`、要求“提交代码”“提交当前改动”或“commit these changes”时使用；
-  不用于只讨论 commit、解释 Git 或请求 push。
+description: 使用只读子代理分析当前仓库的 staged、unstaged、untracked 和 submodule 变更，再由主线程复核并创建中文 Git 提交。用户明确要求“提交代码”“提交当前改动”、`/git-commit`、`/skill:git-commit` 或 “commit these changes” 时使用；不用于只讨论 Git、解释提交或仅请求 push。
 ---
 
 # Git 智能提交
 
-本实现仅用于 Codex App，依赖其直接 collaboration 子代理或 `functions.exec` 中延迟注册的 `multi_agent_v1` 子代理能力。在本仓库提交此 skill 时，这项平台依赖就是 `AGENTS.md` 所要求的单端实现理由；只校验项目测试版与 Codex marketplace 源同步。
+在当前 checkout 中提交用户已授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
 
-在当前 checkout 中提交用户授权的现有改动。保持用户改动，不创建 worktree，不切换分支，不 push，不改写历史。
+## 分工
 
+- 必须先使用当前平台可用的子代理接口启动一个只读分析子代理。分析模型固定为 `gpt-5.6-sol`，思考强度固定为 `high`。
+- 强制禁止 fork 主线程上下文。Codex `spawn_agent` 必须显式设置 `fork_turns: "none"`；使用提供 `fork_context` 的接口时必须设置为 `false`。接口无法保证不继承主线程上下文时停止，不执行 Git 写操作。
+- 只向子代理传递仓库路径、用户授权范围、仓库指令和当前 Git 证据，不复制主线程聊天历史。
+- 子代理读取适用的仓库指令，并用只读 Git 命令检查状态、diff、submodule、Git identity、敏感文件和提交边界；返回变更摘要、风险、建议批次、显式路径和中文提交信息。
+- 子代理不得修改文件、暂存、提交、push 或执行其他 Git 写操作。
+- 主线程负责复核分析，并执行全部 Git 写操作。子代理建议不能替代主线程对实际状态和 diff 的检查。
 
-## 永久 Owner 仓库的清单模式
+## 工作流程
 
-运行 `git rev-parse --show-toplevel` 后，首先检查仓库根的 `.ghost-agent-workflow/owners/registry.json`。文件存在时必须进入本节，并在本节结束；禁止继续执行后面的通用分析子代理和“主线程复核”流程。Registry 不存在时才使用后续旧流程。
+1. 运行 `git rev-parse --show-toplevel`，确认仓库根目录和当前 checkout。
+2. 读取适用的 `AGENTS.md` 等仓库指令，并记录用户授权范围。
+3. 运行 `git status --short`、`git diff --stat`、`git diff`、`git diff --cached --stat`、`git diff --cached` 和 `git submodule status`。
+4. 启动只读子代理分析当前变更。把仓库绝对路径、用户授权范围和必要的只读结果交给它。
+5. 主线程重新读取实际 Git 状态和 diff，核对建议批次；检查 `.env*`、credentials、私钥、token、证书、生产配置和异常大文件。
+6. 没有可提交改动时正常停止，不创建空提交。
 
-清单模式中的 Git 控制器是机械 actor，不是模块 Owner。它可以读取 Registry、runtime state、`DELIVERY_MANIFEST_V1`、`COMMIT_ATTESTATION_V1`、Git identity/status/name-only/check/hash，但不得读取 `git diff`、`git show` 的模块内容，不得搜索或语义审查模块代码，也不得替 Owner 修改提交信息或文件分组。
+## 规划提交
 
-1. 从当前已完成 Goal 的 commit-readiness evidence 取得精确 delivery manifest。若需要发现候选，只能按 runtime state 中的 accepted artifact ref 机械查找；不能按时间戳盲选。存在多个当前候选或没有候选时停止并报告。
-2. 运行：
-
-```text
-node <plugin-root>/scripts/goal-dag.mjs delivery-validate <delivery-manifest.json>
-```
-
-只有返回 `status: valid` 才继续。该命令会重新核对当前 worktree、HEAD、Registry digest、`workspace_change_seq`、diff-scope evidence、每个 Owner attestation、敏感/runtime/未归属路径和 `git diff --check`。
-3. 机械比较 `git status --porcelain=v1 -z` 的全部可交付路径与 manifest 的 `changed_files[]`。集合不完全相等、存在脏 submodule 内部内容、调用前已有不在清单中的 staged 内容或 HEAD 改变时，在任何 Git 写入前停止。Goal/Plan/runtime 路径永远不能加入提交。
-4. 读取适用仓库指令以及 `git config user.name`、`git config user.email`。身份不符时停止。不要通过模块源码推导额外约束。
-5. 要求 manifest 的 `commit_strategy` 为 `single_atomic`，且所有 Owner attestation 已由 commit-readiness 证明同意同一个顶层 `commit_message`。多个 Owner 的文件保持各自 attestation 分组用于核验，但 Git 控制器不能自行拆分、合并或改写语义。
-6. 使用 manifest 的完整 `changed_files[]` 和共同批准的 `commit_message` 创建一个原子提交：
-   - 用完整显式路径集合 `git add -- <paths>`；不得使用 `git add .` 或 `git add -A`。
-   - 只运行 `git diff --cached --name-only`、`git diff --cached --check` 和 status，确认暂存路径集合精确相等；不得显示 cached diff 内容。
-   - 使用各 Owner 共同批准的单行 Conventional Commit message 创建提交，保留仓库要求的 trailer；控制器不得改写其语义。
-
-清单模式不启动任何通用 Git 分析代理。它报告 manifest digest、`workspace_change_seq`、Owner attestation digest、提交 hash、name-only/check 结果和剩余 status；不输出模块 diff。
-
-
-主线程是唯一 Git 写入者。子代理只读分析并返回提交建议；不得让子代理暂存、提交、修改文件或继续委派。所有子代理创建参数都必须显式禁用上下文 fork，并省略任何模型或推理覆盖字段，使子代理使用本次执行 `git-commit` 的主线程模型与推理配置；不得复制、继承或注入主线程历史。分析前先检查本会话注册的子代理工具，只选择一个确定存在的执行路径，不用失败调用探测能力，也不运行第二个分析执行单元。提交顺序是硬约束：先从最深层脏 submodule 向外提交，再提交主工程中的 submodule 指针和其他改动。
-
-## 只读分析子代理
-
-1. 主线程先运行 `git rev-parse --show-toplevel`，取得仓库绝对路径，并记录用户授权范围。
-2. 构造中文只读分析包，包含仓库绝对路径、用户授权范围、显示名称 `[GA][审查][执行] Git 提交分析`，以及第 5 步的完整 `GIT_COMMIT_ANALYSIS_V1` 字段契约。不得假设子代理能读取本 skill；必须在消息中要求子代理：
-   - 读取适用的 `AGENTS.md` 等仓库指令。
-   - 运行只读 Git 检查，区分 staged、unstaged、untracked、submodule 指针和 submodule 内部改动。
-   - 检查 Git 身份、敏感文件、疑似生成的大文件和归属不明内容。
-   - 从最深层 submodule 向外规划提交顺序，并按职责、风险和可独立回滚性给出显式路径批次。
-   - 不执行 `git add`、`git commit` 或任何文件修改，不调用其他代理。
-   - 最终只返回一个符合契约的 JSON 对象，`profile_evidence` 必须精确等于主线程为所选路径指定的值。
-3. 只调用一次 `functions.exec` 进行能力选择。必须用精确名称检查 `ALL_TOOLS`，不得按描述或模糊正则匹配：
-
-```javascript
-const names = new Set(ALL_TOOLS.map(tool => tool.name));
-const useV1 =
-  names.has("multi_agent_v1__spawn_agent") &&
-  names.has("multi_agent_v1__wait_agent");
-```
-
-若 `useV1` 为真，在同一个 `exec` 调用中直接完成创建与等待，不先把探测结果返回主线程：
-
-```text
-tools.multi_agent_v1__spawn_agent:
-  agent_type: "default"
-  fork_context: false
-  message: <只读分析包，profile_evidence 精确等于 multi_agent_v1:executor-model/no-fork>
-
-tools.multi_agent_v1__wait_agent:
-  targets: [<spawn 返回的 agent_id>]
-```
-
-不得向 `multi_agent_v1__spawn_agent` 传 `model`、`reasoning_effort` 或任何等价的 profile 覆盖字段；`fork_context` 必须精确为 `false`。
-
-若同一注册表还存在 `multi_agent_v1__close_agent`，取得完成结果后在 `exec` 返回前关闭该代理；关闭前必须先保存最终结果。`exec` 最终只向主线程返回工具选择证据、agent id 和原始终态结果。
-
-若 `useV1` 为假，`exec` 只返回 `{"selection":"direct_spawn_agent"}`，随后主线程直接调用 collaboration 的 `spawn_agent`：
-
-```text
-agent_type: "default"
-fork_turns: "none"
-task_name: "ga_git_commit_analysis_<时分秒>"
-message: <只读分析包，profile_evidence 精确等于 spawn_agent:executor-model/no-fork>
-```
-
-不得向 `spawn_agent` 传 `model`、`reasoning_effort` 或任何等价的 profile 覆盖字段；`fork_turns` 必须精确为 `"none"`，不得改为 `"all"`、正整数或省略。
-
-4. 对 v1 路径使用同一 `exec` 中的 `multi_agent_v1__wait_agent`；对直接路径使用 collaboration 的 `wait_agent` 等待终态。工具已注册但创建、初始化、等待或运行失败时，在任何 Git 写操作前停止并报告原始证据；不得切换到另一条路径、创建第二个代理或退回主线程自行分析。合法 `status: "blocked"` 同样是终态，不得再次分析。契约缺失、JSON 格式错误、仓库不一致或 profile 不一致时停止，不发送格式修复请求，不创建替代执行单元。
-
-5. 最终采用的分析执行单元必须返回一个 `GIT_COMMIT_ANALYSIS_V1` 对象，至少包含：
-
-```json
-{
-  "contract": "GIT_COMMIT_ANALYSIS_V1",
-  "status": "ready | blocked",
-  "profile_evidence": "<本次实际采用的唯一 profile>",
-  "repository": "<仓库绝对路径>",
-  "identity": {"name": "<Git 用户名>", "email": "<Git 邮箱>"},
-  "observed_status": ["<git status --short 条目>"],
-  "submodule_order": ["<从深到浅的仓库路径>"],
-  "batches": [
-    {
-      "repository": "<仓库绝对路径>",
-      "message": "<中文 Conventional Commit>",
-      "paths": ["<显式路径>"],
-      "reason": "<职责和边界>"
-    }
-  ],
-  "sensitive_or_unknown": ["<保持未暂存的路径和原因>"],
-  "warnings": ["<风险或空数组>"]
-}
-```
-
-`profile_evidence` 只能精确等于实际所选路径对应的 `multi_agent_v1:executor-model/no-fork` 或 `spawn_agent:executor-model/no-fork`。不得使用 `|`、不得同时报告两个 profile。最终状态为 `blocked` 或最终分析代理失败时，在任何 Git 写操作前停止并报告原始证据。
-
-## 主线程复核
-
-子代理结果是只读建议，不是提交授权或事实替代。主线程收到结果后必须亲自完成以下复核：
-
-1. 读取适用于根仓库及目标 submodule 的仓库指令。
-2. 运行 `git status --short`、`git diff --stat`、`git diff`、`git diff --cached --stat`、`git diff --cached` 和 `git submodule status`。
-3. 区分调用前已暂存内容、未暂存内容、未跟踪文件、submodule 指针和 submodule 内部改动；不要把调用前已暂存内容误归到新批次。
-4. 在每个将提交的仓库中读取 `git config user.name` 和 `git config user.email`。身份不符合仓库指令时停止，不创建提交。
-5. 对照 `observed_status`、`submodule_order` 和每个 batch 的显式路径。两次只读状态出现差异时比较具体路径；能够明确归因且仍在授权范围内时重新规划，无法归因时在 stage 前停止。
-6. 再次检查 `.env*`、credentials、私钥、token、证书、生产配置和疑似生成的大文件。敏感或归属不明内容保持未暂存并报告。
-
-没有可提交改动时正常停止，不创建空提交。
-
-## 提交决策
-
-- 只为解决客观疑点读取一次必要的指令、diff 或历史；证据充分后立即决定提交或失败。
-- 只有身份不符、敏感内容、归属不明的 staged 内容、明确违反仓库指令、分析契约无效或 Git 命令失败才阻塞。
-- 多轮用户编辑可能累计多次合法版本递增。若最终版本格式、进位和 cachebuster 均符合仓库规则，不得仅因它高于 `HEAD + 0.0.1` 而降级、改写或停止。
-- 当前授权范围内的问题能安全修复时直接修复并继续；必须扩大范围时才停止并报告。
-- 保留用户已有的合理 staged batch。若 staged 内容混合无关职责，报告冲突，不静默取消暂存或重排用户 staging。
-- 文档、测试、配置和实现只有在服务同一变更时才放入一笔提交。submodule 提交与主工程提交必须分开。
-- 使用中文 Conventional Commit：`<type>(<scope>): <描述>`。每笔提交保留：
+- 按职责、风险和可独立回滚性拆分批次；同一变更的实现、测试、文档和配置可以放在一起。
+- 保留用户已有的合理 staged 内容。发现无关或归属不明的 staged 内容时先停止并报告。
+- submodule 有未提交改动时，从最深层 submodule 开始提交，再提交父仓库中的指针变化。
+- 每批使用显式路径 `git add -- <paths>`；不要使用 `git add .` 或 `git add -A`。
+- 使用中文 Conventional Commit：`<type>(<scope>): <描述>`。
+- 每笔提交保留：
 
 ```text
 Co-Authored-By: Nexus <nexus@xfinite.global>
@@ -144,29 +40,14 @@ Co-Authored-By: Nexus <nexus@xfinite.global>
 
 ## 执行提交
 
-所有 Git 写命令第一次执行时就主动提权，不先在普通沙盒中试跑。只读检查不提权。
+对每个批次依次执行：
 
-- 显式暂存使用 `rtk git add -- <paths>`，同时传入 `sandbox_permissions: "require_escalated"`、最小具体的 justification 和 `prefix_rule: ["rtk", "git", "add"]`。
-- 创建提交使用 `rtk git commit ...`，同时传入 `sandbox_permissions: "require_escalated"`、最小具体的 justification 和 `prefix_rule: ["rtk", "git", "commit"]`。
-- 不得使用 `git add -A`、`git add .`、`--no-verify` 或宽于上述范围的 Git 白名单。
-
-按 `submodule_order` 和 batch 顺序逐笔执行：
-
-1. 使用显式路径 stage。
-2. 运行 `git diff --cached --stat`、`git diff --cached` 和 `git diff --cached --check`，确认批次聚焦、没有敏感内容或意外删除。
-3. 创建提交；hook 或 commit 失败时保留现场并报告，不自动回滚。
-4. 读取新 hash 并重新运行 `git status --short`，再决定是否继续下一批次。
-
-提交后同一路径出现新修改时，把已创建 commit 与新增未提交内容分开报告；不得自动 amend 或追加暂存。
+1. 使用显式路径暂存文件。
+2. 运行 `git diff --cached --stat`、`git diff --cached` 和 `git diff --cached --check`，确认批次准确且不包含敏感内容。
+3. 创建提交，不使用 `--no-verify` 绕过 hooks。
+4. 读取新 commit hash，并重新运行 `git status --short`。
+5. hook 或 Git 命令失败时保留现场并报告，不自动回滚、amend 或重写历史。
 
 ## 完成回报
 
-主线程报告：
-
-- 最终使用的 `multi_agent_v1:executor-model/no-fork` 或 `spawn_agent:executor-model/no-fork` profile evidence、工具选择证据和分析警告。
-- 每个仓库和批次的 commit hash、提交信息与文件范围。
-- submodule 到主工程的实际提交顺序。
-- hooks 和 `git diff --cached --check` 结果。
-- 剩余 staged、unstaged、untracked，以及被排除的敏感或无关文件。
-
-不要把部分批次已提交描述为整个工作区已提交完成。
+报告子代理的关键建议、每个提交的 hash 和信息、submodule 提交顺序、检查结果，以及剩余 staged、unstaged、untracked 或被排除的文件。不要把部分完成描述为整个工作区已经提交完成。
