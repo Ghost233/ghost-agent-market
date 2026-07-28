@@ -735,6 +735,84 @@ function routeCommand(registryArgument: string, pathArgument: string): void {
   process.stdout.write(`${JSON.stringify({ path, owner_id: matches[0].id, registry_digest: digestFile(registryPath) })}\n`);
 }
 
+function requestChangeCommand(args: string[]): void {
+  if (args.length < 5) {
+    fail("request-change requires <registry.json> <request.json> <operation> <reason> and at least one --owner");
+  }
+  const registryPath = resolve(args[0]);
+  const requestPath = resolve(args[1]);
+  const operation = args[2] as OwnerChangeRequest["operation"];
+  if (!["create", "split", "expand", "shrink", "transfer", "merge"].includes(operation)) {
+    fail(`invalid owner change operation: ${operation}`);
+  }
+  const reason = stringValue(args[3], "reason");
+  const registry = parseRegistry(readJson(registryPath), registryPath, false);
+  const sourceOwnerIds: string[] = [];
+  const owners = new Map<string, RequestedOwner>();
+  for (let index = 4; index < args.length;) {
+    const flag = args[index];
+    if (flag === "--source") {
+      sourceOwnerIds.push(identifier(args[index + 1], "source owner id"));
+      index += 2;
+      continue;
+    }
+    if (flag === "--owner") {
+      const id = identifier(args[index + 1], "new owner id");
+      if (owners.has(id)) fail(`duplicate --owner: ${id}`);
+      owners.set(id, {
+        id,
+        responsibility: stringValue(args[index + 2], `owner ${id} responsibility`),
+        worker_context: stringValue(args[index + 3], `owner ${id} worker_context`),
+        scope_patterns: [],
+        scope_excludes: [],
+        runtime_profile: null,
+      });
+      index += 4;
+      continue;
+    }
+    if (flag === "--scope" || flag === "--exclude") {
+      const id = identifier(args[index + 1], `${flag} owner id`);
+      const owner = owners.get(id);
+      if (owner === undefined) fail(`${flag} requires an earlier --owner ${id}`);
+      const pattern = normalizePattern(args[index + 2]);
+      if (flag === "--scope") owner.scope_patterns.push(pattern);
+      else owner.scope_excludes.push(pattern);
+      index += 3;
+      continue;
+    }
+    fail(`unknown request-change argument: ${String(flag)}`);
+  }
+  const newOwners = [...owners.values()];
+  if (newOwners.length === 0) fail("request-change requires at least one --owner");
+  for (const owner of newOwners) {
+    if (owner.scope_patterns.length === 0) fail(`owner ${owner.id} requires at least one --scope`);
+  }
+  unique(sourceOwnerIds, "source owner id");
+  const semantic = {
+    operation,
+    base_registry_digest: digestFile(registryPath),
+    reason,
+    source_owner_ids: sourceOwnerIds,
+    new_owners: newOwners,
+    capsule_strategy: operation === "create" ? "empty" : "inherit_sources",
+  };
+  const request: OwnerChangeRequest = {
+    contract: "OWNER_CHANGE_REQUEST_V2",
+    request_id: `owner-change-${digestJson(semantic).slice(0, 12)}`,
+    created_at: new Date().toISOString(),
+    ...semantic,
+  };
+  parseRequest(request);
+  if (existsSync(requestPath)) fail(`owner change request already exists: ${requestPath}`);
+  writeJsonAtomic(requestPath, request);
+  process.stdout.write(`${JSON.stringify({
+    status: "created",
+    request_ref: requestPath,
+    request_digest: digestFile(requestPath),
+    registry_revision: registry.revision,
+  })}\n`);
+}
+
 function validateChangeCommand(
   registryArgument: string,
   requestArgument: string,
@@ -793,6 +871,57 @@ function parseApproval(value: unknown): OwnerChangeApproval {
     validation_digest: stringValue(source.validation_digest, "owner change approval.validation_digest"),
     next_registry_digest: stringValue(source.next_registry_digest, "owner change approval.next_registry_digest"),
   };
+}
+
+function approveChangeCommand(
+  requestArgument: string,
+  validationArgument: string,
+  approvalArgument: string,
+): void {
+  const requestPath = resolve(requestArgument);
+  const validationPath = resolve(validationArgument);
+  const approvalPath = resolve(approvalArgument);
+  const request = parseRequest(readJson(requestPath));
+  const validation = record(readJson(validationPath), "owner change validation");
+  if (validation.contract !== "OWNER_CHANGE_VALIDATION_V2" || validation.status !== "passed") {
+    fail("owner change validation is not passed");
+  }
+  const requestDigest = digestJson(request);
+  const validationDigest = digestFile(validationPath);
+  const nextRegistryDigest = stringValue(
+    validation.next_registry_digest,
+    "owner change validation.next_registry_digest",
+  );
+  if (validation.request_digest !== requestDigest) fail("owner change request digest mismatch");
+  if (existsSync(approvalPath)) {
+    const current = parseApproval(readJson(approvalPath));
+    if (
+      current.request_digest !== requestDigest ||
+      current.validation_digest !== validationDigest ||
+      current.next_registry_digest !== nextRegistryDigest
+    ) fail("existing owner change approval is for different inputs");
+    process.stdout.write(`${JSON.stringify({
+      status: "current",
+      approval_ref: approvalPath,
+      approval_digest: digestFile(approvalPath),
+    })}\n`);
+    return;
+  }
+  const approval: OwnerChangeApproval = {
+    contract: "OWNER_CHANGE_APPROVAL_V2",
+    decision: "approved",
+    approved_by: "user",
+    approved_at: new Date().toISOString(),
+    request_digest: requestDigest,
+    validation_digest: validationDigest,
+    next_registry_digest: nextRegistryDigest,
+  };
+  writeJsonAtomic(approvalPath, approval);
+  process.stdout.write(`${JSON.stringify({
+    status: "approved",
+    approval_ref: approvalPath,
+    approval_digest: digestFile(approvalPath),
+  })}\n`);
 }
 
 function applyChangeCommand(
@@ -872,14 +1001,18 @@ function main(argv: string[]): void {
   if (command === "init" && args.length === 1) return initCommand(args[0]);
   if (command === "validate" && args.length === 1) return validateCommand(args[0]);
   if (command === "route" && args.length === 2) return routeCommand(args[0], args[1]);
+  if (command === "request-change" && args.length >= 5) return requestChangeCommand(args);
   if (command === "validate-change" && args.length === 3) {
     return validateChangeCommand(args[0], args[1], args[2]);
+  }
+  if (command === "approve-change" && args.length === 3) {
+    return approveChangeCommand(args[0], args[1], args[2]);
   }
   if (command === "apply-change" && args.length === 4) {
     return applyChangeCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: owner-registry.mjs init <workspace> | validate <registry.json> | route <registry.json> <path> | validate-change <registry.json> <request.json> <validation.json> | apply-change <registry.json> <request.json> <validation.json> <approval.json>",
+    "usage: owner-registry.mjs init <workspace> | validate <registry.json> | route <registry.json> <path> | request-change <registry.json> <request.json> <operation> <reason> [--source <id>] [--owner <id> <responsibility> <worker_context> --scope <id> <pattern> [--exclude <id> <pattern>]] | validate-change <registry.json> <request.json> <validation.json> | approve-change <request.json> <validation.json> <approval.json> | apply-change <registry.json> <request.json> <validation.json> <approval.json>",
   );
 }
 

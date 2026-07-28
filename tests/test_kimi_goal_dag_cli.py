@@ -39,7 +39,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
                 "digest": hashlib.sha256(document.read_bytes()).hexdigest(),
                 "revision": 1,
             }
-            goal["lifecycle"]["controller"] = "local_fallback"
+            goal["lifecycle"]["controller"] = "standalone_thread"
             goal["lifecycle"]["native_goal"] = None
             goal_path = root / "goal.json"
             goal_path.write_text(json.dumps(goal, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -170,7 +170,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
 
     def test_goal_validate_and_status_return_kimi_continuation(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
-            expected = f"/skill:subagent-coordination 继续 `{goal_path}`。"
+            expected = f"/skill:sub-thread-coordination 继续 `{goal_path}`。"
             payload = self.run_json("goal-validate", goal_path)
             self.assertEqual(payload["continuation_prompt"], expected)
             validated = self.run_json("validate", plan_path)
@@ -199,7 +199,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
             validated = self.run_json("validate", plan_path)
             payload = self.run_json("reserve", plan_path, validated["state_path"], 1)
             self.assertEqual(len(payload["actions"]), 1, payload)
-            self.assertIsNone(payload["actions"][0]["binding"]["runtime_profile"])
+            self.assertIsNone(payload["actions"][0]["binding"]["thread"]["profile"])
 
     def test_codex_platform_goal_is_rejected(self) -> None:
         with self.workspace() as (_, goal_path, _):
@@ -210,7 +210,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("execution_platform must equal kimi", rejected.stderr)
 
-    def test_local_fallback_controller_and_null_native_goal_are_enforced(self) -> None:
+    def test_standalone_controller_and_null_native_goal_are_enforced(self) -> None:
         with self.workspace() as (_, goal_path, _):
             goal = json.loads(goal_path.read_text(encoding="utf-8"))
             goal["lifecycle"]["controller"] = "codex_native"
@@ -218,7 +218,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
             rejected = self.run_cli("goal-validate", goal_path)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn(
-                "kimi execution platform requires local_fallback controller",
+                "kimi execution platform cannot use codex_native controller",
                 rejected.stderr,
             )
 
@@ -232,7 +232,7 @@ class KimiGoalDagCliTests(unittest.TestCase):
             rejected = self.run_cli("goal-validate", goal_path)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn(
-                "kimi goal lifecycle.native_goal must be null",
+                "standalone_thread goal lifecycle.native_goal must be null",
                 rejected.stderr,
             )
 

@@ -245,6 +245,52 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.assertEqual(applied["added_owner_ids"], ["report-module"])
             self.assertTrue((registry_path.parent / "report-module/capsule.json").exists())
 
+    def test_request_and_approval_are_generated_by_domain_commands(self) -> None:
+        with self.workspace() as (_, registry_path, _):
+            request_path = registry_path.parent / "script-request.json"
+            validation_path = registry_path.parent / "script-validation.json"
+            approval_path = registry_path.parent / "script-approval.json"
+            created = self.run_json(
+                "request-change",
+                registry_path,
+                request_path,
+                "create",
+                "新增报表模块",
+                "--owner",
+                "report-module",
+                "负责报表模块",
+                "保持报表合同稳定",
+                "--scope",
+                "report-module",
+                "src/report/**",
+            )
+            self.assertEqual(created["status"], "created")
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            self.assertEqual(request["contract"], "OWNER_CHANGE_REQUEST_V2")
+            self.assertEqual(request["new_owners"][0]["runtime_profile"], None)
+            self.assertIn("created_at", request)
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            approved = self.run_json(
+                "approve-change", request_path, validation_path, approval_path
+            )
+            self.assertEqual(approved["status"], "approved")
+            approval = json.loads(approval_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                set(approval),
+                {
+                    "contract",
+                    "decision",
+                    "approved_by",
+                    "approved_at",
+                    "request_digest",
+                    "validation_digest",
+                    "next_registry_digest",
+                },
+            )
+            self.run_json(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+
     def test_split_is_exact_partition_and_inherits_parent_capsule(self) -> None:
         with self.workspace() as (_, registry_path, registry):
             registry["owners"][0]["scope_patterns"] = [

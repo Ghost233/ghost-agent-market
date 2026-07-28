@@ -1,7 +1,9 @@
 // Generated from tooling/goal-dag/goal-dag.ts. Do not edit directly.
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createServer,                                           } from "node:http";
 import {
+  appendFileSync,
   existsSync,
   linkSync,
   lstatSync,
@@ -12,7 +14,56 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -581,6 +632,7 @@ function writeTextAtomic(path        , payload        )       {
 
 function writeJson(path        , value         )       {
   writeTextAtomic(path, serializedJson(value));
+  refreshProgressDocumentsForMutation([path]);
 }
 
 function writeImmutableJson(path        , value         )                         {
@@ -662,6 +714,7 @@ function recoverTransaction(anchorPath        )          {
     }
   }
   unlinkSync(journalPath);
+  refreshProgressDocumentsForMutation(writes.map((write) => write.path));
   return true;
 }
 
@@ -697,6 +750,33 @@ function writeTransaction(anchorPath        , entries                          )
     }
   }
   unlinkSync(journalPath);
+  refreshProgressDocumentsForMutation(writes.map((write) => write.path));
+}
+
+const PROGRESS_MUTATION_FILES = new Set([
+  "plan.json",
+  "state.json",
+  "coverage.json",
+  "goal-state.json",
+]);
+
+function refreshProgressDocumentsForMutation(paths          )       {
+  const directories = new Set(
+    paths
+      .filter((path) => PROGRESS_MUTATION_FILES.has(basename(path)))
+      .map((path) => dirname(resolve(path))),
+  );
+  for (const directory of directories) {
+    const planPath = join(directory, "plan.json");
+    const statePath = join(directory, "state.json");
+    if (!existsSync(planPath) || !existsSync(statePath)) continue;
+    try {
+      refreshProgressDocument(planPath, statePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`warning: progress document refresh failed: ${message}\n`);
+    }
+  }
 }
 
 function digestFile(path        )         {
@@ -827,24 +907,23 @@ function captureWorktreeSnapshot(workspaceRootArgument        )                 
     "git HEAD lookup",
   ).trim();
   if (!/^[0-9a-f]{40,64}$/u.test(headOid)) fail("git HEAD lookup returned an invalid object id");
+  const treeOid = gitOutput(
+    workspaceRoot,
+    ["rev-parse", "--verify", "HEAD^{tree}"],
+    "git tree lookup",
+  ).trim();
+  if (!/^[0-9a-f]{40,64}$/u.test(treeOid)) fail("git tree lookup returned an invalid object id");
   const status = gitStatusMap(workspaceRoot);
   const index = gitIndexMap(workspaceRoot);
-  const paths = gitOutput(
-    workspaceRoot,
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    "git worktree file listing",
-  )
-    .split("\0")
-    .filter(Boolean)
-    .map(normalizePathPattern)
-    .filter((path) => !isRuntimeWorkspacePath(path));
-  for (const path of status.keys()) paths.push(path);
-  for (const path of index.keys()) paths.push(path);
-  const uniquePaths = uniqueStrings(paths).sort(compareStableStrings);
+  const uniquePaths = [...status.keys()].sort(compareStableStrings);
   return {
-    contract: "WORKTREE_BASELINE_V1",
+    contract: "WORKSPACE_FENCE_V1",
     workspace_root: workspaceRoot,
     head_oid: headOid,
+    tree_oid: treeOid,
+    index_digest: createHash("sha256").update(serializedJson(
+      [...index.entries()].sort(([left], [right]) => compareStableStrings(left, right)),
+    )).digest("hex"),
     entries: uniquePaths.map((path) => snapshotEntry(
       workspaceRoot,
       path,
@@ -859,8 +938,8 @@ function parseWorktreeBaseline(
   expectedWorkspaceRoot        ,
 )                     {
   const source = requireRecord(value, "worktree baseline");
-  if (source.contract !== "WORKTREE_BASELINE_V1") {
-    fail("worktree baseline contract must equal WORKTREE_BASELINE_V1");
+  if (source.contract !== "WORKSPACE_FENCE_V1") {
+    fail("workspace fence contract must equal WORKSPACE_FENCE_V1");
   }
   const root = canonicalPath(
     expectedWorkspaceRoot,
@@ -869,6 +948,10 @@ function parseWorktreeBaseline(
   );
   const headOid = requireString(source.head_oid, "worktree baseline.head_oid");
   if (!/^[0-9a-f]{40,64}$/u.test(headOid)) fail("worktree baseline.head_oid is invalid");
+  const treeOid = requireString(source.tree_oid, "workspace fence.tree_oid");
+  if (!/^[0-9a-f]{40,64}$/u.test(treeOid)) fail("workspace fence.tree_oid is invalid");
+  const indexDigest = requireString(source.index_digest, "workspace fence.index_digest");
+  if (!/^[0-9a-f]{64}$/u.test(indexDigest)) fail("workspace fence.index_digest is invalid");
   if (!Array.isArray(source.entries)) fail("worktree baseline.entries must be an array");
   const entries = source.entries.map((value, index) => {
     const item = requireRecord(value, `worktree baseline.entries[${index}]`);
@@ -933,7 +1016,14 @@ function parseWorktreeBaseline(
   if (entries.some((item) => isRuntimeWorkspacePath(item.path))) {
     fail("worktree baseline must exclude .ghost-agent-workflow");
   }
-  return { contract: "WORKTREE_BASELINE_V1", workspace_root: root, head_oid: headOid, entries };
+  return {
+    contract: "WORKSPACE_FENCE_V1",
+    workspace_root: root,
+    head_oid: headOid,
+    tree_oid: treeOid,
+    index_digest: indexDigest,
+    entries,
+  };
 }
 
 function buildSourceBlocks(goal              )                 {
@@ -1248,6 +1338,7 @@ function pathMatchesPattern(path        , pattern        )          {
 
 
 
+
 function ownerRegistryPathFor(workspaceRoot        )         {
   return join(resolve(workspaceRoot), ".ghost-agent-workflow", "owners", "registry.json");
 }
@@ -1401,6 +1492,7 @@ function approvedOwnerRegistry(goal              )
 
 
 
+
   {
   const path = ownerRegistryPathFor(goal.workspace.root);
   if (!existsSync(path)) {
@@ -1438,6 +1530,10 @@ function approvedOwnerRegistry(goal              )
     ensureUnique(scopeExcludes, `owner registry exclusions in owner ${String(owner.id)}`);
     return {
       id: requireIdentifier(owner.id, `owner registry.owners[${index}].id`),
+      generation: requirePositiveInteger(
+        owner.generation,
+        `owner registry.owners[${index}].generation`,
+      ),
       responsibility: requireString(
         owner.responsibility,
         `owner registry.owners[${index}].responsibility`,
@@ -1476,11 +1572,26 @@ function approvedOwnerRegistry(goal              )
       }
     }
   }
-  return { ref: path, digest: digestFile(path), owners };
+  return {
+    ref: path,
+    digest: digestFile(path),
+    revision: requirePositiveInteger(source.revision, "owner registry.revision"),
+    owners,
+  };
 }
 
-function validatePlanOwnersAgainstRegistry(plan      , goal              )       {
-  const moduleOwners = plan.owners.filter((owner) => owner.writable_paths.length > 0);
+function validatePlanOwnersAgainstRegistry(
+  plan      ,
+  goal              ,
+  ownerValidationTaskIds              ,
+)       {
+  const ownerIdsInScope = ownerValidationTaskIds === undefined
+    ? new Set(plan.tasks.map((task) => task.owner_id).filter((value)                  => value !== null))
+    : new Set(plan.tasks
+      .filter((task) => ownerValidationTaskIds.has(task.id))
+      .map((task) => task.owner_id)
+      .filter((value)                  => value !== null));
+  const moduleOwners = plan.owners.filter((owner) => ownerIdsInScope.has(owner.id));
   if (moduleOwners.length === 0) return;
   const registry = approvedOwnerRegistry(goal);
   const approvedById = new Map(registry.owners.map((owner) => [owner.id, owner]));
@@ -1553,17 +1664,18 @@ function parseGoal(value         , verifySourceDigest = true)               {
   );
 
   const lifecycle = requireRecord(source.lifecycle, "goal lifecycle");
-  if (lifecycle.controller !== "codex_native" && lifecycle.controller !== "local_fallback") {
+  if (
+    lifecycle.controller !== "codex_native" &&
+    lifecycle.controller !== "standalone_thread" &&
+    lifecycle.controller !== "local_fallback"
+  ) {
     fail("goal lifecycle.controller is invalid");
   }
-  const expectedController                 = EXPECTED_PLATFORM === "codex"
-    ? "codex_native"
-    : "local_fallback";
-  if (lifecycle.controller !== expectedController) {
-    fail(`${EXPECTED_PLATFORM} execution platform requires ${expectedController} controller`);
+  if (lifecycle.controller === "codex_native" && EXPECTED_PLATFORM !== "codex") {
+    fail(`${EXPECTED_PLATFORM} execution platform cannot use codex_native controller`);
   }
   let nativeGoal                                           = null;
-  if (EXPECTED_PLATFORM === "codex") {
+  if (lifecycle.controller === "codex_native") {
     const nativeGoalSource = requireRecord(lifecycle.native_goal, "goal lifecycle.native_goal");
     nativeGoal = {
       thread_id: requireString(nativeGoalSource.thread_id, "goal lifecycle.native_goal.thread_id"),
@@ -1573,12 +1685,12 @@ function parseGoal(value         , verifySourceDigest = true)               {
       ),
     };
   } else if (lifecycle.native_goal !== null) {
-    fail(`${EXPECTED_PLATFORM} goal lifecycle.native_goal must be null`);
+    fail(`${lifecycle.controller} goal lifecycle.native_goal must be null`);
   }
 
   const execution = requireRecord(source.execution, "goal execution");
-  if (execution.mode !== "subagent") {
-    fail("goal execution.mode must equal subagent");
+  if (execution.mode !== "thread") {
+    fail("goal execution.mode must equal thread");
   }
   if (execution.reuse_policy !== "owner_affinity") {
     fail("goal execution.reuse_policy must equal owner_affinity");
@@ -1648,19 +1760,148 @@ function parseGoal(value         , verifySourceDigest = true)               {
   };
 }
 
-function parseRuntimeProfile(value         , label        )                       {
-  if (EXPECTED_PLATFORM !== "codex") {
-    if (value !== null) fail(`${label} must be null on ${EXPECTED_PLATFORM}`);
-    return null;
+function fixedGoalGates()             {
+  return [
+    {
+      id: SOURCE_COVERAGE_GATE_ID,
+      stage: "audit",
+      description: "计划源覆盖审计通过",
+      required: true,
+    },
+    {
+      id: DIFF_SCOPE_GATE_ID,
+      stage: "audit",
+      description: "最终差异范围审计通过",
+      required: true,
+    },
+    {
+      id: COMMIT_READINESS_GATE_ID,
+      stage: "delivery",
+      description: "提交就绪检查通过",
+      required: true,
+    },
+  ];
+}
+
+function goalCreateCommand(targetArgument        , workspaceArgument        )       {
+  const targetPath = resolve(targetArgument);
+  const workspaceRoot = resolve(workspaceArgument);
+  if (!existsSync(workspaceRoot)) fail(`workspace root does not exist: ${workspaceRoot}`);
+  const input = readStructuredInput("GOAL_INPUT_V1");
+  requireAllowedKeys(input, [
+    "contract",
+    "id",
+    "objective",
+    "source",
+    "scope",
+    "non_goals",
+    "constraints",
+    "max_concurrency",
+    "controller",
+    "native_thread_id",
+    "gates",
+    "allow_deploy",
+    "allow_external_write",
+  ], "goal input");
+  const sourceValue = requireString(input.source, "goal input.source");
+  const sourcePath = isAbsolute(sourceValue)
+    ? resolve(sourceValue)
+    : resolve(workspaceRoot, sourceValue);
+  if (!existsSync(sourcePath)) fail(`goal source does not exist: ${sourcePath}`);
+  const controller = (input.controller ?? "standalone_thread")                  ;
+  if (!new Set                (["codex_native", "standalone_thread", "local_fallback"]).has(controller)) {
+    fail(`goal input.controller is invalid: ${String(input.controller)}`);
   }
+  if (controller === "codex_native" && EXPECTED_PLATFORM !== "codex") {
+    fail(`${EXPECTED_PLATFORM} execution platform cannot use codex_native controller`);
+  }
+  const nativeThreadId = input.native_thread_id === undefined || input.native_thread_id === null
+    ? null
+    : requireString(input.native_thread_id, "goal input.native_thread_id");
+  if ((controller === "codex_native") !== (nativeThreadId !== null)) {
+    fail("goal input.native_thread_id is required only for codex_native");
+  }
+  const rawGates = input.gates ?? [];
+  if (!Array.isArray(rawGates)) fail("goal input.gates must be an array");
+  const customGates = rawGates.map((value, index) => {
+    const gate = requireRecord(value, `goal input.gates[${index}]`);
+    requireAllowedKeys(gate, ["id", "description", "stage"], `goal input.gates[${index}]`);
+    return {
+      id: requireIdentifier(gate.id, `goal input.gates[${index}].id`),
+      stage: gate.stage === undefined
+        ? "verification"
+        : requireString(gate.stage, `goal input.gates[${index}].stage`),
+      description: requireString(gate.description, `goal input.gates[${index}].description`),
+      required: true         ,
+    };
+  });
+  const fixedIds = new Set(fixedGoalGates().map((gate) => gate.id));
+  if (customGates.some((gate) => fixedIds.has(gate.id))) {
+    fail("goal input.gates must not repeat runtime-managed gates");
+  }
+  for (const field of ["allow_deploy", "allow_external_write"]         ) {
+    if (input[field] !== undefined) requireBoolean(input[field], `goal input.${field}`);
+  }
+  ensureUnique(customGates.map((gate) => gate.id), "goal input gate id");
+  const goal               = {
+    contract: "GOAL_CONTRACT_V1",
+    goal_id: requireIdentifier(input.id, "goal input.id"),
+    execution_platform: EXPECTED_PLATFORM,
+    workspace: { root: workspaceRoot },
+    source: { path: sourcePath, digest: digestFile(sourcePath), revision: 1 },
+    objective: requireString(input.objective, "goal input.objective"),
+    scope: requireStringArray(input.scope, "goal input.scope", false),
+    non_goals: input.non_goals === undefined
+      ? []
+      : requireStringArray(input.non_goals, "goal input.non_goals"),
+    constraints: input.constraints === undefined
+      ? []
+      : requireStringArray(input.constraints, "goal input.constraints"),
+    lifecycle: {
+      controller,
+      native_goal: nativeThreadId === null
+        ? null
+        : { thread_id: nativeThreadId, created_at: Date.now() },
+    },
+    execution: {
+      mode: "thread",
+      max_concurrency: input.max_concurrency === undefined
+        ? 4
+        : requirePositiveInteger(input.max_concurrency, "goal input.max_concurrency"),
+      reuse_policy: "owner_affinity",
+    },
+    verification_gates: [...customGates, ...fixedGoalGates()],
+    side_effects: {
+      deploy: input.allow_deploy === true ? "explicitly_authorized" : "forbidden",
+      external_write: input.allow_external_write === true
+        ? "explicitly_authorized"
+        : "forbidden",
+    },
+    completion: {
+      all_tasks_completed: true,
+      plan_coverage_100: true,
+      required_gates_passed: true,
+      blocking_findings_zero: true,
+      diff_in_scope: true,
+    },
+  };
+  parseGoal(goal);
+  const status = writeImmutableJson(targetPath, goal);
+  process.stdout.write(`${JSON.stringify({
+    contract: "GOAL_CREATE_RECEIPT_V1",
+    status,
+    goal_ref: targetPath,
+    goal_digest: digestFile(targetPath),
+  })}\n`);
+}
+
+function parseRuntimeProfile(value         , label        )                       {
+  if (value === null) return null;
   const source = requireRecord(value, label);
   const model = requireString(source.model, `${label}.model`);
   const reasoningEffort = requireString(source.reasoning_effort, `${label}.reasoning_effort`);
   if (!REASONING_EFFORTS.has(reasoningEffort)) {
     fail(`${label}.reasoning_effort is invalid: ${reasoningEffort}`);
-  }
-  if (model !== "gpt-5.6-sol" || reasoningEffort !== "high") {
-    fail(`${label} must equal gpt-5.6-sol/high on codex`);
   }
   return { model, reasoning_effort: reasoningEffort };
 }
@@ -1722,8 +1963,90 @@ function parseRuntimeActor(value         , index        )                       
   };
 }
 
+function parseTaskSubgraph(value         , taskId        , index        )                      {
+  if (value === undefined || value === null) return null;
+  const source = requireRecord(value, `tasks[${index}].subgraph`);
+  if (source.contract !== "TASK_SUBGRAPH_V1") {
+    fail(`tasks[${index}].subgraph.contract must equal TASK_SUBGRAPH_V1`);
+  }
+  const parentTaskId = requireIdentifier(
+    source.parent_task_id,
+    `tasks[${index}].subgraph.parent_task_id`,
+  );
+  if (parentTaskId !== taskId) {
+    fail(`tasks[${index}].subgraph.parent_task_id must equal ${taskId}`);
+  }
+  if (source.completion_policy !== "all_required") {
+    fail(`tasks[${index}].subgraph.completion_policy must equal all_required`);
+  }
+  const taskIds = requireStringArray(
+    source.task_ids,
+    `tasks[${index}].subgraph.task_ids`,
+    false,
+  ).map((id, childIndex) => requireIdentifier(
+    id,
+    `tasks[${index}].subgraph.task_ids[${childIndex}]`,
+  ));
+  const entryTaskIds = requireStringArray(
+    source.entry_task_ids,
+    `tasks[${index}].subgraph.entry_task_ids`,
+    false,
+  ).map((id, childIndex) => requireIdentifier(
+    id,
+    `tasks[${index}].subgraph.entry_task_ids[${childIndex}]`,
+  ));
+  const exitTaskIds = requireStringArray(
+    source.exit_task_ids,
+    `tasks[${index}].subgraph.exit_task_ids`,
+    false,
+  ).map((id, childIndex) => requireIdentifier(
+    id,
+    `tasks[${index}].subgraph.exit_task_ids[${childIndex}]`,
+  ));
+  ensureUnique(taskIds, `subgraph child in task ${taskId}`);
+  ensureUnique(entryTaskIds, `subgraph entry in task ${taskId}`);
+  ensureUnique(exitTaskIds, `subgraph exit in task ${taskId}`);
+  return {
+    contract: "TASK_SUBGRAPH_V1",
+    parent_task_id: parentTaskId,
+    task_ids: taskIds,
+    entry_task_ids: entryTaskIds,
+    exit_task_ids: exitTaskIds,
+    completion_policy: "all_required",
+    expanded_from_attempt: requirePositiveInteger(
+      source.expanded_from_attempt,
+      `tasks[${index}].subgraph.expanded_from_attempt`,
+    ),
+    expansion_reason: requireString(
+      source.expansion_reason,
+      `tasks[${index}].subgraph.expansion_reason`,
+    ),
+    expansion_ref: requireString(
+      source.expansion_ref,
+      `tasks[${index}].subgraph.expansion_ref`,
+    ),
+    expansion_digest: requireString(
+      source.expansion_digest,
+      `tasks[${index}].subgraph.expansion_digest`,
+    ),
+  };
+}
+
 function parseTask(value         , index        )                 {
   const source = requireRecord(value, `tasks[${index}]`);
+  const id = requireIdentifier(source.id, `tasks[${index}].id`);
+  const nodeTypeRaw = source.node_type ?? "leaf";
+  if (nodeTypeRaw !== "leaf" && nodeTypeRaw !== "composite") {
+    fail(`tasks[${index}].node_type must equal leaf or composite`);
+  }
+  const parentTaskIdRaw = source.parent_task_id ?? null;
+  const parentTaskId = parentTaskIdRaw === null
+    ? null
+    : requireIdentifier(parentTaskIdRaw, `tasks[${index}].parent_task_id`);
+  const subgraph = parseTaskSubgraph(source.subgraph, id, index);
+  if ((nodeTypeRaw === "composite") !== (subgraph !== null)) {
+    fail(`tasks[${index}] composite node_type and subgraph must be paired`);
+  }
   const role = requireString(source.role, `tasks[${index}].role`);
   if (!ROLES.has(role            )) fail(`tasks[${index}].role is invalid: ${role}`);
   const title = requireString(source.title, `tasks[${index}].title`).trim();
@@ -1768,8 +2091,50 @@ function parseTask(value         , index        )                 {
   if (runtimeActorId !== null && !RUNTIME_ACTOR_IDS.has(runtimeActorId)) {
     fail(`tasks[${index}].runtime_actor_id is invalid: ${runtimeActorId}`);
   }
+  const riskLevel = requireString(source.risk_level, `tasks[${index}].risk_level`);
+  if (riskLevel !== "low" && riskLevel !== "medium" && riskLevel !== "high") {
+    fail(`tasks[${index}].risk_level is invalid: ${riskLevel}`);
+  }
+  const reviewPolicy = requireString(source.review_policy, `tasks[${index}].review_policy`);
+  if (
+    reviewPolicy !== "batch" && reviewPolicy !== "immediate" &&
+    reviewPolicy !== "final_only" && reviewPolicy !== "none"
+  ) fail(`tasks[${index}].review_policy is invalid: ${reviewPolicy}`);
+  const reviewBatchKey = requireNullableString(
+    source.review_batch_key,
+    `tasks[${index}].review_batch_key`,
+  );
+  const reviewReasons = requireStringArray(
+    source.review_reasons,
+    `tasks[${index}].review_reasons`,
+  );
+  const reviewsTaskIds = requireStringArray(
+    source.reviews_task_ids,
+    `tasks[${index}].reviews_task_ids`,
+  );
+  if (reviewPolicy === "none" && reviewBatchKey !== null) {
+    fail(`tasks[${index}] review_batch_key must be null when review_policy is none`);
+  }
+  if (reviewPolicy !== "none" && reviewBatchKey === null) {
+    fail(`tasks[${index}] review_batch_key is required when review_policy is ${reviewPolicy}`);
+  }
+  if (riskLevel === "high" && reviewPolicy !== "immediate") {
+    fail(`tasks[${index}] high risk task must use immediate review`);
+  }
+  if (reviewPolicy === "immediate" && source.review_blocks_dependents !== true) {
+    fail(`tasks[${index}] immediate review must block dependents`);
+  }
+  if (reviewPolicy !== "none" && reviewReasons.length === 0) {
+    fail(`tasks[${index}] reviewed task requires review_reasons`);
+  }
+  if (role === "review" && reviewsTaskIds.length === 0) {
+    fail(`tasks[${index}] review task requires reviews_task_ids`);
+  }
+  if (role !== "review" && reviewsTaskIds.length > 0) {
+    fail(`tasks[${index}] only review tasks may set reviews_task_ids`);
+  }
   return {
-    id: requireIdentifier(source.id, `tasks[${index}].id`),
+    id,
     logical_id: requireIdentifier(source.logical_id, `tasks[${index}].logical_id`),
     title,
     role: role            ,
@@ -1802,8 +2167,316 @@ function parseTask(value         , index        )                 {
       source.estimated_cost,
       `tasks[${index}].estimated_cost`,
     ),
+    risk_level: riskLevel             ,
+    review_policy: reviewPolicy                ,
+    review_batch_key: reviewBatchKey,
+    review_blocks_dependents: requireBoolean(
+      source.review_blocks_dependents,
+      `tasks[${index}].review_blocks_dependents`,
+    ),
+    review_reasons: reviewReasons,
+    reviews_task_ids: reviewsTaskIds.map((taskId, taskIndex) => requireIdentifier(
+      taskId,
+      `tasks[${index}].reviews_task_ids[${taskIndex}]`,
+    )),
+    node_type: nodeTypeRaw                ,
+    parent_task_id: parentTaskId,
+    subgraph,
   };
 }
+
+function fixedRuntimeActors()                           {
+  return [
+    {
+      id: "source-audit",
+      role: "verify",
+      responsibility: "机械审计计划源覆盖",
+      worker_context: "仅运行 source-audit 脚本",
+      runtime_profile: null,
+    },
+    {
+      id: "diff-audit",
+      role: "verify",
+      responsibility: "机械审计最终差异",
+      worker_context: "仅运行 diff-audit 脚本",
+      runtime_profile: null,
+    },
+    {
+      id: "commit-readiness",
+      role: "verify",
+      responsibility: "机械生成提交就绪清单",
+      worker_context: "仅运行 commit-readiness 脚本",
+      runtime_profile: null,
+    },
+  ];
+}
+
+function parsePlanInputItem(value         , index        )                   {
+  const item = requireRecord(value, `plan input.items[${index}]`);
+  requireAllowedKeys(
+    item,
+    ["id", "description", "source_refs", "effects"],
+    `plan input.items[${index}]`,
+  );
+  const effects = requireStringArray(
+    item.effects,
+    `plan input.items[${index}].effects`,
+    false,
+  );
+  for (const effect of effects) {
+    if (effect !== "implementation" && effect !== "verification") {
+      fail(`plan input.items[${index}].effects is invalid: ${effect}`);
+    }
+  }
+  return {
+    id: requireIdentifier(item.id, `plan input.items[${index}].id`),
+    description: requireString(item.description, `plan input.items[${index}].description`),
+    source_refs: requireStringArray(
+      item.source_refs,
+      `plan input.items[${index}].source_refs`,
+      false,
+    ).map((ref, refIndex) =>
+      requireIdentifier(ref, `plan input.items[${index}].source_refs[${refIndex}]`)
+    ),
+    required_effects: effects                    ,
+  };
+}
+
+function expandPlanInputTask(
+  value         ,
+  index        ,
+  defaults                                                               = {},
+)                 {
+  const input = requireRecord(value, `plan input.tasks[${index}]`);
+  requireAllowedKeys(input, [
+    "id",
+    "logical_id",
+    "title",
+    "role",
+    "owner",
+    "actor",
+    "work",
+    "after",
+    "write",
+    "locks",
+    "done",
+    "verify",
+    "gates",
+    "items",
+    "risk",
+    "review",
+    "review_batch",
+    "review_reason",
+    "reviews",
+    "priority",
+    "cost",
+    "parent",
+  ], `plan input.tasks[${index}]`);
+  const reviews = input.reviews === undefined
+    ? []
+    : requireStringArray(input.reviews, `plan input.tasks[${index}].reviews`);
+  const actor = input.actor === undefined || input.actor === null
+    ? null
+    : requireIdentifier(input.actor, `plan input.tasks[${index}].actor`)                  ;
+  if (actor !== null && !RUNTIME_ACTOR_IDS.has(actor)) {
+    fail(`plan input.tasks[${index}].actor is invalid: ${actor}`);
+  }
+  const inferredRole           = reviews.length > 0 ? "review" : actor !== null ? "verify" : "work";
+  const role = input.role === undefined
+    ? inferredRole
+    : requireString(input.role, `plan input.tasks[${index}].role`)            ;
+  if (!ROLES.has(role)) fail(`plan input.tasks[${index}].role is invalid: ${role}`);
+  const ownerRaw = input.owner === undefined ? (defaults.owner_id ?? null) : input.owner;
+  const ownerId = ownerRaw === null
+    ? null
+    : requireIdentifier(ownerRaw, `plan input.tasks[${index}].owner`);
+  if ((ownerId === null) === (actor === null)) {
+    fail(`plan input.tasks[${index}] must set exactly one of owner or actor`);
+  }
+  const writablePaths = input.write === undefined
+    ? []
+    : requireStringArray(input.write, `plan input.tasks[${index}].write`).map(normalizePathPattern);
+  if (role === "work" && writablePaths.length === 0) {
+    fail(`plan input.tasks[${index}] work task requires write`);
+  }
+  if (role !== "work" && writablePaths.length > 0) {
+    fail(`plan input.tasks[${index}] ${role} task cannot set write`);
+  }
+  const verificationIds = requireStringArray(
+    input.verify,
+    `plan input.tasks[${index}].verify`,
+    false,
+  );
+  const risk = (input.risk ?? (role === "work" ? "medium" : "low"))             ;
+  if (!new Set           (["low", "medium", "high"]).has(risk)) {
+    fail(`plan input.tasks[${index}].risk is invalid: ${String(input.risk)}`);
+  }
+  const defaultReview               = role === "work"
+    ? risk === "high" ? "immediate" : "batch"
+    : "none";
+  const review = (input.review ?? defaultReview)                ;
+  if (!new Set              (["batch", "immediate", "final_only", "none"]).has(review)) {
+    fail(`plan input.tasks[${index}].review is invalid: ${String(input.review)}`);
+  }
+  if (risk === "high" && review !== "immediate") {
+    fail(`plan input.tasks[${index}] high risk task requires immediate Review`);
+  }
+  const parentRaw = input.parent === undefined ? (defaults.parent_task_id ?? null) : input.parent;
+  const parentTaskId = parentRaw === null
+    ? null
+    : requireIdentifier(parentRaw, `plan input.tasks[${index}].parent`);
+  const reviewBatchKey = review === "none"
+    ? null
+    : input.review_batch === undefined
+      ? ownerId ?? parentTaskId ?? requireIdentifier(input.id, `plan input.tasks[${index}].id`)
+      : requireString(input.review_batch, `plan input.tasks[${index}].review_batch`);
+  const reviewReason = input.review_reason === undefined
+    ? `${review} Review`
+    : requireString(input.review_reason, `plan input.tasks[${index}].review_reason`);
+  const coverageEffect                 = role === "work"
+    ? "implementation"
+    : role === "verify" && actor === null
+      ? "verification"
+      : "audit";
+  const resourceLocks = input.locks === undefined
+    ? role === "work" ? writablePaths : verificationIds
+    : requireStringArray(input.locks, `plan input.tasks[${index}].locks`);
+  const canonical = {
+    id: requireIdentifier(input.id, `plan input.tasks[${index}].id`),
+    logical_id: input.logical_id === undefined
+      ? requireIdentifier(input.id, `plan input.tasks[${index}].id`)
+      : requireIdentifier(input.logical_id, `plan input.tasks[${index}].logical_id`),
+    title: requireString(input.title, `plan input.tasks[${index}].title`),
+    role,
+    owner_id: ownerId,
+    runtime_actor_id: actor,
+    task: requireString(input.work, `plan input.tasks[${index}].work`),
+    depends_on: input.after === undefined
+      ? []
+      : requireStringArray(input.after, `plan input.tasks[${index}].after`),
+    writable_paths: writablePaths,
+    resource_locks: resourceLocks,
+    done_when: requireStringArray(input.done, `plan input.tasks[${index}].done`, false),
+    verification_ids: verificationIds,
+    satisfies_goal_gates: input.gates === undefined
+      ? []
+      : requireStringArray(input.gates, `plan input.tasks[${index}].gates`),
+    plan_item_ids: requireStringArray(input.items, `plan input.tasks[${index}].items`, false),
+    coverage_effect: coverageEffect,
+    priority: input.priority === undefined
+      ? 0
+      : requireNonNegativeInteger(input.priority, `plan input.tasks[${index}].priority`),
+    estimated_cost: input.cost === undefined
+      ? 1
+      : requirePositiveInteger(input.cost, `plan input.tasks[${index}].cost`),
+    risk_level: risk,
+    review_policy: review,
+    review_batch_key: reviewBatchKey,
+    review_blocks_dependents: review === "immediate",
+    review_reasons: review === "none" ? [] : [reviewReason],
+    reviews_task_ids: reviews,
+    node_type: "leaf",
+    parent_task_id: parentTaskId,
+    subgraph: null,
+  };
+  return parseTask(canonical, index);
+}
+
+function planCreateCommand(goalArgument        , planArgument        )       {
+  const goalPath = resolve(goalArgument);
+  const planPath = resolve(planArgument);
+  if (goalPath !== join(dirname(planPath), "goal.json")) {
+    fail(`goal path must equal ${join(dirname(planPath), "goal.json")}`);
+  }
+  const goal = parseGoal(readJson(goalPath));
+  const input = readStructuredInput("PLAN_INPUT_V1");
+  requireAllowedKeys(
+    input,
+    ["contract", "items", "tasks", "safety", "safety_reasons"],
+    "plan input",
+  );
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    fail("plan input.items must be a non-empty array");
+  }
+  if (!Array.isArray(input.tasks) || input.tasks.length === 0) {
+    fail("plan input.tasks must be a non-empty array");
+  }
+  const items = input.items.map(parsePlanInputItem);
+  const tasks = input.tasks.map((value, index) => expandPlanInputTask(value, index));
+  ensureUnique(items.map((item) => item.id), "plan input item id");
+  ensureUnique(tasks.map((task) => task.id), "plan input task id");
+  const registry = approvedOwnerRegistry(goal);
+  const owners = registry.owners.map(ownerDefinitionFromApproved);
+  const safetyStatus = (input.safety ?? "parallel_safe")                ;
+  if (!new Set              (["parallel_safe", "sequential_only", "needs_user_review"]).has(
+    safetyStatus,
+  )) fail(`plan input.safety is invalid: ${String(input.safety)}`);
+  const plan       = {
+    contract: "DAG_PLAN_V5",
+    planner: "parallel-task-planner",
+    plan_format_version: 5,
+    revision: 1,
+    execution_platform: EXPECTED_PLATFORM,
+    goal_contract_path: goalPath,
+    goal_digest: digestFile(goalPath),
+    goal_id: goal.goal_id,
+    plan_source: { ...goal.source },
+    coverage_path: join(dirname(planPath), "coverage.json"),
+    owners,
+    runtime_actors: fixedRuntimeActors(),
+    tasks,
+    safety: {
+      status: safetyStatus,
+      reasons: input.safety_reasons === undefined
+        ? []
+        : requireStringArray(input.safety_reasons, "plan input.safety_reasons"),
+    },
+  };
+  const planDigest = digestJson(plan);
+  const coverage               = {
+    contract: "PLAN_COVERAGE_V1",
+    source_path: goal.source.path,
+    source_digest: goal.source.digest,
+    source_revision: goal.source.revision,
+    plan_path: planPath,
+    plan_digest: planDigest,
+    plan_revision: plan.revision,
+    required_plan_items: items,
+  };
+  parsePlan(plan, planPath, {
+    coverageValue: coverage,
+    expectedPlanDigest: planDigest,
+    goalValue: goal,
+    expectedGoalDigest: digestFile(goalPath),
+    sourceBlocksValue: buildSourceBlocks(goal),
+  });
+  if (existsSync(planPath) || existsSync(plan.coverage_path)) {
+    if (
+      existsSync(planPath) && existsSync(plan.coverage_path) &&
+      digestFile(planPath) === planDigest && digestJson(readJson(plan.coverage_path)) === digestJson(coverage)
+    ) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "PLAN_CREATE_RECEIPT_V1",
+        status: "existing",
+        plan_ref: planPath,
+        plan_digest: planDigest,
+        coverage_ref: plan.coverage_path,
+      })}\n`);
+      return;
+    }
+    fail("plan or coverage already exists with different content");
+  }
+  writeTransaction(planPath, [[planPath, plan], [plan.coverage_path, coverage]]);
+  process.stdout.write(`${JSON.stringify({
+    contract: "PLAN_CREATE_RECEIPT_V1",
+    status: "created",
+    plan_ref: planPath,
+    plan_digest: planDigest,
+    coverage_ref: plan.coverage_path,
+  })}\n`);
+}
+
+
 
 
 
@@ -1823,6 +2496,18 @@ function liveTaskIdsFromRawState(value         )              {
   const tasks = requireRecord(state.tasks, "state.tasks");
   return new Set(Object.entries(tasks)
     .filter(([, taskValue]) => requireRecord(taskValue, "state task").status !== "superseded")
+    .map(([taskId]) => taskId));
+}
+
+function ownerValidationTaskIdsFromRawState(value         )              {
+  const state = requireRecord(value, "state");
+  const tasks = requireRecord(state.tasks, "state.tasks");
+  return new Set(Object.entries(tasks)
+    .filter(([, taskValue]) => {
+      const status = requireRecord(taskValue, "state task").status;
+      return status === "pending" || status === "reserved" || status === "running" ||
+        status === "blocked" || status === "failed" || status === "needs_repair";
+    })
     .map(([taskId]) => taskId));
 }
 
@@ -2012,6 +2697,8 @@ function parsePlan(
     goal,
     options.allowUncoveredRequiredGates ?? false,
     options.liveTaskIds,
+    options.ownerValidationTaskIds,
+    options.skipOwnerRegistryValidation ?? false,
   );
   const expectedPlanDigest = options.expectedPlanDigest ?? digestFile(planPath);
   const coverage = parseCoverage(
@@ -2053,6 +2740,164 @@ function buildAncestors(tasks                  )                           {
   return ancestors;
 }
 
+function directChildrenFor(taskId        , plan      )                   {
+  return plan.tasks.filter((task) => task.parent_task_id === taskId);
+}
+
+function descendantTaskIds(taskId        , plan      , visited = new Set        ())              {
+  if (visited.has(taskId)) fail(`task containment cycle detected at ${taskId}`);
+  visited.add(taskId);
+  const result = new Set        ();
+  for (const child of directChildrenFor(taskId, plan)) {
+    result.add(child.id);
+    for (const descendantId of descendantTaskIds(child.id, plan, new Set(visited))) {
+      result.add(descendantId);
+    }
+  }
+  return result;
+}
+
+function buildEffectiveAncestors(plan      )                           {
+  const byId = new Map(plan.tasks.map((task) => [task.id, task]));
+  const effectiveDependencies = (task                )           => {
+    const result = new Set(task.depends_on);
+    let parentId = task.parent_task_id;
+    const containmentVisited = new Set        ();
+    while (parentId !== null) {
+      if (containmentVisited.has(parentId)) fail(`task containment cycle detected at ${parentId}`);
+      containmentVisited.add(parentId);
+      const parent = byId.get(parentId);
+      if (parent === undefined) fail(`task ${task.id} references unknown parent: ${parentId}`);
+      for (const dependencyId of parent.depends_on) result.add(dependencyId);
+      parentId = parent.parent_task_id;
+    }
+    for (const dependencyId of [...result]) {
+      const dependency = byId.get(dependencyId);
+      if (dependency?.node_type !== "composite") continue;
+      for (const descendantId of descendantTaskIds(dependencyId, plan)) result.add(descendantId);
+    }
+    return [...result];
+  };
+  return buildAncestors(plan.tasks.map((task) => ({
+    ...task,
+    depends_on: effectiveDependencies(task),
+  })));
+}
+
+function validateTaskHierarchy(plan      )       {
+  const byId = new Map(plan.tasks.map((task) => [task.id, task]));
+  for (const task of plan.tasks) {
+    if (task.parent_task_id !== null) {
+      const parent = byId.get(task.parent_task_id);
+      if (parent === undefined) fail(`task ${task.id} references unknown parent: ${task.parent_task_id}`);
+      if (parent.node_type !== "composite") {
+        fail(`task ${task.id} parent must be composite: ${parent.id}`);
+      }
+      if (!task.id.startsWith(`${parent.id}-`)) {
+        fail(`subgraph task ${task.id} must use parent prefix ${parent.id}-`);
+      }
+      for (const dependencyId of task.depends_on) {
+        const dependency = byId.get(dependencyId);
+        if (dependency?.parent_task_id !== parent.id) {
+          fail(`subgraph task ${task.id} dependency escapes parent ${parent.id}: ${dependencyId}`);
+        }
+      }
+    } else {
+      for (const dependencyId of task.depends_on) {
+        if (byId.get(dependencyId)?.parent_task_id !== null) {
+          fail(`top-level task ${task.id} must depend on composite boundary, not child ${dependencyId}`);
+        }
+      }
+    }
+    const containmentVisited = new Set([task.id]);
+    let parentId = task.parent_task_id;
+    while (parentId !== null) {
+      if (containmentVisited.has(parentId)) fail(`task containment cycle detected at ${parentId}`);
+      containmentVisited.add(parentId);
+      parentId = byId.get(parentId)?.parent_task_id ?? null;
+    }
+    if (task.node_type !== "composite") continue;
+    const subgraph = task.subgraph                ;
+    const directChildren = directChildrenFor(task.id, plan);
+    const actualIds = directChildren.map((child) => child.id).sort(compareStableStrings);
+    const declaredIds = [...subgraph.task_ids].sort(compareStableStrings);
+    if (JSON.stringify(actualIds) !== JSON.stringify(declaredIds)) {
+      fail(`composite task ${task.id} subgraph.task_ids must equal its direct children`);
+    }
+    const childIds = new Set(actualIds);
+    for (const entryId of subgraph.entry_task_ids) {
+      if (!childIds.has(entryId)) fail(`composite task ${task.id} has unknown entry: ${entryId}`);
+    }
+    for (const exitId of subgraph.exit_task_ids) {
+      if (!childIds.has(exitId)) fail(`composite task ${task.id} has unknown exit: ${exitId}`);
+    }
+    const computedEntries = directChildren
+      .filter((child) => child.depends_on.length === 0)
+      .map((child) => child.id)
+      .sort(compareStableStrings);
+    const dependedOn = new Set(directChildren.flatMap((child) => child.depends_on));
+    const computedExits = directChildren
+      .filter((child) => !dependedOn.has(child.id))
+      .map((child) => child.id)
+      .sort(compareStableStrings);
+    if (JSON.stringify(computedEntries) !== JSON.stringify([...subgraph.entry_task_ids].sort(compareStableStrings))) {
+      fail(`composite task ${task.id} entry_task_ids do not match its internal DAG`);
+    }
+    if (JSON.stringify(computedExits) !== JSON.stringify([...subgraph.exit_task_ids].sort(compareStableStrings))) {
+      fail(`composite task ${task.id} exit_task_ids do not match its internal DAG`);
+    }
+    if (task.satisfies_goal_gates.length > 0) {
+      fail(`composite task ${task.id} cannot directly satisfy goal gates`);
+    }
+  }
+}
+
+function validateExplicitReviews(
+  plan      ,
+  ancestors                          ,
+  liveTaskIds              ,
+)       {
+  const live = (task                )          => liveTaskIds === undefined || liveTaskIds.has(task.id);
+  const liveTasks = plan.tasks.filter(live);
+  const byId = new Map(plan.tasks.map((task) => [task.id, task]));
+  const reviews = liveTasks.filter((task) => task.role === "review");
+  for (const review of reviews) {
+    for (const reviewedId of review.reviews_task_ids) {
+      const reviewed = byId.get(reviewedId);
+      if (reviewed === undefined) fail(`review task ${review.id} references unknown task: ${reviewedId}`);
+      if (!live(reviewed)) continue;
+      if (!(ancestors.get(review.id) ?? new Set()).has(reviewedId)) {
+        fail(`review task ${review.id} must depend on reviewed task ${reviewedId}`);
+      }
+    }
+  }
+  for (const task of liveTasks) {
+    if (task.role === "review" || task.review_policy === "none") continue;
+    const reviewBoundaryIds = new Set([task.id]);
+    let parentId = task.parent_task_id;
+    while (parentId !== null) {
+      reviewBoundaryIds.add(parentId);
+      parentId = byId.get(parentId)?.parent_task_id ?? null;
+    }
+    const matchingReviews = reviews.filter((review) =>
+      review.reviews_task_ids.some((reviewedId) => reviewBoundaryIds.has(reviewedId))
+    );
+    if (matchingReviews.length === 0) {
+      fail(
+        `task ${task.id} review_policy ${task.review_policy} requires an explicit review DAG node`,
+      );
+    }
+    if (task.review_policy !== "immediate") continue;
+    const reviewIds = new Set(matchingReviews.map((review) => review.id));
+    for (const dependent of liveTasks.filter((candidate) => candidate.depends_on.includes(task.id))) {
+      if (dependent.role === "review" && reviewIds.has(dependent.id)) continue;
+      if (![...(ancestors.get(dependent.id) ?? [])].some((ancestorId) => reviewIds.has(ancestorId))) {
+        fail(`task ${dependent.id} bypasses immediate review for ${task.id}`);
+      }
+    }
+  }
+}
+
 function tasksConflict(left                , right                )          {
   if (taskSubjectId(left) === taskSubjectId(right)) return true;
   if (left.resource_locks.some((lock) => right.resource_locks.includes(lock))) return true;
@@ -2066,8 +2911,12 @@ function validateGraph(
   goal              ,
   allowUncoveredRequiredGates = false,
   liveTaskIds              ,
+  ownerValidationTaskIds              ,
+  skipOwnerRegistryValidation = false,
 )                           {
-  validatePlanOwnersAgainstRegistry(plan, goal);
+  if (!skipOwnerRegistryValidation) {
+    validatePlanOwnersAgainstRegistry(plan, goal, ownerValidationTaskIds);
+  }
   ensureUnique(plan.owners.map((owner) => owner.id), "owner id");
   ensureUnique(plan.runtime_actors.map((actor) => actor.id), "runtime actor id");
   ensureUnique(executionSubjects(plan).map((subject) => subject.id), "execution subject id");
@@ -2078,6 +2927,7 @@ function validateGraph(
   if (actorIds.size !== RUNTIME_ACTOR_IDS.size) fail("plan runtime actor set is invalid");
   ensureUnique(plan.tasks.map((task) => task.id), "task id");
   ensureUnique(plan.tasks.map((task) => task.logical_id), "logical task id");
+  validateTaskHierarchy(plan);
   const subjectById = new Map(executionSubjects(plan).map((subject) => [subject.id, subject]));
   const taskIds = new Set(plan.tasks.map((task) => task.id));
   const goalGateIds = new Set(goal.verification_gates.map((gate) => gate.id));
@@ -2165,7 +3015,9 @@ function validateGraph(
     );
     if (matching.length !== 1) fail(`exactly one ${fixedGateId} task is required`);
   }
-  const ancestors = buildAncestors(plan.tasks);
+  buildAncestors(plan.tasks);
+  const ancestors = buildEffectiveAncestors(plan);
+  validateExplicitReviews(plan, ancestors, liveTaskIds);
   const sourceAuditTaskIds = new Set(
     plan.tasks
       .filter((task) =>
@@ -2193,9 +3045,10 @@ function validateGraph(
   if (!readinessAncestors.has(diffTask.id)) {
     fail(`${COMMIT_READINESS_GATE_ID} must depend on ${DIFF_SCOPE_GATE_ID}`);
   }
-  const safetyTasks = liveTaskIds === undefined
+  const safetyTasks = (liveTaskIds === undefined
     ? plan.tasks
-    : plan.tasks.filter((task) => liveTaskIds.has(task.id));
+    : plan.tasks.filter((task) => liveTaskIds.has(task.id)))
+    .filter((task) => task.node_type === "leaf");
   const hasRunnableParallelPair = safetyTasks.some((left, leftIndex) =>
     safetyTasks.slice(leftIndex + 1).some((right) =>
       !ancestors.get(left.id)?.has(right.id) &&
@@ -2221,12 +3074,12 @@ function continuationPayloadFor(goalPath        )                         {
   if (EXPECTED_PLATFORM === "kimi") {
     return {
       continuation_prompt:
-        `/skill:subagent-coordination 继续 \`${resolve(goalPath)}\`。`,
+        `/skill:sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
     };
   }
   return {
     continuation_prompt:
-      `/ghost-agent-workflow:subagent-coordination 继续 \`${resolve(goalPath)}\`。`,
+      `/ghost-agent-workflow:sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
   };
 }
 
@@ -2248,6 +3101,10 @@ function resultPathFor(
   );
 }
 
+function subgraphRequestPathFor(resultPath        )         {
+  return `${resultPath}.subgraph-request.json`;
+}
+
 function taskBaselinePathFor(
   planPath        ,
   taskId        ,
@@ -2256,7 +3113,7 @@ function taskBaselinePathFor(
 )         {
   return join(
     dirname(planPath),
-    "snapshots",
+    "execution-fences",
     taskId,
     `attempt-${attempt}-${reservationToken}.json`,
   );
@@ -2343,7 +3200,11 @@ function parseGoalState(
     fail("goal state.status is invalid");
   }
   const controller = requireString(source.controller, "goal state.controller");
-  if (controller !== "codex_native" && controller !== "local_fallback") {
+  if (
+    controller !== "codex_native" &&
+    controller !== "standalone_thread" &&
+    controller !== "local_fallback"
+  ) {
     fail("goal state.controller is invalid");
   }
   if (controller !== goal.lifecycle.controller) fail("goal state.controller mismatch");
@@ -2433,11 +3294,11 @@ function parseGoalState(
   if (nativeSync.objective_digest !== expectedObjectiveDigest) {
     fail("goal state.native_sync.objective_digest mismatch");
   }
-  if (controller === "local_fallback") {
+  if (controller !== "codex_native") {
     if (
       nativeSync.status !== "not_required" || nativeSync.completion_token !== null ||
       nativeSync.confirmed_at !== null
-    ) fail("local_fallback goal must use empty native_sync not_required");
+    ) fail(`${controller} goal must use empty native_sync not_required`);
   } else if (source.status === "active") {
     if (
       nativeSync.status !== "not_started" || nativeSync.completion_token !== null ||
@@ -2741,6 +3602,7 @@ function parseState(value         , plan      , planPath        )           {
     fail("state runtime actor set does not match plan runtime actors");
   }
   const rawEvidenceCache = requireRecord(source.evidence_cache, "state.evidence_cache");
+  const rawOwnerRegistry = requireRecord(source.owner_registry, "state.owner_registry");
   const evidenceCache = Object.fromEntries(Object.entries(rawEvidenceCache).map(([verificationId, value]) => {
     const item = requireRecord(value, `state.evidence_cache.${verificationId}`);
     return [requireIdentifier(verificationId, "evidence cache id"), {
@@ -2767,12 +3629,40 @@ function parseState(value         , plan      , planPath        )           {
       source.workspace_change_seq,
       "state.workspace_change_seq",
     ),
+    owner_registry: {
+      ref: requireString(rawOwnerRegistry.ref, "state.owner_registry.ref"),
+      digest: requireString(rawOwnerRegistry.digest, "state.owner_registry.digest"),
+      revision: requirePositiveInteger(
+        rawOwnerRegistry.revision,
+        "state.owner_registry.revision",
+      ),
+    },
+    owner_change: source.owner_change === undefined || source.owner_change === null
+      ? null
+      : (() => {
+        const change = requireRecord(source.owner_change, "state.owner_change");
+        assertExactFields(change, ["request_ref", "request_digest"], "state.owner_change");
+        const requestRef = requireString(change.request_ref, "state.owner_change.request_ref");
+        const requestDigest = requireString(
+          change.request_digest,
+          "state.owner_change.request_digest",
+        );
+        if (!isAbsolute(requestRef) || !existsSync(requestRef) || digestFile(requestRef) !== requestDigest) {
+          fail("state.owner_change request is missing or changed");
+        }
+        return { request_ref: requestRef, request_digest: requestDigest };
+      })(),
     tasks,
     owners,
     runtime_actors: runtimeActors,
     evidence_cache: evidenceCache,
+    review_pending: source.review_pending === undefined
+      ? []
+      : requireStringArray(source.review_pending, "state.review_pending")
+        .map((taskId, index) => requireIdentifier(taskId, `state.review_pending[${index}]`)),
     stale_executors: staleExecutors,
   };
+  ensureUnique(result.review_pending, "state pending Review task id");
   const taskById = new Map(plan.tasks.map((task) => [task.id, task]));
   for (const task of plan.tasks) {
     const taskState = result.tasks[task.id];
@@ -2865,6 +3755,12 @@ function parseState(value         , plan      , planPath        )           {
       fail(`state stale executor cannot be from a future source revision: ${stale.executor_id}`);
     }
   }
+  for (const taskId of result.review_pending) {
+    const task = taskById.get(taskId);
+    if (task === undefined || task.role !== "work" || result.tasks[taskId].status !== "completed") {
+      fail(`state.review_pending references an invalid completed work task: ${taskId}`);
+    }
+  }
   return result;
 }
 
@@ -2872,11 +3768,12 @@ function newCapsule(
   owner                 ,
   goalDigest        ,
   sourceRevision        ,
+  generation = 1,
 )               {
   return {
     contract: "OWNER_CAPSULE_V1",
     owner_id: owner.id,
-    generation: 1,
+    generation,
     goal_digest: goalDigest,
     source_revision: sourceRevision,
     scope: owner.writable_paths,
@@ -2996,17 +3893,25 @@ function updatePersistentOwnerCapsule(
 
 function initializeState(planPath        , plan      )           {
   mkdirSync(join(dirname(planPath), "results"), { recursive: true });
+  const goal = parseGoal(readJson(plan.goal_contract_path));
+  const registry = approvedOwnerRegistry(goal);
+  const approvedOwners = new Map(registry.owners.map((owner) => [owner.id, owner]));
   const owners                             = {};
   for (const owner of plan.owners) {
     const capsuleRef = capsulePathFor(planPath, owner.id);
     if (!existsSync(capsuleRef)) {
       writeJson(
         capsuleRef,
-        newCapsule(owner, plan.goal_digest, plan.plan_source.revision),
+        newCapsule(
+          owner,
+          plan.goal_digest,
+          plan.plan_source.revision,
+          approvedOwners.get(owner.id)?.generation ?? 1,
+        ),
       );
     }
     owners[owner.id] = {
-      generation: 1,
+      generation: approvedOwners.get(owner.id)?.generation ?? 1,
       bound_executor_id: null,
       status: "unbound",
       current_task_id: null,
@@ -3034,6 +3939,12 @@ function initializeState(planPath        , plan      )           {
     source_revision: plan.plan_source.revision,
     revision: plan.revision,
     workspace_change_seq: 0,
+    owner_registry: {
+      ref: registry.ref,
+      digest: registry.digest,
+      revision: registry.revision,
+    },
+    owner_change: null,
     tasks: Object.fromEntries(plan.tasks.map((task) => [task.id, {
       status: "pending",
       attempt: 0,
@@ -3056,6 +3967,7 @@ function initializeState(planPath        , plan      )           {
     owners,
     runtime_actors: runtimeActors,
     evidence_cache: {},
+    review_pending: [],
     stale_executors: [],
   };
 }
@@ -3063,7 +3975,7 @@ function initializeState(planPath        , plan      )           {
 function loadPlanAndState(
   planPath        ,
   statePath        ,
-  options                                 = {},
+  options                                                                    = {},
 )
 
 
@@ -3086,9 +3998,19 @@ function loadPlanAndState(
       skipSourceBlockValidation: completedFrozen,
       verifySourceDigest: !completedFrozen && !(options.allowSourceDrift ?? false),
       liveTaskIds: liveTaskIdsFromRawState(rawState),
+      ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(rawState),
+      skipOwnerRegistryValidation: options.allowOwnerRegistryDrift ?? false,
     },
   );
   const state = parseState(rawState, plan, planPath);
+  const currentRegistry = approvedOwnerRegistry(goal);
+  if (resolve(state.owner_registry.ref) !== resolve(currentRegistry.ref)) {
+    fail("state owner registry ref mismatch");
+  }
+  if (!(options.allowOwnerRegistryDrift ?? false) && (
+    state.owner_registry.digest !== currentRegistry.digest ||
+    state.owner_registry.revision !== currentRegistry.revision
+  )) fail("owner registry changed; an approved owner transition delta is required");
   if (state.plan_digest !== digestFile(planPath)) fail("plan digest mismatch");
   if (state.goal_digest !== plan.goal_digest) fail("state goal_digest mismatch");
   if (state.revision !== plan.revision) fail("state revision mismatch");
@@ -3171,7 +4093,7 @@ function goalValidateCommand(goalArgument        )       {
       return { status: "valid", goal: storedGoal, state: existing };
     }
     const goal = parseGoal(rawGoal);
-    const baselinePath = join(dirname(goalPath), "worktree-baseline.json");
+    const baselinePath = join(dirname(goalPath), "workspace-fence.json");
     const baseline = captureWorktreeSnapshot(goal.workspace.root);
     const sourceBlocksPath = join(dirname(goalPath), "source-blocks.json");
     const sourceBlocks = buildSourceBlocks(goal);
@@ -3239,7 +4161,10 @@ function validateCommand(planArgument        )       {
     const { plan, coverage } = parsePlan(readJson(planPath), planPath, {
       ...(existingStateValue === null
         ? {}
-        : { liveTaskIds: liveTaskIdsFromRawState(existingStateValue) }),
+        : {
+          liveTaskIds: liveTaskIdsFromRawState(existingStateValue),
+          ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(existingStateValue),
+        }),
     });
     if (!existsSync(goalStatePath)) fail("goal state is not initialized; run goal-validate first");
     const goal = parseGoal(readJson(plan.goal_contract_path));
@@ -3270,7 +4195,7 @@ function validateCommand(planArgument        )       {
     return { state, plan, coverage };
   }));
   const { state, plan, coverage } = payload;
-  process.stdout.write(`${JSON.stringify({ status: "valid", plan_path: planPath, state_path: statePath, coverage_path: plan.coverage_path, goal_id: plan.goal_id, revision: plan.revision, safety: plan.safety.status, owner_count: plan.owners.length, task_count: plan.tasks.length, required_plan_item_count: coverage.required_plan_items.length, state_contract: state.contract })}\n`);
+  process.stdout.write(`${JSON.stringify({ status: "valid", plan_path: planPath, state_path: statePath, coverage_path: plan.coverage_path, progress_document_path: progressDocumentPathFor(planPath), goal_id: plan.goal_id, revision: plan.revision, safety: plan.safety.status, owner_count: plan.owners.length, task_count: plan.tasks.length, required_plan_item_count: coverage.required_plan_items.length, state_contract: state.contract })}\n`);
 }
 
 function refreshGoalCommand(
@@ -3462,8 +4387,11 @@ function renderCommand(planArgument        )       {
   ];
   for (const task of tasks) {
     const kind = task.owner_id === null ? "actor" : "owner";
+    const hierarchy = task.node_type === "composite"
+      ? ` · composite:${(task.subgraph                ).task_ids.length}`
+      : task.parent_task_id === null ? "" : ` · child-of:${task.parent_task_id}`;
     const label = escapeMermaidLabel(
-      `${task.id} · [${ROLE_LABELS[task.role]}] ${task.title} · ${kind}:${taskSubjectId(task)}`,
+      `${task.id} · [${ROLE_LABELS[task.role]}] ${task.title} · ${kind}:${taskSubjectId(task)}${hierarchy}`,
     );
     lines.push(`  ${aliases.get(task.id)}["${label}"]`);
   }
@@ -3471,21 +4399,94 @@ function renderCommand(planArgument        )       {
     for (const dependencyId of [...task.depends_on].sort(compareStableStrings)) {
       lines.push(`  ${aliases.get(dependencyId)} --> ${aliases.get(task.id)}`);
     }
+    if (task.parent_task_id !== null && task.depends_on.length === 0) {
+      lines.push(`  ${aliases.get(task.parent_task_id)} -. subgraph .-> ${aliases.get(task.id)}`);
+    }
   }
     return `${lines.join("\n")}\n`;
   });
   process.stdout.write(rendered);
 }
 
-function dependencyResolved(taskId        , state          , visited = new Set        ())          {
+function dependencyResolved(
+  taskId        ,
+  plan      ,
+  state          ,
+  visited = new Set        (),
+)          {
   if (visited.has(taskId)) fail(`replacement cycle detected at ${taskId}`);
   visited.add(taskId);
   const taskState = state.tasks[taskId];
-  if (taskState.status === "completed") return true;
+  const task = plan.tasks.find((candidate) => candidate.id === taskId);
+  if (taskState === undefined || task === undefined) fail(`dependency references unknown task: ${taskId}`);
+  if (task.node_type === "composite") {
+    return (task.subgraph                ).task_ids.every((childId) =>
+      dependencyResolved(childId, plan, state, new Set(visited))
+    );
+  }
+  if (taskState.status === "completed") return !state.review_pending.includes(taskId);
   if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
-    return dependencyResolved(taskState.replacement_task_id, state, visited);
+    return dependencyResolved(taskState.replacement_task_id, plan, state, visited);
   }
   return false;
+}
+
+function effectiveTaskStatus(task                , plan      , state          )             {
+  if (task.node_type === "leaf") return state.tasks[task.id].status;
+  const childStatuses = (task.subgraph                ).task_ids.map((childId) => {
+    const child = plan.tasks.find((candidate) => candidate.id === childId);
+    if (child === undefined) fail(`composite task ${task.id} references unknown child: ${childId}`);
+    const childState = state.tasks[child.id];
+    if (childState.status === "superseded" && childState.replacement_task_id !== null) {
+      const replacementId = replacementTerminalTaskId(childState.replacement_task_id, state);
+      const replacement = plan.tasks.find((candidate) => candidate.id === replacementId);
+      if (replacement === undefined) fail(`replacement references unknown task: ${replacementId}`);
+      return effectiveTaskStatus(replacement, plan, state);
+    }
+    return effectiveTaskStatus(child, plan, state);
+  });
+  if ((task.subgraph                ).task_ids.every((childId) =>
+    dependencyResolved(childId, plan, state)
+  )) {
+    return "completed";
+  }
+  for (const attention of ["needs_repair", "failed", "blocked"]                ) {
+    if (childStatuses.includes(attention)) return attention;
+  }
+  if (childStatuses.some((status) => status === "running" || status === "reserved" || status === "completed")) {
+    return "running";
+  }
+  return "pending";
+}
+
+function taskDepth(task                , plan      )         {
+  const byId = new Map(plan.tasks.map((candidate) => [candidate.id, candidate]));
+  let depth = 0;
+  let parentId = task.parent_task_id;
+  const visited = new Set        ();
+  while (parentId !== null) {
+    if (visited.has(parentId)) fail(`task containment cycle detected at ${parentId}`);
+    visited.add(parentId);
+    depth += 1;
+    parentId = byId.get(parentId)?.parent_task_id ?? null;
+  }
+  return depth;
+}
+
+function boundaryDependenciesForTask(task                , plan      )           {
+  const byId = new Map(plan.tasks.map((candidate) => [candidate.id, candidate]));
+  const result = new Set(task.depends_on);
+  let parentId = task.parent_task_id;
+  const visited = new Set        ();
+  while (parentId !== null) {
+    if (visited.has(parentId)) fail(`task containment cycle detected at ${parentId}`);
+    visited.add(parentId);
+    const parent = byId.get(parentId);
+    if (parent === undefined) fail(`task ${task.id} references unknown parent: ${parentId}`);
+    for (const dependencyId of parent.depends_on) result.add(dependencyId);
+    parentId = parent.parent_task_id;
+  }
+  return [...result];
 }
 
 function replacementTerminalTaskId(
@@ -3545,16 +4546,37 @@ function resultRefsForDependency(taskId        , state          , visited = new 
   return [];
 }
 
+function resultTasksForDependency(
+  taskId        ,
+  plan      ,
+  state          ,
+  visited = new Set        (),
+)                   {
+  if (visited.has(taskId)) fail(`dependency or subgraph cycle detected at ${taskId}`);
+  visited.add(taskId);
+  const task = plan.tasks.find((candidate) => candidate.id === taskId);
+  if (task === undefined) fail(`dependency references unknown task: ${taskId}`);
+  const taskState = state.tasks[task.id];
+  if (task.node_type === "composite") {
+    return (task.subgraph                ).task_ids.flatMap((childId) =>
+      resultTasksForDependency(childId, plan, state, new Set(visited))
+    );
+  }
+  if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
+    return resultTasksForDependency(taskState.replacement_task_id, plan, state, visited);
+  }
+  return taskState.status === "completed" && taskState.result_ref !== null ? [task] : [];
+}
+
 function dependencyInputsForTask(
   plan      ,
   state          ,
   consumer                ,
 )                            {
   const inputs                            = [];
-  for (const dependencyId of consumer.depends_on) {
-    const terminalId = replacementTerminalTaskId(dependencyId, state);
-    const producer = plan.tasks.find((candidate) => candidate.id === terminalId);
-    if (producer === undefined) fail(`dependency references unknown task: ${terminalId}`);
+  for (const dependencyId of boundaryDependenciesForTask(consumer, plan)) {
+    const producers = resultTasksForDependency(dependencyId, plan, state);
+    for (const producer of producers) {
     const producerState = state.tasks[producer.id];
     if (producerState.status !== "completed" || producerState.result_ref === null) continue;
     if (taskSubjectId(producer) === taskSubjectId(consumer)) {
@@ -3592,10 +4614,12 @@ function dependencyInputsForTask(
     }
     inputs.push(...published.map((artifact) => ({
       kind: "published_owner_artifact",
+      boundary_task_id: dependencyId,
       producer_task_id: producer.id,
       producer_owner_id: producer.owner_id,
       ...artifact,
     })));
+    }
   }
   return inputs;
 }
@@ -3632,8 +4656,11 @@ function taskReadyForReservation(
   state          ,
   coverageFullyPlanned         ,
 )          {
+  if (task.node_type === "composite") return false;
   if (state.tasks[task.id].status !== "pending") return false;
-  if (!task.depends_on.every((dependencyId) => dependencyResolved(dependencyId, state))) {
+  if (!boundaryDependenciesForTask(task, plan).every((dependencyId) =>
+    dependencyResolved(dependencyId, plan, state)
+  )) {
     return false;
   }
   if (!task.verification_ids.includes(DIFF_SCOPE_GATE_ID)) return true;
@@ -3679,12 +4706,23 @@ function validateLiveDiffBarriers(plan      , state          )       {
   }
 }
 
-const EXECUTOR_SPAWN_NAME_MAX_LENGTH = 64;
+const THREAD_KEY_MAX_LENGTH = 64;
+const THREAD_KEY_SUBJECT_MAX_LENGTH = 40;
+const THREAD_KEY_PATTERN = /^wf_[a-z0-9_]{1,61}$/;
 
-function executorSpawnName(
+function executorNameSegment(value        , fallback        )         {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || fallback;
+}
+
+function threadKey(
   planPath        ,
   plan      ,
   goal              ,
+  task                ,
   subject                  ,
   ownerState            ,
   taskState           ,
@@ -3704,24 +4742,60 @@ function executorSpawnName(
     .update(serializedJson({
       instance: instanceIdentity,
       goal_id: goal.goal_id,
-      execution_subject_id: subject.id,
     }))
     .digest("hex")
-    .slice(0, 12);
-  const incarnation = `_g${ownerState.generation}_a${taskState.attempt}_${identityDigest}`;
-  const normalized = `${goal.goal_id}_${subject.id}`
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "") || "executor";
-  const prefixLength = EXECUTOR_SPAWN_NAME_MAX_LENGTH - incarnation.length;
-  if (prefixLength < 1) fail("executor spawn incarnation exceeds name length limit");
-  return `${normalized.slice(0, prefixLength).replace(/_+$/g, "") || "e"}${incarnation}`;
+    .slice(0, 6);
+  let subjectSegment = executorNameSegment(subject.id, "owner")
+    .slice(0, THREAD_KEY_SUBJECT_MAX_LENGTH)
+    .replace(/_+$/g, "");
+  const suffix = `_g${ownerState.generation}_${identityDigest}`;
+  const fixedLength = "wf_".length + suffix.length;
+  const segmentBudget = THREAD_KEY_MAX_LENGTH - fixedLength;
+  if (segmentBudget < 1) fail("thread incarnation exceeds name length limit");
+  subjectSegment = subjectSegment.slice(0, segmentBudget).replace(/_+$/g, "");
+  if (!subjectSegment) fail("thread readable segment is empty");
+  const result = `wf_${subjectSegment}${suffix}`;
+  if (result.length > THREAD_KEY_MAX_LENGTH || !THREAD_KEY_PATTERN.test(result)) {
+    fail(`thread key violates canonical naming policy: ${result}`);
+  }
+  return result;
+}
+
+function threadTitle(subject                  )         {
+  return `[GA][TASK][${isOwnerDefinition(subject) ? "OWNER" : "RUNTIME"}] ${subject.id}`;
 }
 
 function effectiveWritablePaths(task                , taskState           )           {
   return uniqueStrings([...task.writable_paths, ...taskState.expanded_writable_paths])
     .sort(compareStableStrings);
+}
+
+function reviewContextForTask(
+  plan      ,
+  state          ,
+  task                ,
+)
+
+
+
+         {
+  if (task.role !== "review") return null;
+  return {
+    plan_digest: state.plan_digest,
+    workspace_digest: state.tasks[task.id].task_baseline_digest,
+    reviewed_results: task.reviews_task_ids.map((taskId) => {
+      const reviewedState = state.tasks[taskId];
+      if (
+        reviewedState === undefined || reviewedState.status !== "completed" ||
+        reviewedState.result_ref === null || reviewedState.result_digest === null
+      ) fail(`review task ${task.id} requires an accepted result for ${taskId}`);
+      return {
+        task_id: taskId,
+        result_ref: reviewedState.result_ref,
+        result_digest: reviewedState.result_digest,
+      };
+    }),
+  };
 }
 
 function taskBinding(
@@ -3734,7 +4808,7 @@ function taskBinding(
   const taskState = state.tasks[task.id];
   const subject = subjectForTask(plan, task);
   const subjectState = subjectStateForTask(state, task);
-  const spawnName = executorSpawnName(planPath, plan, goal, subject, subjectState, taskState);
+  const canonicalThreadKey = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
   const goalState = goalStateForPlan(planPath, plan, goal).state;
   const diffArtifactPath = task.verification_ids.includes(DIFF_SCOPE_GATE_ID) &&
       taskState.reservation_token !== null
@@ -3782,102 +4856,101 @@ function taskBinding(
   const registryBinding = existsSync(registryPath)
     ? { ref: registryPath, digest: digestFile(registryPath) }
     : null;
+  const audit                                                     = {};
+  if (diffArtifactPath !== null) {
+    audit[DIFF_SCOPE_GATE_ID] = { path: diffArtifactPath, contract: "DIFF_SCOPE_AUDIT_V1" };
+  }
+  if (sourceCoverageArtifactPath !== null) {
+    audit[SOURCE_COVERAGE_GATE_ID] = {
+      path: sourceCoverageArtifactPath,
+      contract: "SOURCE_COVERAGE_AUDIT_V1",
+    };
+  }
+  if (commitReadinessArtifactPath !== null) {
+    audit[COMMIT_READINESS_GATE_ID] = {
+      path: commitReadinessArtifactPath,
+      contract: "COMMIT_READINESS_AUDIT_V1",
+    };
+  }
   return {
-    contract: "TASK_BINDING_V5",
-    goal_id: goal.goal_id,
-    goal_objective: goal.objective,
-    plan_path: planPath,
-    state_path: statePathFor(planPath),
-    executor_mode: goal.execution.mode,
-    executor_spawn_name: spawnName,
-    worktree_baseline: goalState.worktree_baseline,
-    source_blocks: goalState.source_blocks,
-    coverage: {
-      ref: plan.coverage_path,
-      digest: coverageDigest,
-      semantic_digest: semanticDigest,
+    contract: "TASK_BINDING_V6",
+    task: {
+      id: task.id,
+      title: task.title,
+      role: task.role,
+      work: task.task,
+      done: task.done_when,
+      verify: task.verification_ids,
+      items: task.plan_item_ids,
+      risk: task.risk_level,
+      dependencies: dependencyInputsForTask(plan, state, task),
     },
-    task_id: task.id,
-    logical_id: task.logical_id,
-    title: task.title,
-    display_name: `[GA][${ROLE_LABELS[task.role]}][执行] ${task.title}`,
-    role: task.role,
-    owner_id: task.owner_id,
-    runtime_actor_id: task.runtime_actor_id,
-    execution_subject_id: subject.id,
-    execution_subject_kind: moduleOwner ? "module_owner" : "runtime_actor",
-    owner_generation: subjectState.generation,
-    owner_responsibility: subject.responsibility,
-    owner_context: subject.worker_context,
-    owner_capsule_ref: subjectState.capsule_ref,
-    persistent_owner_capsule_ref: moduleOwner
-      ? persistentOwnerCapsulePathFor(goal.workspace.root, subject.id)
-      : null,
-    published_artifact_directory: moduleOwner
-      ? persistentOwnerInterfaceDirectoryFor(
-        goal.workspace.root,
-        subject.id,
-        goal.goal_id,
-        task.id,
-        taskState.attempt,
-      )
-      : null,
-    owner_registry: registryBinding,
-    owner_scope_patterns: subjectScope(subject),
-    owner_scope_excludes: moduleOwner ? (subject                   ).excluded_paths : [],
-    readable_paths: subjectScope(subject),
-    readable_path_excludes: moduleOwner ? (subject                   ).excluded_paths : [],
-    searchable_paths: subjectScope(subject),
-    searchable_path_excludes: moduleOwner ? (subject                   ).excluded_paths : [],
-    checkpoint_path: moduleOwner ? checkpointPathFor(planPath, subject.id, task.id) : null,
-    reservation_token: taskState.reservation_token,
-    attempt: taskState.attempt,
-    source_revision: taskState.source_revision,
-    task: task.task,
-    writable_paths: effectiveWritablePaths(task, taskState),
-    resource_locks: task.resource_locks,
-    done_when: task.done_when,
-    verification_ids: task.verification_ids,
-    satisfies_goal_gates: task.satisfies_goal_gates,
-    plan_item_ids: task.plan_item_ids,
-    coverage_effect: task.coverage_effect,
-    goal_constraints: {
+    run: {
+      attempt: taskState.attempt,
+      token: taskState.reservation_token,
+      source_revision: taskState.source_revision,
+      generation: subjectState.generation,
+      executor: taskState.executor_id,
+      workspace_change_seq: state.workspace_change_seq,
+    },
+    thread: {
+      key: canonicalThreadKey,
+      title: threadTitle(subject),
+      profile: subject.runtime_profile,
+    },
+    subject: {
+      id: subject.id,
+      kind: moduleOwner ? "owner" : "runtime",
+      responsibility: subject.responsibility,
+      context: subject.worker_context,
+    },
+    scope: {
+      read: subjectScope(subject),
+      exclude: moduleOwner ? (subject                   ).excluded_paths : [],
+      write: effectiveWritablePaths(task, taskState),
+    },
+    refs: {
+      plan: planPath,
+      state: statePathFor(planPath),
+      coverage: { ref: plan.coverage_path, digest: coverageDigest, semantic_digest: semanticDigest },
+      source_blocks: goalState.source_blocks,
+      registry: registryBinding,
+      capsule: subjectState.capsule_ref,
+      persistent_capsule: moduleOwner
+        ? persistentOwnerCapsulePathFor(goal.workspace.root, subject.id)
+        : null,
+      artifact_dir: moduleOwner
+        ? persistentOwnerInterfaceDirectoryFor(
+          goal.workspace.root,
+          subject.id,
+          goal.goal_id,
+          task.id,
+          taskState.attempt,
+        )
+        : null,
+      checkpoint: moduleOwner ? checkpointPathFor(planPath, subject.id, task.id) : null,
+      result: taskState.result_path,
+      subgraph_request: taskState.result_path === null
+        ? null
+        : subgraphRequestPathFor(taskState.result_path),
+    },
+    review: {
+      policy: task.review_policy,
+      subjects: task.reviews_task_ids,
+      context: reviewContextForTask(plan, state, task),
+    },
+    policy: {
+      objective: goal.objective,
       scope: goal.scope,
       non_goals: goal.non_goals,
       constraints: goal.constraints,
+      side_effects: goal.side_effects,
     },
-    side_effect_policy: goal.side_effects,
-    verification_requirements: {
-      done_when: task.done_when,
-      verification_ids: task.verification_ids,
-      goal_gates: goal.verification_gates.filter((gate) =>
-        task.verification_ids.includes(gate.id),
-      ),
-      completion: goal.completion,
+    audit,
+    output: {
+      input: "TASK_RESULT_INPUT_V2",
+      stored: "WORKER_RESULT_V5",
     },
-    dependency_inputs: dependencyInputsForTask(plan, state, task),
-    result_path: taskState.result_path,
-    result_contract: "WORKER_RESULT_V5",
-    workspace_change_seq: state.workspace_change_seq,
-    reusable_evidence: Object.fromEntries(Object.entries(state.evidence_cache)
-      .filter(([, evidence]) => evidence.workspace_change_seq === state.workspace_change_seq)),
-    evidence_artifact_paths: {
-      [DIFF_SCOPE_GATE_ID]: diffArtifactPath,
-      [SOURCE_COVERAGE_GATE_ID]: sourceCoverageArtifactPath,
-      [COMMIT_READINESS_GATE_ID]: commitReadinessArtifactPath,
-    },
-    evidence_artifact_contracts: {
-      [DIFF_SCOPE_GATE_ID]: task.verification_ids.includes(DIFF_SCOPE_GATE_ID)
-        ? "DIFF_SCOPE_AUDIT_V1"
-        : null,
-      [SOURCE_COVERAGE_GATE_ID]: task.verification_ids.includes(SOURCE_COVERAGE_GATE_ID)
-        ? "SOURCE_COVERAGE_AUDIT_V1"
-        : null,
-      [COMMIT_READINESS_GATE_ID]: task.verification_ids.includes(COMMIT_READINESS_GATE_ID)
-        ? "COMMIT_READINESS_AUDIT_V1"
-        : null,
-    },
-    runtime_profile: subject.runtime_profile,
   };
 }
 
@@ -3893,6 +4966,7 @@ function reserveCommand(
     assertGoalMutable(planPath, plan, goal);
     if (plan.safety.status === "needs_user_review") fail("plan safety requires user review");
     if (state.goal_refresh_pending) fail("goal refresh requires DAG delta before reserve");
+    if (state.owner_change !== null) fail("owner change is awaiting user action");
     if (state.stale_executors.length > 0) {
       fail("stale executors are stop-pending; confirm them before reserve");
     }
@@ -3960,11 +5034,12 @@ function reserveCommand(
       taskState.accepted_change_seq = null;
       ownerState.status = "reserved";
       ownerState.current_task_id = task.id;
-      const action = ownerState.bound_executor_id === null ? "spawn_executor" : "reuse_executor";
-      const spawnName = executorSpawnName(
+      const action = ownerState.bound_executor_id === null ? "create_thread" : "reuse_thread";
+      const canonicalThreadKey = threadKey(
         planPath,
         plan,
         goal,
+        task,
         subjectForTask(plan, task),
         ownerState,
         taskState,
@@ -3977,7 +5052,8 @@ function reserveCommand(
         execution_subject_id: taskSubjectId(task),
         owner_generation: ownerState.generation,
         executor_id: ownerState.bound_executor_id,
-        executor_spawn_name: spawnName,
+        thread_key: canonicalThreadKey,
+        thread_title: threadTitle(subjectForTask(plan, task)),
         reservation_token: taskState.reservation_token,
         critical_score: scores.get(task.id),
         binding: taskBinding(planPath, plan, goal, state, task),
@@ -4063,6 +5139,7 @@ function bindCommand(
       owner_generation: ownerState.generation,
       executor_id: actualExecutorId,
       status: "running",
+      binding: taskBinding(planPath, plan, goal, state, task),
     };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -4239,10 +5316,41 @@ function checkpointCommand(
     }
     const checkpointPath = canonicalPath(
       checkpointPathFor(planPath, task.owner_id, taskId),
-      checkpointArgument,
+      checkpointArgument === "-"
+        ? checkpointPathFor(planPath, task.owner_id, taskId)
+        : checkpointArgument,
       "checkpoint path",
     );
-    const checkpoint = parseCheckpoint(readJson(checkpointPath), task, taskState);
+    let checkpointValue         ;
+    if (checkpointArgument === "-") {
+      const input = readStructuredInput("CHECKPOINT_INPUT_V1");
+      requireAllowedKeys(input, [
+        "contract",
+        "progress",
+        "decisions",
+        "invariants",
+        "risks",
+        "symbols",
+        "next",
+      ], "checkpoint input");
+      checkpointValue = {
+        contract: "OWNER_CHECKPOINT_V1",
+        task_id: task.id,
+        owner_id: task.owner_id,
+        owner_generation: taskState.owner_generation,
+        reservation_token: taskState.reservation_token,
+        progress: requireString(input.progress, "checkpoint input.progress"),
+        decisions: input.decisions ?? [],
+        invariants: input.invariants ?? [],
+        risks: input.risks ?? [],
+        important_symbols: input.symbols ?? [],
+        next_steps: input.next ?? [],
+      };
+      writeJson(checkpointPath, checkpointValue);
+    } else {
+      checkpointValue = readJson(checkpointPath);
+    }
+    const checkpoint = parseCheckpoint(checkpointValue, task, taskState);
     const owner = subjectForTask(plan, task)                   ;
     const capsule = loadOwnerCapsule(
       owner,
@@ -4365,6 +5473,49 @@ function parseWorkerResult(
       source.blocking_findings,
       "worker result.blocking_findings",
     ),
+    non_blocking_findings: requireStringArray(
+      source.non_blocking_findings,
+      "worker result.non_blocking_findings",
+    ),
+    follow_up_suggestions: requireStringArray(
+      source.follow_up_suggestions,
+      "worker result.follow_up_suggestions",
+    ),
+    reviewed_results: Array.isArray(source.reviewed_results)
+      ? source.reviewed_results.map((value, index) => {
+        const reviewed = requireRecord(value, `worker result.reviewed_results[${index}]`);
+        return {
+          task_id: requireIdentifier(
+            reviewed.task_id,
+            `worker result.reviewed_results[${index}].task_id`,
+          ),
+          result_ref: requireString(
+            reviewed.result_ref,
+            `worker result.reviewed_results[${index}].result_ref`,
+          ),
+          result_digest: requireString(
+            reviewed.result_digest,
+            `worker result.reviewed_results[${index}].result_digest`,
+          ),
+        };
+      })
+      : fail("worker result.reviewed_results must be an array"),
+    review_plan_digest: requireNullableString(
+      source.review_plan_digest,
+      "worker result.review_plan_digest",
+    ),
+    review_workspace_digest: requireNullableString(
+      source.review_workspace_digest,
+      "worker result.review_workspace_digest",
+    ),
+    ...(source.review_upgrade_reason === undefined
+      ? {}
+      : {
+        review_upgrade_reason: requireNullableString(
+          source.review_upgrade_reason,
+          "worker result.review_upgrade_reason",
+        ),
+      }),
     scope_request: source.scope_request === null ? null : parseScopeRequest(source.scope_request),
     summary: requireString(source.summary, "worker result.summary"),
     owner_updates: (() => {
@@ -4399,6 +5550,7 @@ function parseWorkerResult(
   if (result.attempt !== taskState.attempt) fail("worker result attempt mismatch");
   if (result.source_revision !== taskState.source_revision) fail("worker result source_revision mismatch");
   ensureUnique(result.changed_files, "worker result changed file");
+  ensureUnique(result.reviewed_results.map((item) => item.task_id), "worker reviewed task id");
   ensureUnique(result.published_artifacts.map((item) => item.ref), "published artifact ref");
   for (const artifact of result.published_artifacts) {
     if (allowedPublishedArtifactDirectory !== undefined) {
@@ -4482,6 +5634,40 @@ function parseWorkerResult(
   return result;
 }
 
+function validateReviewResultBinding(
+  plan      ,
+  state          ,
+  task                ,
+  result                ,
+)       {
+  if (task.role !== "work" && (result.review_upgrade_reason ?? null) !== null) {
+    fail(`${task.role} result cannot request a Review upgrade`);
+  }
+  if (result.status !== "completed" && (result.review_upgrade_reason ?? null) !== null) {
+    fail("Review upgrade requires a completed work result");
+  }
+  if (task.role !== "review") {
+    if (
+      result.reviewed_results.length > 0 || result.review_plan_digest !== null ||
+      result.review_workspace_digest !== null || result.non_blocking_findings.length > 0 ||
+      result.follow_up_suggestions.length > 0
+    ) fail("non-review result cannot contain review-only fields");
+    return;
+  }
+  const expected = reviewContextForTask(plan, state, task);
+  if (expected === null) fail("review context is missing");
+  if (result.review_plan_digest !== expected.plan_digest) {
+    fail("review result plan digest mismatch");
+  }
+  if (
+    expected.workspace_digest === null ||
+    result.review_workspace_digest !== expected.workspace_digest
+  ) fail("review result workspace digest mismatch");
+  if (serializedJson(result.reviewed_results) !== serializedJson(expected.reviewed_results)) {
+    fail("review result subjects changed after binding");
+  }
+}
+
 
 
 
@@ -4535,6 +5721,18 @@ function requireExactKeys(
   }
 }
 
+function requireAllowedKeys(
+  source                         ,
+  allowed          ,
+  label        ,
+)       {
+  const allowedSet = new Set(allowed);
+  const unexpected = Object.keys(source).filter((key) => !allowedSet.has(key));
+  if (unexpected.length > 0) {
+    fail(`${label} has unexpected fields: ${unexpected.sort(compareStableStrings).join(", ")}`);
+  }
+}
+
 function changedWorktreePaths(
   baseline                    ,
   current                    ,
@@ -4575,8 +5773,8 @@ function expectedDiffScopeAudit(
 )                         {
   const { state: goalState, baseline } = worktreeBaselineFor(planPath, plan, goal);
   const current = captureWorktreeSnapshot(goal.workspace.root);
-  if (current.head_oid !== baseline.head_oid) {
-    fail(`${DIFF_SCOPE_GATE_ID} forbids Git HEAD changes during the goal`);
+  if (current.tree_oid !== baseline.tree_oid) {
+    fail(`${DIFF_SCOPE_GATE_ID} requires a refresh after Git tree content changes`);
   }
   const allChangedFiles = changedWorktreePaths(baseline, current);
   const sourceRelative = relative(goal.workspace.root, goal.source.path).replaceAll("\\", "/");
@@ -5206,12 +6404,47 @@ function sourceAuditCommand(
       taskState.attempt,
       reservationToken,
     );
-    const classificationPath = canonicalPath(
-      artifactPath,
-      classificationsArgument,
-      "source coverage classification path",
-    );
-    const classifications = parseSourceCoverageClassifications(readJson(classificationPath));
+    let classifications                                ;
+    if (classificationsArgument === "-") {
+      const input = readStructuredInput("SOURCE_AUDIT_INPUT_V1");
+      requireAllowedKeys(input, ["contract", "non_requirements"], "source audit input");
+      const reasons = input.non_requirements === undefined
+        ? {}
+        : requireRecord(input.non_requirements, "source audit input.non_requirements");
+      const goalState = goalStateForPlan(planPath, plan, goal).state;
+      const sourceBlocks = parseSourceBlocks(readJson(goalState.source_blocks.ref), goal);
+      const blockIds = new Set(sourceBlocks.blocks.map((block) => block.id));
+      for (const blockId of Object.keys(reasons)) {
+        if (!blockIds.has(blockId)) fail(`source audit input references unknown block: ${blockId}`);
+      }
+      classifications = sourceBlocks.blocks.map((block) => {
+        const planItemIds = coverage.required_plan_items
+          .filter((item) => item.source_refs.includes(block.id))
+          .map((item) => item.id)
+          .sort(compareStableStrings);
+        if (planItemIds.length > 0) {
+          return {
+            block_id: block.id,
+            disposition: "mapped"         ,
+            plan_item_ids: planItemIds,
+            reason: null,
+          };
+        }
+        return {
+          block_id: block.id,
+          disposition: "non_requirement"         ,
+          plan_item_ids: [],
+          reason: requireString(reasons[block.id], `source audit input.non_requirements.${block.id}`),
+        };
+      });
+    } else {
+      const classificationPath = canonicalPath(
+        artifactPath,
+        classificationsArgument,
+        "source coverage classification path",
+      );
+      classifications = parseSourceCoverageClassifications(readJson(classificationPath));
+    }
     const artifact = expectedSourceCoverageAudit(
       planPath,
       plan,
@@ -5376,7 +6609,9 @@ function expectedCommitReadiness(
   }
   const baseline = worktreeBaselineFor(planPath, plan, goal).baseline;
   const current = captureWorktreeSnapshot(goal.workspace.root);
-  if (current.head_oid !== baseline.head_oid) fail("commit readiness forbids Git HEAD changes");
+  if (current.tree_oid !== baseline.tree_oid) {
+    fail("commit readiness requires a refresh after Git tree content changes");
+  }
   const sourceRelativeRaw = relative(goal.workspace.root, goal.source.path).replaceAll("\\", "/");
   const sourceRelative = sourceRelativeRaw !== "" && sourceRelativeRaw !== ".." &&
       !sourceRelativeRaw.startsWith("../") && !isAbsolute(sourceRelativeRaw)
@@ -5729,6 +6964,7 @@ function finishCommand(
         owner,
         taskState,
       );
+      validateReviewResultBinding(plan, state, task, acceptedResult);
       if (acceptedResult.status !== taskState.status) fail("accepted result status mismatch");
       bindDiffScopeArtifact(
         planPath,
@@ -5794,6 +7030,7 @@ function finishCommand(
         )
         : undefined,
     );
+    validateReviewResultBinding(plan, state, task, result);
     if (taskState.task_baseline_ref === null || taskState.task_baseline_digest === null) {
       fail(`task ${taskId} baseline is missing`);
     }
@@ -5805,8 +7042,8 @@ function finishCommand(
       goal.workspace.root,
     );
     const currentSnapshot = captureWorktreeSnapshot(goal.workspace.root);
-    if (currentSnapshot.head_oid !== taskBaseline.head_oid) {
-      fail(`task ${taskId} changed Git HEAD`);
+    if (currentSnapshot.tree_oid !== taskBaseline.tree_oid) {
+      fail(`task ${taskId} observed a Git tree content change`);
     }
     const authorizedPatterns = effectiveWritablePaths(task, taskState);
     const automaticallyAttributedChanges = changedWorktreePaths(taskBaseline, currentSnapshot)
@@ -5846,6 +7083,9 @@ function finishCommand(
     ownerState.result_refs = uniqueStrings([...ownerState.result_refs, acceptedResultPath]);
     if (result.status === "completed") {
       ownerState.completed_task_ids = uniqueStrings([...ownerState.completed_task_ids, taskId]);
+      if ((result.review_upgrade_reason ?? null) !== null) {
+        state.review_pending = uniqueStrings([...state.review_pending, taskId]);
+      }
       for (const evidence of result.evidence.filter((item) => item.outcome === "passed")) {
         state.evidence_cache[evidence.verification_id] = {
           task_id: task.id,
@@ -5954,7 +7194,67 @@ function rotateOwnerCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+function ownerChangePauseCommand(
+  planArgument        ,
+  stateArgument        ,
+  requestArgument        ,
+)       {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const requestPath = resolve(requestArgument);
+  const payload = withStateLock(statePath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
+      allowSourceDrift: true,
+    });
+    assertGoalMutable(planPath, plan, goal);
+    const request = requireRecord(readJson(requestPath), "owner change request");
+    if (request.contract !== "OWNER_CHANGE_REQUEST_V2") {
+      fail("owner change request contract must equal OWNER_CHANGE_REQUEST_V2");
+    }
+    if (request.base_registry_digest !== state.owner_registry.digest) {
+      fail("owner change request base Registry digest mismatch");
+    }
+    const requestDigest = digestFile(requestPath);
+    if (state.owner_change !== null) {
+      if (
+        state.owner_change.request_ref !== requestPath ||
+        state.owner_change.request_digest !== requestDigest
+      ) fail("a different Owner change is already pending");
+      return {
+        status: "paused",
+        request_ref: requestPath,
+        request_digest: requestDigest,
+        idempotent: true,
+      };
+    }
+    state.owner_change = { request_ref: requestPath, request_digest: requestDigest };
+    writeJson(statePath, state);
+    return {
+      status: "paused",
+      request_ref: requestPath,
+      request_digest: requestDigest,
+      idempotent: false,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
 function parseDelta(value         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5976,6 +7276,64 @@ function parseDelta(value         )
   if (!Array.isArray(source.source_dispositions)) {
     fail("delta.source_dispositions must be an array");
   }
+  const rawReviewUpgrades = source.review_upgrades ?? [];
+  if (!Array.isArray(rawReviewUpgrades)) fail("delta.review_upgrades must be an array");
+  const ownerTransition = source.owner_transition === undefined || source.owner_transition === null
+    ? null
+    : (() => {
+      const transition = requireRecord(source.owner_transition, "delta.owner_transition");
+      if (transition.contract !== "OWNER_TRANSITION_V1") {
+        fail("delta.owner_transition.contract must equal OWNER_TRANSITION_V1");
+      }
+      if (!Array.isArray(transition.task_rebindings)) {
+        fail("delta.owner_transition.task_rebindings must be an array");
+      }
+      const taskRebindings = transition.task_rebindings.map((value, index) => {
+        const rebinding = requireRecord(
+          value,
+          `delta.owner_transition.task_rebindings[${index}]`,
+        );
+        return {
+          task_id: requireIdentifier(
+            rebinding.task_id,
+            `delta.owner_transition.task_rebindings[${index}].task_id`,
+          ),
+          owner_id: requireIdentifier(
+            rebinding.owner_id,
+            `delta.owner_transition.task_rebindings[${index}].owner_id`,
+          ),
+        };
+      });
+      ensureUnique(taskRebindings.map((item) => item.task_id), "owner transition task id");
+      return {
+        contract: "OWNER_TRANSITION_V1"         ,
+        base_registry_digest: requireString(
+          transition.base_registry_digest,
+          "delta.owner_transition.base_registry_digest",
+        ),
+        next_registry_digest: requireString(
+          transition.next_registry_digest,
+          "delta.owner_transition.next_registry_digest",
+        ),
+        validation_ref: requireString(
+          transition.validation_ref,
+          "delta.owner_transition.validation_ref",
+        ),
+        validation_digest: requireString(
+          transition.validation_digest,
+          "delta.owner_transition.validation_digest",
+        ),
+        approval_ref: requireString(
+          transition.approval_ref,
+          "delta.owner_transition.approval_ref",
+        ),
+        approval_digest: requireString(
+          transition.approval_digest,
+          "delta.owner_transition.approval_digest",
+        ),
+        task_rebindings: taskRebindings,
+      };
+    })();
   const coverageUpdate = requireRecord(source.coverage_update, "delta.coverage_update");
   if (!Array.isArray(coverageUpdate.required_plan_items) || coverageUpdate.required_plan_items.length === 0) {
     fail("delta.coverage_update.required_plan_items must be a non-empty array");
@@ -6062,11 +7420,226 @@ function parseDelta(value         )
         replacement_task_id: replacementTaskId,
       };
     }),
+    review_upgrades: rawReviewUpgrades.map((value, index) => {
+      const upgrade = requireRecord(value, `delta.review_upgrades[${index}]`);
+      return {
+        task_id: requireIdentifier(upgrade.task_id, `delta.review_upgrades[${index}].task_id`),
+        review_task_id: requireIdentifier(
+          upgrade.review_task_id,
+          `delta.review_upgrades[${index}].review_task_id`,
+        ),
+        reason: requireString(upgrade.reason, `delta.review_upgrades[${index}].reason`),
+      };
+    }),
+    owner_transition: ownerTransition,
     coverage_update: { required_plan_items: requiredPlanItems },
     safety: {
       status: safety.status                ,
       reasons: requireStringArray(safety.reasons, "delta.safety.reasons"),
     },
+  };
+}
+
+function expandDeltaInput(
+  value                         ,
+  plan      ,
+  state          ,
+  coverage              ,
+)                          {
+  if (value.contract !== "DAG_DELTA_INPUT_V1") return value;
+  requireAllowedKeys(value, [
+    "contract",
+    "tasks",
+    "repairs",
+    "source",
+    "review",
+    "owner",
+    "items",
+    "safety",
+    "safety_reasons",
+  ], "delta input");
+  const rawTasks = value.tasks ?? [];
+  if (!Array.isArray(rawTasks)) fail("delta input.tasks must be an array");
+  const addTasks = rawTasks.map((task, index) => expandPlanInputTask(task, index));
+  const rawRepairs = value.repairs ?? [];
+  if (!Array.isArray(rawRepairs)) fail("delta input.repairs must be an array");
+  const repairs = rawRepairs.map((entry, index) => {
+    const repair = requireRecord(entry, `delta input.repairs[${index}]`);
+    requireAllowedKeys(repair, ["task", "replacement"], `delta input.repairs[${index}]`);
+    return {
+      task_id: requireIdentifier(repair.task, `delta input.repairs[${index}].task`),
+      replacement_task_id: requireIdentifier(
+        repair.replacement,
+        `delta input.repairs[${index}].replacement`,
+      ),
+    };
+  });
+  const rawSource = value.source ?? [];
+  if (!Array.isArray(rawSource)) fail("delta input.source must be an array");
+  const sourceDispositions = rawSource.map((entry, index) => {
+    const disposition = requireRecord(entry, `delta input.source[${index}]`);
+    requireAllowedKeys(
+      disposition,
+      ["task", "action", "replacement"],
+      `delta input.source[${index}]`,
+    );
+    return {
+      task_id: requireIdentifier(disposition.task, `delta input.source[${index}].task`),
+      action: requireString(disposition.action, `delta input.source[${index}].action`),
+      replacement_task_id: disposition.replacement === undefined || disposition.replacement === null
+        ? null
+        : requireIdentifier(disposition.replacement, `delta input.source[${index}].replacement`),
+    };
+  });
+  const rawReview = value.review ?? [];
+  if (!Array.isArray(rawReview)) fail("delta input.review must be an array");
+  const reviewUpgrades = rawReview.map((entry, index) => {
+    const review = requireRecord(entry, `delta input.review[${index}]`);
+    requireAllowedKeys(review, ["task", "review_task", "reason"], `delta input.review[${index}]`);
+    return {
+      task_id: requireIdentifier(review.task, `delta input.review[${index}].task`),
+      review_task_id: requireIdentifier(
+        review.review_task,
+        `delta input.review[${index}].review_task`,
+      ),
+      reason: requireString(review.reason, `delta input.review[${index}].reason`),
+    };
+  });
+  let ownerTransition                                 = null;
+  if (value.owner !== undefined && value.owner !== null) {
+    const owner = requireRecord(value.owner, "delta input.owner");
+    requireAllowedKeys(owner, ["validation", "approval", "rebind"], "delta input.owner");
+    const validationPath = resolve(requireString(owner.validation, "delta input.owner.validation"));
+    const approvalPath = resolve(requireString(owner.approval, "delta input.owner.approval"));
+    if (!existsSync(validationPath) || !existsSync(approvalPath)) {
+      fail("delta input Owner validation or approval is missing");
+    }
+    const validation = requireRecord(readJson(validationPath), "delta input Owner validation");
+    const rebind = owner.rebind ?? [];
+    if (!Array.isArray(rebind)) fail("delta input.owner.rebind must be an array");
+    ownerTransition = {
+      contract: "OWNER_TRANSITION_V1",
+      base_registry_digest: requireString(
+        validation.base_registry_digest,
+        "delta input Owner validation.base_registry_digest",
+      ),
+      next_registry_digest: requireString(
+        validation.next_registry_digest,
+        "delta input Owner validation.next_registry_digest",
+      ),
+      validation_ref: validationPath,
+      validation_digest: digestFile(validationPath),
+      approval_ref: approvalPath,
+      approval_digest: digestFile(approvalPath),
+      task_rebindings: rebind.map((entry, index) => {
+        const rebinding = requireRecord(entry, `delta input.owner.rebind[${index}]`);
+        requireAllowedKeys(
+          rebinding,
+          ["task", "owner"],
+          `delta input.owner.rebind[${index}]`,
+        );
+        return {
+          task_id: requireIdentifier(rebinding.task, `delta input.owner.rebind[${index}].task`),
+          owner_id: requireIdentifier(rebinding.owner, `delta input.owner.rebind[${index}].owner`),
+        };
+      }),
+    };
+  }
+  const items = value.items === undefined
+    ? coverage.required_plan_items
+    : Array.isArray(value.items)
+      ? value.items.map(parsePlanInputItem)
+      : fail("delta input.items must be an array");
+  const safetyStatus = (value.safety ?? plan.safety.status)                ;
+  if (!new Set              (["parallel_safe", "sequential_only", "needs_user_review"]).has(
+    safetyStatus,
+  )) fail(`delta input.safety is invalid: ${String(value.safety)}`);
+  return {
+    contract: "DAG_DELTA_V1",
+    base_plan_digest: state.plan_digest,
+    revision: plan.revision + 1,
+    add_owners: [],
+    add_tasks: addTasks,
+    repairs,
+    source_dispositions: sourceDispositions,
+    review_upgrades: reviewUpgrades,
+    owner_transition: ownerTransition,
+    coverage_update: { required_plan_items: items },
+    safety: {
+      status: safetyStatus,
+      reasons: value.safety_reasons === undefined
+        ? plan.safety.reasons
+        : requireStringArray(value.safety_reasons, "delta input.safety_reasons"),
+    },
+  };
+}
+
+function verifiedOwnerTransition(
+  transition                                                                ,
+  goal              ,
+  state          ,
+)                                           {
+  for (const [label, path, digest] of [
+    ["validation", transition.validation_ref, transition.validation_digest],
+    ["approval", transition.approval_ref, transition.approval_digest],
+  ]         ) {
+    if (!isAbsolute(path)) fail(`owner transition ${label}_ref must be absolute`);
+    if (!/^[0-9a-f]{64}$/u.test(digest)) {
+      fail(`owner transition ${label}_digest must be a sha256 digest`);
+    }
+    if (!existsSync(path) || digestFile(path) !== digest) {
+      fail(`owner transition ${label} is missing or changed`);
+    }
+  }
+  if (transition.base_registry_digest !== state.owner_registry.digest) {
+    fail("owner transition base registry digest mismatch");
+  }
+  const registry = approvedOwnerRegistry(goal);
+  if (transition.next_registry_digest !== registry.digest) {
+    fail("owner transition next registry digest mismatch");
+  }
+  if (registry.revision <= state.owner_registry.revision) {
+    fail("owner transition registry revision must advance");
+  }
+  const validation = requireRecord(readJson(transition.validation_ref), "owner transition validation");
+  if (validation.contract !== "OWNER_CHANGE_VALIDATION_V2" || validation.status !== "passed") {
+    fail("owner transition validation is not passed");
+  }
+  if (
+    validation.base_registry_digest !== transition.base_registry_digest ||
+    validation.next_registry_digest !== transition.next_registry_digest
+  ) fail("owner transition validation registry digest mismatch");
+  if (
+    state.owner_change !== null &&
+    validation.request_digest !== state.owner_change.request_digest
+  ) fail("owner transition does not match the paused Owner change request");
+  const nextRegistry = requireRecord(validation.next_registry, "owner transition next registry");
+  if (digestJson(nextRegistry) !== registry.digest) {
+    fail("owner transition validated registry does not match the applied registry");
+  }
+  const approval = requireRecord(readJson(transition.approval_ref), "owner transition approval");
+  if (
+    approval.contract !== "OWNER_CHANGE_APPROVAL_V2" ||
+    approval.decision !== "approved" || approval.approved_by !== "user"
+  ) fail("owner transition requires explicit user approval");
+  if (
+    approval.validation_digest !== transition.validation_digest ||
+    approval.next_registry_digest !== transition.next_registry_digest ||
+    approval.request_digest !== validation.request_digest
+  ) fail("owner transition approval digest mismatch");
+  return registry;
+}
+
+function ownerDefinitionFromApproved(owner                       )                  {
+  return {
+    id: owner.id,
+    role: "work",
+    responsibility: owner.responsibility,
+    writable_paths: owner.scope_patterns,
+    excluded_paths: owner.scope_excludes,
+    worker_context: owner.worker_context,
+    runtime_profile: owner.runtime_profile,
+    reuse_policy: "owner_affinity",
   };
 }
 
@@ -6077,13 +7650,29 @@ function applyDeltaCommand(
 )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
-  const deltaPath = resolve(deltaArgument);
   const payload = withStateLock(statePath, () => {
-    const { plan, goal, coverage, state } = loadPlanAndState(planPath, statePath);
+    const deltaInput = deltaArgument === "-"
+      ? readStructuredInput("-")
+      : requireRecord(readJson(resolve(deltaArgument)), "delta input");
+    const hasOwnerTransition = deltaInput.contract === "DAG_DELTA_INPUT_V1"
+      ? deltaInput.owner !== undefined && deltaInput.owner !== null
+      : deltaInput.owner_transition !== undefined && deltaInput.owner_transition !== null;
+    const { plan, goal, coverage, state } = loadPlanAndState(planPath, statePath, {
+      allowOwnerRegistryDrift: hasOwnerTransition,
+    });
+    const delta = parseDelta(expandDeltaInput(deltaInput, plan, state, coverage));
     assertGoalMutable(planPath, plan, goal);
-    const delta = parseDelta(readJson(deltaPath));
+    if (state.owner_change !== null && delta.owner_transition === null) {
+      fail("paused Owner change requires an owner transition delta");
+    }
     if (delta.base_plan_digest !== state.plan_digest) fail("delta base_plan_digest mismatch");
     if (delta.revision !== plan.revision + 1) fail("delta revision must increment plan revision by one");
+    const transitionRegistry = delta.owner_transition === null
+      ? null
+      : verifiedOwnerTransition(delta.owner_transition, goal, state);
+    if (transitionRegistry !== null && delta.add_owners.length > 0) {
+      fail("owner transition derives owners from the approved registry; add_owners must be empty");
+    }
     if (!state.goal_refresh_pending) {
       const startedDiffAudits = plan.tasks.filter((task) =>
         task.satisfies_goal_gates.includes(DIFF_SCOPE_GATE_ID) &&
@@ -6110,7 +7699,58 @@ function applyDeltaCommand(
     for (const task of delta.add_tasks) {
       if (existingTaskIds.has(task.id)) fail(`delta task already exists: ${task.id}`);
     }
+    const transitionOwnerById = new Map(
+      (transitionRegistry?.owners ?? []).map((owner) => [owner.id, owner]),
+    );
+    const rebindingByTaskId = new Map(
+      (delta.owner_transition?.task_rebindings ?? []).map((item) => [item.task_id, item.owner_id]),
+    );
+    for (const [taskId, ownerId] of rebindingByTaskId) {
+      const task = plan.tasks.find((candidate) => candidate.id === taskId);
+      if (task === undefined) fail(`owner transition rebinds unknown task: ${taskId}`);
+      if (task.role !== "work" || task.owner_id === null) {
+        fail(`owner transition can only rebind work tasks: ${taskId}`);
+      }
+      if (state.tasks[taskId].status !== "pending") {
+        fail(`owner transition can only rebind pending tasks: ${taskId}`);
+      }
+      const approved = transitionOwnerById.get(ownerId);
+      if (approved === undefined) fail(`owner transition target is not active: ${ownerId}`);
+      const owner = ownerDefinitionFromApproved(approved);
+      for (const path of effectiveWritablePaths(task, state.tasks[taskId])) {
+        if (!ownerAllowsPath(owner, path)) {
+          fail(`owner transition target ${ownerId} does not cover task ${taskId} path: ${path}`);
+        }
+      }
+    }
     const newTaskIds = new Set(delta.add_tasks.map((task) => task.id));
+    ensureUnique(delta.review_upgrades.map((upgrade) => upgrade.task_id), "Review upgrade task id");
+    ensureUnique(
+      delta.review_upgrades.map((upgrade) => upgrade.review_task_id),
+      "Review upgrade Review task id",
+    );
+    if (state.goal_refresh_pending && delta.review_upgrades.length > 0) {
+      fail("Review upgrades must wait until source refresh is reconciled");
+    }
+    const reviewUpgradeByTaskId = new Map(
+      delta.review_upgrades.map((upgrade) => [upgrade.task_id, upgrade]),
+    );
+    for (const upgrade of delta.review_upgrades) {
+      const subject = plan.tasks.find((task) => task.id === upgrade.task_id);
+      const reviewTask = delta.add_tasks.find((task) => task.id === upgrade.review_task_id);
+      if (subject === undefined || subject.role !== "work") {
+        fail(`Review upgrade subject must be an existing work task: ${upgrade.task_id}`);
+      }
+      if (!state.review_pending.includes(subject.id) || state.tasks[subject.id].status !== "completed") {
+        fail(`Review upgrade subject is not awaiting Review: ${subject.id}`);
+      }
+      if (
+        reviewTask === undefined || reviewTask.role !== "review" ||
+        reviewTask.owner_id !== subject.owner_id || reviewTask.parent_task_id !== subject.parent_task_id ||
+        !reviewTask.depends_on.includes(subject.id) ||
+        !reviewTask.reviews_task_ids.includes(subject.id)
+      ) fail(`Review upgrade requires a same-boundary Review node: ${upgrade.review_task_id}`);
+    }
     ensureUnique(delta.repairs.map((repair) => repair.task_id), "delta repair task id");
     ensureUnique(
       delta.source_dispositions.map((disposition) => disposition.task_id),
@@ -6186,11 +7826,98 @@ function applyDeltaCommand(
         }
       }
     }
+    const sourceDispositionByTaskId = new Map(
+      delta.source_dispositions.map((item) => [item.task_id, item]),
+    );
+    for (const review of plan.tasks.filter((task) => task.role === "review")) {
+      const reviewedInvalidated = review.reviews_task_ids.some(
+        (taskId) => sourceDispositionByTaskId.get(taskId)?.action === "invalidate",
+      );
+      if (!reviewedInvalidated) continue;
+      if (sourceDispositionByTaskId.get(review.id)?.action !== "invalidate") {
+        fail(`review task ${review.id} must be invalidated with its reviewed result`);
+      }
+    }
+    const repairReplacementByTaskId = new Map(
+      delta.repairs.map((repair) => [repair.task_id, repair.replacement_task_id]),
+    );
+    const transitionedTasks = plan.tasks.map((task) => {
+      const ownerId = rebindingByTaskId.get(task.id);
+      let transitioned = ownerId === undefined ? task : { ...task, owner_id: ownerId };
+      const reviewUpgrade = reviewUpgradeByTaskId.get(task.id);
+      if (reviewUpgrade !== undefined) {
+        transitioned = {
+          ...transitioned,
+          review_policy: "immediate",
+          review_batch_key: reviewUpgrade.review_task_id,
+          review_blocks_dependents: true,
+          review_reasons: uniqueStrings([...transitioned.review_reasons, reviewUpgrade.reason]),
+        };
+      }
+      if (transitioned.depends_on.some((dependencyId) => reviewUpgradeByTaskId.has(dependencyId))) {
+        transitioned = {
+          ...transitioned,
+          depends_on: transitioned.depends_on.map((dependencyId) =>
+            reviewUpgradeByTaskId.get(dependencyId)?.review_task_id ?? dependencyId
+          ),
+        };
+      }
+      if (transitioned.role === "review") {
+        const replacements = transitioned.reviews_task_ids
+          .map((reviewedId) => repairReplacementByTaskId.get(reviewedId))
+          .filter((replacementId)                          => replacementId !== undefined);
+        if (replacements.length > 0) {
+          if (state.tasks[transitioned.id].status !== "pending") {
+            fail(`review task ${transitioned.id} must be replaced after its reviewed result changes`);
+          }
+          transitioned = {
+            ...transitioned,
+            depends_on: uniqueStrings([...transitioned.depends_on, ...replacements]),
+            reviews_task_ids: uniqueStrings(transitioned.reviews_task_ids.map(
+              (reviewedId) => repairReplacementByTaskId.get(reviewedId) ?? reviewedId,
+            )),
+          };
+        }
+      }
+      return transitioned;
+    });
+    const transitionedOwners = transitionRegistry === null
+      ? [...plan.owners, ...delta.add_owners]
+      : (() => {
+        const activeById = new Map(
+          transitionRegistry.owners.map((owner) => [owner.id, ownerDefinitionFromApproved(owner)]),
+        );
+        const owners = plan.owners.map((owner) => activeById.get(owner.id) ?? owner);
+        const ownerIds = new Set(owners.map((owner) => owner.id));
+        const referencedOwnerIds = new Set([...transitionedTasks, ...delta.add_tasks]
+          .map((task) => task.owner_id)
+          .filter((value)                  => value !== null));
+        for (const ownerId of referencedOwnerIds) {
+          if (ownerIds.has(ownerId)) continue;
+          const owner = activeById.get(ownerId);
+          if (owner === undefined) fail(`task references inactive owner after transition: ${ownerId}`);
+          owners.push(owner);
+          ownerIds.add(ownerId);
+        }
+        return owners;
+      })();
+    const transitionedAddedTasks = delta.add_tasks.map((task) => {
+      const isUpgradeReview = delta.review_upgrades.some(
+        (upgrade) => upgrade.review_task_id === task.id,
+      );
+      if (isUpgradeReview) return task;
+      return {
+        ...task,
+        depends_on: task.depends_on.map((dependencyId) =>
+          reviewUpgradeByTaskId.get(dependencyId)?.review_task_id ?? dependencyId
+        ),
+      };
+    });
     const nextPlan       = {
       ...plan,
       revision: delta.revision,
-      owners: [...plan.owners, ...delta.add_owners],
-      tasks: [...plan.tasks, ...delta.add_tasks],
+      owners: transitionedOwners,
+      tasks: [...transitionedTasks, ...transitionedAddedTasks],
       safety: delta.safety,
     };
     const nextCoverage               = {
@@ -6212,7 +7939,20 @@ function applyDeltaCommand(
     const nextLiveTaskIds = new Set(nextPlan.tasks
       .filter((task) => !supersededAfterDelta.has(task.id))
       .map((task) => task.id));
-    const ancestors = validateGraph(nextPlan, goal, false, nextLiveTaskIds);
+    const nextOwnerValidationTaskIds = new Set(nextPlan.tasks
+      .filter((task) => {
+        if (!nextLiveTaskIds.has(task.id) || task.owner_id === null) return false;
+        const taskState = state.tasks[task.id];
+        return taskState === undefined || taskState.status !== "completed";
+      })
+      .map((task) => task.id));
+    const ancestors = validateGraph(
+      nextPlan,
+      goal,
+      false,
+      nextLiveTaskIds,
+      nextOwnerValidationTaskIds,
+    );
     const coverageIds = new Set(nextCoverage.required_plan_items.map((item) => item.id));
     const sourceBlocks = parseSourceBlocks(
       readJson(goalStateForPlan(planPath, plan, goal).state.source_blocks.ref),
@@ -6246,6 +7986,69 @@ function applyDeltaCommand(
     }
     const writes                           = [];
     const capsuleWrites = new Map                      ();
+    if (transitionRegistry !== null) {
+      const approvedById = new Map(transitionRegistry.owners.map((owner) => [owner.id, owner]));
+      const oldOwnerById = new Map(plan.owners.map((owner) => [owner.id, owner]));
+      for (const owner of nextPlan.owners) {
+        const approved = approvedById.get(owner.id);
+        if (approved === undefined) continue;
+        const existingState = state.owners[owner.id];
+        const capsuleRef = existingState?.capsule_ref ?? capsulePathFor(planPath, owner.id);
+        if (existingState === undefined) {
+          state.owners[owner.id] = {
+            generation: approved.generation,
+            bound_executor_id: null,
+            status: "unbound",
+            current_task_id: null,
+            capsule_ref: capsuleRef,
+            completed_task_ids: [],
+            result_refs: [],
+          };
+          capsuleWrites.set(
+            capsuleRef,
+            newCapsule(owner, state.goal_digest, state.source_revision, approved.generation),
+          );
+          continue;
+        }
+        if (existingState.current_task_id !== null || existingState.status === "reserved" ||
+          existingState.status === "running") {
+          fail(`owner transition cannot migrate active owner: ${owner.id}`);
+        }
+        const oldOwner = oldOwnerById.get(owner.id);
+        const oldCapsule = oldOwner === undefined
+          ? null
+          : loadOwnerCapsule(
+            oldOwner,
+            existingState,
+            state.goal_digest,
+            state.source_revision,
+          );
+        existingState.generation = approved.generation;
+        existingState.bound_executor_id = null;
+        existingState.status = "unbound";
+        existingState.current_task_id = null;
+        const nextCapsule = oldCapsule ?? newCapsule(
+          owner,
+          state.goal_digest,
+          state.source_revision,
+          approved.generation,
+        );
+        nextCapsule.generation = approved.generation;
+        nextCapsule.scope = owner.writable_paths;
+        nextCapsule.scope_excludes = owner.excluded_paths;
+        nextCapsule.responsibility = owner.responsibility;
+        nextCapsule.worker_context = owner.worker_context;
+        nextCapsule.active_task_id = null;
+        nextCapsule.updated_at = new Date().toISOString();
+        capsuleWrites.set(capsuleRef, nextCapsule);
+      }
+      state.owner_registry = {
+        ref: transitionRegistry.ref,
+        digest: transitionRegistry.digest,
+        revision: transitionRegistry.revision,
+      };
+      state.owner_change = null;
+    }
     for (const owner of delta.add_owners) {
       const capsuleRef = capsulePathFor(planPath, owner.id);
       capsuleWrites.set(
@@ -6334,6 +8137,9 @@ function applyDeltaCommand(
     state.plan_digest = canonicalPlanDigest;
     state.revision = nextPlan.revision;
     state.goal_refresh_pending = false;
+    state.review_pending = state.review_pending.filter(
+      (taskId) => !reviewUpgradeByTaskId.has(taskId) && state.tasks[taskId]?.status !== "superseded",
+    );
     const liveSourceAudits = new Set(nextPlan.tasks
       .filter((task) =>
         state.tasks[task.id].status !== "superseded" &&
@@ -6368,7 +8174,13 @@ function applyDeltaCommand(
       added_owners: delta.add_owners.map((owner) => owner.id),
       added_tasks: delta.add_tasks.map((task) => task.id),
       repaired_tasks: delta.repairs,
+      review_upgrades: delta.review_upgrades,
       source_dispositions: delta.source_dispositions,
+      owner_transition: delta.owner_transition === null ? null : {
+        registry_revision: state.owner_registry.revision,
+        registry_digest: state.owner_registry.digest,
+        task_rebindings: delta.owner_transition.task_rebindings,
+      },
       unrelated_running_tasks: nextPlan.tasks
         .filter((task) => state.tasks[task.id].status === "running")
         .map((task) => task.id),
@@ -6529,8 +8341,8 @@ function activeReservationRecords(
       const action = taskState.status === "running"
         ? "wait_or_redeliver"
         : ownerState.bound_executor_id === null
-          ? "spawn_executor"
-          : "reuse_executor";
+          ? "create_thread"
+          : "reuse_thread";
       return {
         action,
         phase: taskState.status === "running" ? "running_bound" : "reserved_unbound",
@@ -6547,7 +8359,16 @@ function activeReservationRecords(
         attempt: taskState.attempt,
         source_revision: taskState.source_revision,
         reserved_at: taskState.reserved_at,
-        executor_spawn_name: binding.executor_spawn_name,
+        thread_key: threadKey(
+          planPath,
+          plan,
+          goal,
+          task,
+          subjectForTask(plan, task),
+          ownerState,
+          taskState,
+        ),
+        thread_title: threadTitle(subjectForTask(plan, task)),
         binding,
       };
     });
@@ -6565,11 +8386,15 @@ function nextActionFor(
     return goalState.native_sync.status === "pending" ? "native_completion_pending" : "completed";
   }
   if (state.goal_refresh_pending) return "needs_delta";
+  if (state.owner_change !== null) return "awaiting_owner_action";
+  if (state.review_pending.length > 0) return "upgrade_review";
   const coverageSummary = summarizeCoverage(plan, coverage, state);
   const coverageFullyPlanned =
     (coverageSummary.uncovered_plan_item_effects            ).length === 0;
   if (!coverageFullyPlanned) return "needs_delta";
-  const statuses = Object.values(state.tasks).map((task) => task.status);
+  const statuses = plan.tasks
+    .filter((task) => task.node_type === "leaf")
+    .map((task) => state.tasks[task.id].status);
   if (statuses.some((status) => status === "reserved" || status === "running")) {
     return "execute";
   }
@@ -6583,7 +8408,7 @@ function nextActionFor(
     return "repair";
   }
   if (statuses.some((status) => status === "pending")) return "repair";
-  const unresolved = plan.tasks.filter((task) => !dependencyResolved(task.id, state));
+  const unresolved = plan.tasks.filter((task) => !dependencyResolved(task.id, plan, state));
   if (unresolved.length > 0) return "repair";
   const inspection = inspectCompletion(planPath, plan, goal, coverage, state);
   if (
@@ -6639,6 +8464,44 @@ function coordinatedNextAction(
   return nextActionFor(planPath, plan, goal, coverage, state, goalState);
 }
 
+function pendingSubgraphRequests(plan      , state          )
+
+
+
+
+   {
+  return plan.tasks.flatMap((task) => {
+    const taskState = state.tasks[task.id];
+    if (
+      (taskState.status !== "reserved" && taskState.status !== "running") ||
+      taskState.result_path === null || taskState.reservation_token === null ||
+      taskState.result_ref !== null
+    ) return [];
+    const requestRef = subgraphRequestPathFor(taskState.result_path);
+    if (!existsSync(requestRef)) return [];
+    return [{
+      task_id: task.id,
+      reservation_token: taskState.reservation_token,
+      request_ref: requestRef,
+      request_digest: digestFile(requestRef),
+    }];
+  });
+}
+
+function pendingReviewUpgrades(state          )                                             {
+  return state.review_pending.map((taskId) => {
+    const resultRef = state.tasks[taskId]?.result_ref;
+    if (resultRef === null || resultRef === undefined) {
+      fail(`pending Review task is missing a result: ${taskId}`);
+    }
+    const result = requireRecord(readJson(resultRef), `pending Review result ${taskId}`);
+    return {
+      task_id: taskId,
+      reason: requireString(result.review_upgrade_reason, `pending Review result ${taskId}.review_upgrade_reason`),
+    };
+  });
+}
+
 function reconcileCommand(planArgument        , stateArgument        )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
@@ -6649,11 +8512,22 @@ function reconcileCommand(planArgument        , stateArgument        )       {
       { allowSourceDrift: true },
     );
     const goalState = goalStateForPlan(planPath, plan, goal).state;
+    const subgraphRequests = pendingSubgraphRequests(plan, state);
+    const reviewUpgrades = pendingReviewUpgrades(state);
     return {
       goal_id: goal.goal_id,
       goal_status: goalState.status,
       ...sourceDriftPayload(goal, goalState, plan, state),
-      next_action: coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+      next_action: state.owner_change !== null
+        ? "awaiting_owner_action"
+        : reviewUpgrades.length > 0
+        ? "upgrade_review"
+        : subgraphRequests.length > 0
+        ? "expand_subgraph"
+        : coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+      owner_change: state.owner_change,
+      review_upgrades: reviewUpgrades,
+      subgraph_requests: subgraphRequests,
       active_reservations: activeReservationRecords(planPath, plan, goal, state),
       stale_executors: state.stale_executors,
     };
@@ -6819,6 +8693,8 @@ function statusCommand(planArgument        , stateArgument        )       {
     const inspection = goalState.status === "completed"
       ? { problems: []             }
       : inspectCompletion(planPath, plan, goal, coverage, state);
+    const subgraphRequests = pendingSubgraphRequests(plan, state);
+    const reviewUpgrades = pendingReviewUpgrades(state);
     return {
       goal_id: goal.goal_id,
       objective: goal.objective,
@@ -6829,7 +8705,16 @@ function statusCommand(planArgument        , stateArgument        )       {
       source_revision: state.source_revision,
       workspace_change_seq: state.workspace_change_seq,
       ...sourceDriftPayload(goal, goalState, plan, state),
-      next_action: coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+      next_action: state.owner_change !== null
+        ? "awaiting_owner_action"
+        : reviewUpgrades.length > 0
+        ? "upgrade_review"
+        : subgraphRequests.length > 0
+        ? "expand_subgraph"
+        : coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+      owner_change: state.owner_change,
+      review_upgrades: reviewUpgrades,
+      subgraph_requests: subgraphRequests,
       summary: summarizeState(state),
       coverage: summarizeCoverage(plan, coverage, state),
       active_reservations: activeReservationRecords(planPath, plan, goal, state),
@@ -6840,6 +8725,840 @@ function statusCommand(planArgument        , stateArgument        )       {
     };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function dashboardSnapshot(planArgument        , stateArgument        )                          {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  let lastError          = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return dashboardSnapshotRead(planPath, statePath);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 7) sleep(25);
+    }
+  }
+  throw lastError;
+}
+
+function dashboardSnapshotRead(planPath        , statePath        )                          {
+  const { plan, goal, coverage, state } = loadPlanAndState(
+    planPath,
+    statePath,
+    { allowSourceDrift: true },
+  );
+    const sourceTitle = existsSync(goal.source.path)
+      ? /^#\s+(.+)$/mu.exec(readFileSync(goal.source.path, "utf8"))?.[1]?.trim()
+      : undefined;
+    const goalState = goalStateForPlan(planPath, plan, goal).state;
+    const coverageSummary = summarizeCoverage(plan, coverage, state);
+    const coverageFullyPlanned =
+      (coverageSummary.uncovered_plan_item_effects            ).length === 0;
+    const drift = sourceDriftPayload(goal, goalState, plan, state);
+    const inspection = goalState.status === "completed"
+      ? { problems: []            , passed_gates: goal.verification_gates.map((gate) => gate.id) }
+      : inspectCompletion(planPath, plan, goal, coverage, state);
+    const passedGates = new Set(inspection.passed_gates);
+    const tasks = [...plan.tasks]
+      .sort((left, right) => compareStableStrings(left.id, right.id))
+      .map((task) => {
+        const taskState = state.tasks[task.id];
+        const ready = taskReadyForReservation(task, plan, state, coverageFullyPlanned);
+        const aggregateStatus = effectiveTaskStatus(task, plan, state);
+        const descendantIds = task.node_type === "composite"
+          ? [...descendantTaskIds(task.id, plan)]
+          : [];
+        const phase = task.node_type === "composite"
+          ? aggregateStatus === "pending"
+            ? (descendantIds.some((childId) => {
+                  const child = plan.tasks.find((candidate) => candidate.id === childId);
+                  return child !== undefined && taskReadyForReservation(
+                    child,
+                    plan,
+                    state,
+                    coverageFullyPlanned,
+                  );
+                })
+              ? "ready"
+              : "waiting")
+            : aggregateStatus
+          : taskState.status === "pending"
+            ? (ready ? "ready" : "waiting")
+            : taskState.status;
+        const blockingDependencies = boundaryDependenciesForTask(task, plan)
+          .filter((dependencyId) => !dependencyResolved(dependencyId, plan, state))
+          .sort(compareStableStrings);
+        return {
+          id: task.id,
+          logical_id: task.logical_id,
+          title: task.title,
+          role: task.role,
+          node_type: task.node_type,
+          parent_task_id: task.parent_task_id,
+          depth: taskDepth(task, plan),
+          subgraph: task.subgraph === null ? null : {
+            contract: task.subgraph.contract,
+            task_ids: [...task.subgraph.task_ids].sort(compareStableStrings),
+            entry_task_ids: [...task.subgraph.entry_task_ids].sort(compareStableStrings),
+            exit_task_ids: [...task.subgraph.exit_task_ids].sort(compareStableStrings),
+            completion_policy: task.subgraph.completion_policy,
+            expansion_reason: task.subgraph.expansion_reason,
+            expanded_from_attempt: task.subgraph.expanded_from_attempt,
+          },
+          subject: {
+            kind: task.owner_id === null ? "actor" : "owner",
+            id: taskSubjectId(task),
+          },
+          status: aggregateStatus,
+          runtime_status: taskState.status,
+          phase,
+          attempt: taskState.attempt,
+          source_revision: taskState.source_revision,
+          validated_source_revision: taskState.validated_source_revision,
+          depends_on: [...task.depends_on].sort(compareStableStrings),
+          boundary_dependencies: boundaryDependenciesForTask(task, plan).sort(compareStableStrings),
+          blocking_dependencies: blockingDependencies,
+          coverage_effect: task.coverage_effect,
+          plan_item_ids: [...task.plan_item_ids].sort(compareStableStrings),
+          satisfies_goal_gates: [...task.satisfies_goal_gates].sort(compareStableStrings),
+          priority: task.priority,
+          estimated_cost: task.estimated_cost,
+        };
+      });
+    const leafStates = plan.tasks
+      .filter((task) => task.node_type === "leaf")
+      .map((task) => state.tasks[task.id]);
+    const leafSummary = Object.fromEntries([
+      "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
+    ].map((status) => [status, leafStates.filter((task) => task.status === status).length]));
+    const topLevelTasks = tasks.filter((task) => task.parent_task_id === null && task.status !== "superseded");
+    const gateTasks = (gateId        ) => plan.tasks.filter((task) =>
+      task.satisfies_goal_gates.includes(gateId) && state.tasks[task.id].status !== "superseded"
+    );
+    const gates = goal.verification_gates.map((gate) => {
+      const candidates = gateTasks(gate.id);
+      const candidateStatuses = candidates.map((task) => state.tasks[task.id].status);
+      const gateStatus = passedGates.has(gate.id)
+        ? "passed"
+        : candidateStatuses.some((status) => status === "running" || status === "reserved")
+          ? "running"
+          : candidateStatuses.some((status) =>
+            status === "blocked" || status === "failed" || status === "needs_repair"
+          )
+            ? "attention"
+            : "pending";
+      return {
+        id: gate.id,
+        stage: gate.stage,
+        description: gate.description,
+        required: gate.required,
+        status: gateStatus,
+        task_ids: candidates.map((task) => task.id).sort(compareStableStrings),
+      };
+    });
+  return {
+      contract: "DAG_DASHBOARD_SNAPSHOT_V1",
+      generated_at: new Date().toISOString(),
+      goal: {
+        id: goal.goal_id,
+        title: sourceTitle || goal.goal_id,
+        objective: goal.objective,
+        status: goalState.status,
+        native_sync_status: goalState.native_sync.status,
+      },
+      plan: {
+        revision: plan.revision,
+        source_revision: state.source_revision,
+        workspace_change_seq: state.workspace_change_seq,
+        safety: plan.safety.status,
+        execution_platform: plan.execution_platform,
+        max_concurrency: goal.execution.max_concurrency,
+      },
+      progress: {
+        next_action: coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+        source_status: drift.source_status,
+        source_drift_action: drift.source_drift_action ?? null,
+        summary: leafSummary,
+        top_level: {
+          total: topLevelTasks.length,
+          completed: topLevelTasks.filter((task) => task.status === "completed").length,
+          active: topLevelTasks.filter((task) => task.status === "running" || task.status === "reserved").length,
+          attention: topLevelTasks.filter((task) =>
+            task.status === "blocked" || task.status === "failed" || task.status === "needs_repair"
+          ).length,
+        },
+        coverage: coverageSummary,
+        ready: tasks.filter((task) => task.phase === "ready").length,
+        attention: tasks.filter((task) =>
+          task.phase === "blocked" || task.phase === "failed" || task.phase === "needs_repair"
+        ).length,
+        completion_problem_count: inspection.problems.length,
+      },
+      gates,
+      tasks,
+      edges: [
+        ...tasks.flatMap((task) => task.depends_on.map((dependencyId) => ({
+          from: dependencyId,
+          to: task.id,
+          kind: task.parent_task_id === null ? "boundary" : "internal",
+        }))),
+        ...tasks.filter((task) => task.parent_task_id !== null && task.depends_on.length === 0)
+          .map((task) => ({
+            from: task.parent_task_id,
+            to: task.id,
+            kind: "containment",
+          })),
+      ],
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function progressDocumentPathFor(planPath        )         {
+  return join(dirname(planPath), "progress.json");
+}
+
+function progressEventsPathFor(planPath        )         {
+  return join(dirname(planPath), "events.jsonl");
+}
+
+function readProgressEvents(path        )                            {
+  if (!existsSync(path)) return [];
+  const contents = readFileSync(path, "utf8");
+  if (!contents.trim()) return [];
+  return contents.split("\n").flatMap((line, index) => {
+    if (!line.trim()) return [];
+    let parsed         ;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      fail(`progress event line ${index + 1} is not valid JSON`);
+    }
+    const event = requireRecord(parsed, `progress event line ${index + 1}`);
+    if (event.contract !== "DAG_PROGRESS_EVENT_V1") {
+      fail(`progress event line ${index + 1} has an invalid contract`);
+    }
+    requireNonNegativeInteger(event.seq, `progress event line ${index + 1}.seq`);
+    requireString(event.event_id, `progress event line ${index + 1}.event_id`);
+    requireString(event.type, `progress event line ${index + 1}.type`);
+    return [event];
+  });
+}
+
+function progressEventsPage(
+  planPath        ,
+  after        ,
+  limit        ,
+)                          {
+  const events = readProgressEvents(progressEventsPathFor(planPath));
+  const candidates = events.filter((event) =>
+    typeof event.seq === "number" && event.seq > after
+  );
+  const page = candidates.slice(0, limit);
+  const nextAfter = page.length === 0
+    ? after
+    : requireNonNegativeInteger(page[page.length - 1].seq, "progress event seq");
+  return {
+    contract: "DAG_PROGRESS_EVENT_PAGE_V1",
+    after,
+    limit,
+    events: page,
+    next_after: nextAfter,
+    has_more: candidates.length > page.length,
+  };
+}
+
+function readExistingProgressDocument(path        )                                 {
+  if (!existsSync(path)) return null;
+  try {
+    const document = requireRecord(readJson(path), "progress document");
+    return document.contract === "DAG_PROGRESS_DOCUMENT_V1" ? document : null;
+  } catch {
+    return null;
+  }
+}
+
+function observeProgressSources(planPath        , statePath        )                      {
+  const plan = requireRecord(readJson(planPath), "progress plan");
+  const state = requireRecord(readJson(statePath), "progress state");
+  const taskDefinitions = new Map                                 ();
+  if (!Array.isArray(plan.tasks)) fail("progress plan.tasks must be an array");
+  for (const value of plan.tasks) {
+    const task = requireRecord(value, "progress plan task");
+    taskDefinitions.set(requireString(task.id, "progress plan task.id"), task);
+  }
+  const taskStates = requireRecord(state.tasks, "progress state.tasks");
+  const taskObservations = Object.entries(taskStates)
+    .sort(([left], [right]) => compareStableStrings(left, right))
+    .map(([taskId, value]) => {
+      const taskState = requireRecord(value, `progress state.tasks.${taskId}`);
+      return {
+        task_id: taskId,
+        status: requireString(taskState.status, `progress state.tasks.${taskId}.status`),
+        attempt: requireNonNegativeInteger(taskState.attempt, `progress state.tasks.${taskId}.attempt`),
+        source_revision: requireNonNegativeInteger(
+          taskState.source_revision,
+          `progress state.tasks.${taskId}.source_revision`,
+        ),
+        result_digest: typeof taskState.result_digest === "string" && taskState.result_digest
+          ? taskState.result_digest
+          : null,
+      };
+    });
+  const taskResults = Object.entries(taskStates)
+    .sort(([left], [right]) => compareStableStrings(left, right))
+    .flatMap(([taskId, value]) => {
+      const taskState = requireRecord(value, `progress state.tasks.${taskId}`);
+      if (typeof taskState.result_digest !== "string" || !taskState.result_digest) return [];
+      if (typeof taskState.result_ref !== "string" || !taskState.result_ref) return [];
+      const task = taskDefinitions.get(taskId);
+      return [{
+        task_id: taskId,
+        title: task === undefined || typeof task.title !== "string" ? taskId : task.title,
+        status: requireString(taskState.status, `progress state.tasks.${taskId}.status`),
+        attempt: requireNonNegativeInteger(
+          taskState.attempt,
+          `progress state.tasks.${taskId}.attempt`,
+        ),
+        source_revision: requireNonNegativeInteger(
+          taskState.source_revision,
+          `progress state.tasks.${taskId}.source_revision`,
+        ),
+        result_digest: taskState.result_digest,
+        result_ref: taskState.result_ref,
+      }];
+    });
+  const goalStatePath = join(dirname(planPath), "goal-state.json");
+  const goalState = existsSync(goalStatePath)
+    ? requireRecord(readJson(goalStatePath), "progress goal state")
+    : {};
+  const nativeSync = isRecord(goalState.native_sync) ? goalState.native_sync : {};
+  const source = {
+    plan_digest: digestFile(planPath),
+    plan_revision: plan.revision,
+    source_revision: state.source_revision,
+    goal_status: goalState.status ?? null,
+    native_sync_status: nativeSync.status ?? null,
+    task_states: taskObservations,
+    task_results: taskResults.map((result) => ({
+      task_id: result.task_id,
+      status: result.status,
+      attempt: result.attempt,
+      source_revision: result.source_revision,
+      result_digest: result.result_digest,
+    })),
+  };
+  return {
+    fingerprint: digestJson(source),
+    source,
+    taskStates: taskObservations,
+    taskResults,
+  };
+}
+
+function publicTaskResult(result                           )                          {
+  const raw = requireRecord(readJson(result.result_ref), `task result ${result.task_id}`);
+  const evidence = Array.isArray(raw.evidence)
+    ? raw.evidence.flatMap((value) => {
+      if (!isRecord(value)) return [];
+      if (
+        typeof value.verification_id !== "string" ||
+        typeof value.outcome !== "string" ||
+        typeof value.summary !== "string"
+      ) return [];
+      return [{
+        verification_id: value.verification_id,
+        outcome: value.outcome,
+        summary: value.summary,
+      }];
+    })
+    : [];
+  return {
+    task_id: result.task_id,
+    title: result.title,
+    status: result.status,
+    attempt: result.attempt,
+    source_revision: result.source_revision,
+    result_digest: result.result_digest,
+    summary: typeof raw.summary === "string" ? raw.summary : "",
+    evidence,
+    changed_file_count: Array.isArray(raw.changed_files) ? raw.changed_files.length : 0,
+    blocking_finding_count: Array.isArray(raw.blocking_findings)
+      ? raw.blocking_findings.length
+      : 0,
+    published_artifact_count: Array.isArray(raw.published_artifacts)
+      ? raw.published_artifacts.length
+      : 0,
+  };
+}
+
+function refreshProgressDocument(
+  planArgument        ,
+  stateArgument        ,
+)                          {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const documentPath = progressDocumentPathFor(planPath);
+  const eventsPath = progressEventsPathFor(planPath);
+  const initialObservation = observeProgressSources(planPath, statePath);
+  const initialDocument = readExistingProgressDocument(documentPath);
+  if (
+    initialDocument?.source_fingerprint === initialObservation.fingerprint &&
+    isRecord(initialDocument.event_stream) &&
+    existsSync(eventsPath)
+  ) {
+    return { changed: false, path: documentPath, document: initialDocument };
+  }
+  return withStateLock(documentPath, () => {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const observation = observeProgressSources(planPath, statePath);
+      const previous = readExistingProgressDocument(documentPath);
+      if (
+        previous?.source_fingerprint === observation.fingerprint &&
+        isRecord(previous.event_stream) &&
+        existsSync(eventsPath)
+      ) {
+        return { changed: false, path: documentPath, document: previous };
+      }
+      const snapshot = dashboardSnapshot(planPath, statePath);
+      const confirmed = observeProgressSources(planPath, statePath);
+      if (confirmed.fingerprint !== observation.fingerprint) {
+        if (attempt < 7) {
+          sleep(25);
+          continue;
+        }
+        fail("progress sources changed repeatedly while building the fixed document");
+      }
+      const taskResults = confirmed.taskResults.map(publicTaskResult);
+      const previousTaskResults = new Map                                 (
+        Array.isArray(previous?.task_results)
+          ? previous.task_results.flatMap((value) => {
+            if (!isRecord(value) || typeof value.task_id !== "string") return [];
+            return [[value.task_id, value]                                     ];
+          })
+          : [],
+      );
+      const currentTaskResults = new Map(
+        taskResults.map((result) => [result.task_id          , result]),
+      );
+      const persistedEvents = readProgressEvents(eventsPath);
+      let eventSequence = persistedEvents.reduce((maximum, event) =>
+        typeof event.seq === "number" && Number.isInteger(event.seq)
+          ? Math.max(maximum, event.seq)
+          : maximum, 0);
+      const existingEventIds = new Set(
+        persistedEvents.flatMap((event) =>
+          typeof event.event_id === "string" ? [event.event_id] : []
+        ),
+      );
+      const pendingEvents                            = [];
+      const appendEvent = (event                         ) => {
+        const eventId = digestJson({ source_fingerprint: confirmed.fingerprint, ...event });
+        if (existingEventIds.has(eventId)) return;
+        eventSequence += 1;
+        existingEventIds.add(eventId);
+        pendingEvents.push({
+          contract: "DAG_PROGRESS_EVENT_V1",
+          seq: eventSequence,
+          event_id: eventId,
+          at: new Date().toISOString(),
+          ...event,
+        });
+      };
+      if (Array.isArray(previous?.events)) {
+        for (const value of previous.events) {
+          if (!isRecord(value) || typeof value.type !== "string") continue;
+          const { seq: _seq, at: _at, contract: _contract, event_id: _eventId, ...event } = value;
+          appendEvent(event);
+        }
+      }
+      const previousSource = isRecord(previous?.source) ? previous.source : null;
+      if (previous === null) {
+        appendEvent({
+          type: "dag_initialized",
+          plan_revision: confirmed.source.plan_revision,
+          source_revision: confirmed.source.source_revision,
+          plan_digest: confirmed.source.plan_digest,
+        });
+      } else if (
+        previousSource?.plan_digest !== confirmed.source.plan_digest ||
+        previousSource?.plan_revision !== confirmed.source.plan_revision ||
+        previousSource?.source_revision !== confirmed.source.source_revision
+      ) {
+        appendEvent({
+          type: "dag_updated",
+          plan_revision: confirmed.source.plan_revision,
+          source_revision: confirmed.source.source_revision,
+          plan_digest: confirmed.source.plan_digest,
+        });
+      }
+      if (
+        previous !== null &&
+        (previousSource?.goal_status !== confirmed.source.goal_status ||
+          previousSource?.native_sync_status !== confirmed.source.native_sync_status)
+      ) {
+        appendEvent({
+          type: "goal_status_updated",
+          goal_status: confirmed.source.goal_status,
+          native_sync_status: confirmed.source.native_sync_status,
+        });
+      }
+      if (previous !== null) {
+        const previousTaskStates = new Map                                 (
+          previousSource !== null && Array.isArray(previousSource.task_states)
+            ? previousSource.task_states.flatMap((value) => {
+              if (!isRecord(value) || typeof value.task_id !== "string") return [];
+              return [[value.task_id, value]                                     ];
+            })
+            : [],
+        );
+        for (const taskState of confirmed.taskStates) {
+          const prior = previousTaskStates.get(taskState.task_id);
+          if (
+            prior === undefined || prior.status !== taskState.status ||
+            prior.attempt !== taskState.attempt || prior.source_revision !== taskState.source_revision
+          ) {
+            appendEvent({
+              type: "task_status_updated",
+              task_id: taskState.task_id,
+              status: taskState.status,
+              attempt: taskState.attempt,
+              source_revision: taskState.source_revision,
+            });
+          }
+        }
+      }
+      const previousSnapshotTasks = new Map                                 (
+        isRecord(previous?.snapshot) && Array.isArray(previous.snapshot.tasks)
+          ? previous.snapshot.tasks.flatMap((value) => {
+            if (!isRecord(value) || typeof value.id !== "string") return [];
+            return [[value.id, value]                                     ];
+          })
+          : [],
+      );
+      const currentSnapshotTasks = isRecord(snapshot) && Array.isArray(snapshot.tasks)
+        ? snapshot.tasks.filter(isRecord)
+        : [];
+      for (const task of currentSnapshotTasks) {
+        if (task.node_type !== "composite" || !isRecord(task.subgraph)) continue;
+        const prior = previousSnapshotTasks.get(String(task.id));
+        if (prior?.node_type === "composite" && isRecord(prior.subgraph)) continue;
+        appendEvent({
+          type: "subgraph_expanded",
+          parent_task_id: task.id,
+          child_task_ids: task.subgraph.task_ids,
+          entry_task_ids: task.subgraph.entry_task_ids,
+          exit_task_ids: task.subgraph.exit_task_ids,
+          reason: task.subgraph.expansion_reason,
+          plan_revision: confirmed.source.plan_revision,
+        });
+      }
+      for (const [taskId, result] of currentTaskResults) {
+        const prior = previousTaskResults.get(taskId);
+        if (
+          prior === undefined ||
+          prior.result_digest !== result.result_digest ||
+          prior.status !== result.status
+        ) {
+          appendEvent({
+            type: "task_result_updated",
+            task_id: taskId,
+            status: result.status,
+            attempt: result.attempt,
+            source_revision: result.source_revision,
+            result_digest: result.result_digest,
+            summary: result.summary,
+          });
+        }
+      }
+      for (const [taskId, result] of previousTaskResults) {
+        if (!currentTaskResults.has(taskId)) {
+          appendEvent({
+            type: "task_result_removed",
+            task_id: taskId,
+            previous_status: result.status,
+            previous_result_digest: result.result_digest,
+          });
+        }
+      }
+      const priorRevision = typeof previous?.document_revision === "number"
+        ? previous.document_revision
+        : 0;
+      if (pendingEvents.length > 0) {
+        appendFileSync(
+          eventsPath,
+          pendingEvents.map((event) => JSON.stringify(event)).join("\n") + "\n",
+          { encoding: "utf8", mode: 0o600 },
+        );
+      }
+      const document                          = {
+        contract: "DAG_PROGRESS_DOCUMENT_V1",
+        updated_at: new Date().toISOString(),
+        document_revision: priorRevision + 1,
+        source_fingerprint: confirmed.fingerprint,
+        source: confirmed.source,
+        snapshot,
+        task_results: taskResults,
+        event_stream: {
+          contract: "DAG_PROGRESS_EVENT_STREAM_V1",
+          path: "events.jsonl",
+          last_seq: eventSequence,
+          page_endpoint: "/api/progress-events",
+        },
+      };
+      writeTextAtomic(documentPath, serializedJson(document));
+      return { changed: true, path: documentPath, document };
+    }
+    fail("unreachable progress document refresh state");
+  });
+}
+
+function progressDocumentCommand(planArgument        , stateArgument        )       {
+  const refreshed = refreshProgressDocument(planArgument, stateArgument);
+  process.stdout.write(`${JSON.stringify({
+    status: refreshed.changed ? "written" : "current",
+    contract: refreshed.document.contract,
+    document_path: refreshed.path,
+    document_revision: refreshed.document.document_revision,
+    updated_at: refreshed.document.updated_at,
+    events_path: progressEventsPathFor(resolve(planArgument)),
+  })}\n`);
+}
+
+function dashboardSnapshotCommand(planArgument        , stateArgument        )       {
+  process.stdout.write(`${JSON.stringify(dashboardSnapshot(planArgument, stateArgument))}\n`);
+}
+
+
+
+
+
+
+
+
+
+function parseDashboardServeOptions(args          )                        {
+  if (args.length === 0) fail("dashboard requires <plan.json>");
+  const planPath = resolve(args[0]);
+  let statePath = statePathFor(planPath);
+  let host = "127.0.0.1";
+  let port = 7357;
+  let allowRemote = false;
+  let index = 1;
+  if (args[index] !== undefined && !args[index].startsWith("--")) {
+    statePath = canonicalPath(statePathFor(planPath), args[index], "state path");
+    index += 1;
+  }
+  while (index < args.length) {
+    const option = args[index];
+    if (option === "--allow-remote") {
+      allowRemote = true;
+      index += 1;
+      continue;
+    }
+    if (option !== "--host" && option !== "--port") {
+      fail(`unknown dashboard option: ${option}`);
+    }
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) fail(`${option} requires a value`);
+    if (option === "--host") {
+      if (!/^[A-Za-z0-9.:[\]-]+$/u.test(value)) fail(`dashboard host is invalid: ${value}`);
+      host = value;
+    } else {
+      const parsedPort = Number(value);
+      if (!Number.isInteger(parsedPort) || parsedPort < 0 || parsedPort > 65_535) {
+        fail("dashboard port must be an integer from 0 to 65535");
+      }
+      port = parsedPort;
+    }
+    index += 2;
+  }
+  const loopback = host === "localhost" || host === "::1" || host.startsWith("127.");
+  if (!loopback && !allowRemote) {
+    fail("non-loopback dashboard host requires --allow-remote because Goal metadata becomes network-visible");
+  }
+  return { planPath, statePath, host, port, allowRemote };
+}
+
+function setDashboardHeaders(response                )       {
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  response.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; connect-src 'self'; img-src 'self' data:; " +
+      "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  );
+}
+
+function sendDashboardResponse(
+  request                 ,
+  response                ,
+  status        ,
+  contentType        ,
+  body        ,
+  extraHeaders                         = {},
+)       {
+  setDashboardHeaders(response);
+  response.statusCode = status;
+  response.setHeader("Content-Type", contentType);
+  response.setHeader("Content-Length", String(Buffer.byteLength(body)));
+  for (const [name, value] of Object.entries(extraHeaders)) response.setHeader(name, value);
+  response.end(request.method === "HEAD" ? undefined : body);
+}
+
+function dashboardCommand(args          )       {
+  const options = parseDashboardServeOptions(args);
+  dashboardSnapshot(options.planPath, options.statePath);
+  const initialProgress = refreshProgressDocument(options.planPath, options.statePath);
+  const assetPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "assets",
+    "goal-dag-dashboard.html",
+  );
+  if (!existsSync(assetPath)) fail(`dashboard asset is missing: ${assetPath}`);
+  const dashboardHtml = readFileSync(assetPath, "utf8");
+  const server = createServer((request, response) => {
+    try {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        sendDashboardResponse(request, response, 405, "text/plain; charset=utf-8", "method not allowed\n", {
+          Allow: "GET, HEAD",
+        });
+        return;
+      }
+      const requestUrl = new URL(request.url ?? "/", "http://localhost");
+      const pathname = requestUrl.pathname;
+      if (pathname === "/" || pathname === "/index.html") {
+        sendDashboardResponse(request, response, 200, "text/html; charset=utf-8", dashboardHtml);
+        return;
+      }
+      if (pathname === "/api/snapshot") {
+        const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+        const body = `${JSON.stringify(snapshot)}\n`;
+        sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", body);
+        return;
+      }
+      if (pathname === "/api/progress-document") {
+        const progress = refreshProgressDocument(options.planPath, options.statePath);
+        sendDashboardResponse(
+          request,
+          response,
+          200,
+          "application/json; charset=utf-8",
+          serializedJson(progress.document),
+        );
+        return;
+      }
+      if (pathname === "/api/progress-events") {
+        refreshProgressDocument(options.planPath, options.statePath);
+        const rawAfter = requestUrl.searchParams.get("after") ?? "0";
+        const rawLimit = requestUrl.searchParams.get("limit") ?? "100";
+        const after = Number(rawAfter);
+        const requestedLimit = Number(rawLimit);
+        if (!Number.isInteger(after) || after < 0) fail("progress events after must be a non-negative integer");
+        if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 500) {
+          fail("progress events limit must be an integer from 1 to 500");
+        }
+        sendDashboardResponse(
+          request,
+          response,
+          200,
+          "application/json; charset=utf-8",
+          serializedJson(progressEventsPage(options.planPath, after, requestedLimit)),
+        );
+        return;
+      }
+      if (pathname === "/healthz") {
+        sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", "{\"status\":\"ok\"}\n");
+        return;
+      }
+      if (pathname === "/favicon.ico") {
+        sendDashboardResponse(request, response, 204, "image/x-icon", "");
+        return;
+      }
+      sendDashboardResponse(request, response, 404, "text/plain; charset=utf-8", "not found\n");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDashboardResponse(
+        request,
+        response,
+        500,
+        "application/json; charset=utf-8",
+        `${JSON.stringify({ error: message })}\n`,
+      );
+    }
+  });
+  server.once("error", (error) => {
+    process.stderr.write(`error: dashboard server failed: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+  const progressInterval = setInterval(() => {
+    try {
+      refreshProgressDocument(options.planPath, options.statePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`warning: dashboard progress document refresh failed: ${message}\n`);
+    }
+  }, 1_000);
+  progressInterval.unref();
+  server.listen(options.port, options.host, () => {
+    const address = server.address();
+    const actualPort = typeof address === "object" && address !== null ? address.port : options.port;
+    const urlHost = options.host.includes(":") ? `[${options.host}]` : options.host;
+    process.stdout.write(`${JSON.stringify({
+      status: "serving",
+      url: `http://${urlHost}:${actualPort}/`,
+      host: options.host,
+      port: actualPort,
+      plan_path: options.planPath,
+      state_path: options.statePath,
+      read_only: true,
+      progress_document_path: initialProgress.path,
+      progress_document_url: `http://${urlHost}:${actualPort}/api/progress-document`,
+      progress_events_path: progressEventsPathFor(options.planPath),
+      progress_events_url: `http://${urlHost}:${actualPort}/api/progress-events`,
+      network_visible: options.allowRemote,
+    })}\n`);
+  });
+  const shutdown = () => {
+    clearInterval(progressInterval);
+    server.close();
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 }
 
 function finalizeCommand(
@@ -6882,7 +9601,7 @@ function finalizeCommand(
     if (uncovered.length > 0) {
       fail(`required plan items are not planned: ${uncovered.join(", ")}`);
     }
-    const unresolved = plan.tasks.filter((task) => !dependencyResolved(task.id, state));
+    const unresolved = plan.tasks.filter((task) => !dependencyResolved(task.id, plan, state));
     if (unresolved.length > 0) {
       fail(`goal has unresolved tasks: ${unresolved.map((task) => `${task.id}:${state.tasks[task.id].status}`).join(", ")}`);
     }
@@ -7164,12 +9883,908 @@ function expandTaskScopeCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function validateTaskSubgraphRequest(
+  value         ,
+  task                ,
+  taskState           ,
+)                                                                                    {
+  const source = requireRecord(value, "task subgraph request");
+  if (source.contract !== "TASK_SUBGRAPH_REQUEST_V1") {
+    fail("task subgraph request contract must equal TASK_SUBGRAPH_REQUEST_V1");
+  }
+  if (source.task_id !== task.id) fail("task subgraph request task_id mismatch");
+  if (source.reservation_token !== taskState.reservation_token) {
+    fail("task subgraph request reservation_token mismatch");
+  }
+  if (source.attempt !== taskState.attempt) fail("task subgraph request attempt mismatch");
+  if (source.source_revision !== taskState.source_revision) {
+    fail("task subgraph request source_revision mismatch");
+  }
+  if (source.owner_generation !== taskState.owner_generation) {
+    fail("task subgraph request owner_generation mismatch");
+  }
+  if (source.executor_id !== taskState.executor_id) {
+    fail("task subgraph request executor_id mismatch");
+  }
+  return {
+    reason: requireString(source.reason, "task subgraph request.reason"),
+    required_capabilities: requireStringArray(
+      source.required_capabilities,
+      "task subgraph request.required_capabilities",
+    ),
+    suggested_subtasks: requireStringArray(
+      source.suggested_subtasks,
+      "task subgraph request.suggested_subtasks",
+    ),
+  };
+}
+
+function parseTaskSubgraphExpansion(value         )                        {
+  const source = requireRecord(value, "task subgraph expansion");
+  if (source.contract !== "TASK_SUBGRAPH_EXPANSION_V1") {
+    fail("task subgraph expansion contract must equal TASK_SUBGRAPH_EXPANSION_V1");
+  }
+  if (source.completion_policy !== "all_required") {
+    fail("task subgraph expansion completion_policy must equal all_required");
+  }
+  if (!Array.isArray(source.children) || source.children.length === 0) {
+    fail("task subgraph expansion children must be a non-empty array");
+  }
+  const safety = requireRecord(source.safety, "task subgraph expansion.safety");
+  if (
+    safety.status !== "parallel_safe" && safety.status !== "sequential_only" &&
+    safety.status !== "needs_user_review"
+  ) fail("task subgraph expansion safety.status is invalid");
+  return {
+    contract: "TASK_SUBGRAPH_EXPANSION_V1",
+    base_plan_digest: requireString(
+      source.base_plan_digest,
+      "task subgraph expansion.base_plan_digest",
+    ),
+    revision: requirePositiveInteger(source.revision, "task subgraph expansion.revision"),
+    parent_task_id: requireIdentifier(
+      source.parent_task_id,
+      "task subgraph expansion.parent_task_id",
+    ),
+    reservation_token: requireString(
+      source.reservation_token,
+      "task subgraph expansion.reservation_token",
+    ),
+    request_ref: requireString(source.request_ref, "task subgraph expansion.request_ref"),
+    request_digest: requireString(source.request_digest, "task subgraph expansion.request_digest"),
+    reason: requireString(source.reason, "task subgraph expansion.reason"),
+    completion_policy: "all_required",
+    children: source.children.map(parseTask),
+    entry_task_ids: requireStringArray(
+      source.entry_task_ids,
+      "task subgraph expansion.entry_task_ids",
+      false,
+    ).map((id, index) => requireIdentifier(
+      id,
+      `task subgraph expansion.entry_task_ids[${index}]`,
+    )),
+    exit_task_ids: requireStringArray(
+      source.exit_task_ids,
+      "task subgraph expansion.exit_task_ids",
+      false,
+    ).map((id, index) => requireIdentifier(
+      id,
+      `task subgraph expansion.exit_task_ids[${index}]`,
+    )),
+    safety: {
+      status: safety.status                ,
+      reasons: requireStringArray(safety.reasons, "task subgraph expansion.safety.reasons"),
+    },
+  };
+}
+
+function expandTaskSubgraphInput(
+  value                         ,
+  plan      ,
+  state          ,
+  parent                ,
+  parentState           ,
+  requestPath        ,
+  request                                                ,
+)                          {
+  if (value.contract !== "TASK_SUBGRAPH_INPUT_V1") return value;
+  requireAllowedKeys(
+    value,
+    ["contract", "children", "entry", "exit", "safety", "safety_reasons"],
+    "task subgraph input",
+  );
+  if (parent.owner_id === null) {
+    fail("runtime actor task cannot expand through TASK_SUBGRAPH_INPUT_V1");
+  }
+  if (!Array.isArray(value.children) || value.children.length === 0) {
+    fail("task subgraph input.children must be a non-empty array");
+  }
+  const children = value.children.map((child, index) => expandPlanInputTask(child, index, {
+    parent_task_id: parent.id,
+    owner_id: parent.owner_id,
+  }));
+  const safetyStatus = (value.safety ?? plan.safety.status)                ;
+  if (!new Set              (["parallel_safe", "sequential_only", "needs_user_review"]).has(
+    safetyStatus,
+  )) fail(`task subgraph input.safety is invalid: ${String(value.safety)}`);
+  return {
+    contract: "TASK_SUBGRAPH_EXPANSION_V1",
+    base_plan_digest: state.plan_digest,
+    revision: plan.revision + 1,
+    parent_task_id: parent.id,
+    reservation_token: parentState.reservation_token,
+    request_ref: requestPath,
+    request_digest: digestFile(requestPath),
+    reason: request.reason,
+    completion_policy: "all_required",
+    children,
+    entry_task_ids: requireStringArray(value.entry, "task subgraph input.entry", false),
+    exit_task_ids: requireStringArray(value.exit, "task subgraph input.exit", false),
+    safety: {
+      status: safetyStatus,
+      reasons: value.safety_reasons === undefined
+        ? plan.safety.reasons
+        : requireStringArray(value.safety_reasons, "task subgraph input.safety_reasons"),
+    },
+  };
+}
+
+function pendingTaskState(sourceRevision        )            {
+  return {
+    status: "pending",
+    attempt: 0,
+    reservation_token: null,
+    owner_generation: null,
+    executor_id: null,
+    source_revision: sourceRevision,
+    validated_source_revision: sourceRevision,
+    reserved_at: null,
+    result_path: null,
+    result_ref: null,
+    result_digest: null,
+    replacement_task_id: null,
+    last_reclaimed_token: null,
+    task_baseline_ref: null,
+    task_baseline_digest: null,
+    expanded_writable_paths: [],
+    accepted_change_seq: null,
+  };
+}
+
+function expandSubgraphCommand(
+  planArgument        ,
+  stateArgument        ,
+  parentTaskId        ,
+  reservationToken        ,
+  expansionArgument        ,
+)       {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const expansionPath = resolve(expansionArgument);
+  const payload = withStateLock(statePath, () => {
+    const { plan, goal, coverage, state } = loadPlanAndState(planPath, statePath);
+    assertGoalMutable(planPath, plan, goal);
+    const parent = plan.tasks.find((task) => task.id === parentTaskId);
+    if (parent === undefined) fail(`unknown task: ${parentTaskId}`);
+    if (parent.node_type !== "leaf") fail(`task ${parentTaskId} is already composite`);
+    if (parent.satisfies_goal_gates.length > 0) {
+      fail("a task that directly satisfies a goal gate cannot expand into a subgraph");
+    }
+    const parentState = state.tasks[parent.id];
+    if (parentState.status !== "reserved" && parentState.status !== "running") {
+      fail(`task ${parent.id} can only expand while reserved or running`);
+    }
+    if (parentState.reservation_token !== reservationToken) fail("reservation token mismatch");
+    if (parentState.result_ref !== null || parentState.result_digest !== null) {
+      fail(`task ${parent.id} already has an accepted result`);
+    }
+    if (parentState.result_path === null) fail(`task ${parent.id} result_path is missing`);
+    const expansionInput = expansionArgument === "-"
+      ? readStructuredInput("-")
+      : requireRecord(readJson(expansionPath), "task subgraph input");
+    const expectedRequestPath = subgraphRequestPathFor(parentState.result_path);
+    const requestPath = expansionInput.contract === "TASK_SUBGRAPH_INPUT_V1"
+      ? expectedRequestPath
+      : canonicalPath(
+        expectedRequestPath,
+        requireString(expansionInput.request_ref, "task subgraph expansion.request_ref"),
+        "task subgraph expansion.request_ref",
+      );
+    if (!existsSync(requestPath)) fail("task subgraph expansion request is missing");
+    const expectedRequestDigest = expansionInput.contract === "TASK_SUBGRAPH_INPUT_V1"
+      ? digestFile(requestPath)
+      : requireString(expansionInput.request_digest, "task subgraph expansion.request_digest");
+    if (digestFile(requestPath) !== expectedRequestDigest) {
+      fail("task subgraph expansion request digest mismatch");
+    }
+    const request = validateTaskSubgraphRequest(readJson(requestPath), parent, parentState);
+    const expansion = parseTaskSubgraphExpansion(expandTaskSubgraphInput(
+      expansionInput,
+      plan,
+      state,
+      parent,
+      parentState,
+      requestPath,
+      request,
+    ));
+    if (expansion.base_plan_digest !== state.plan_digest) {
+      fail("task subgraph expansion base_plan_digest mismatch");
+    }
+    if (expansion.revision !== plan.revision + 1) {
+      fail("task subgraph expansion revision must increment plan revision by one");
+    }
+    if (expansion.parent_task_id !== parentTaskId) {
+      fail("task subgraph expansion parent_task_id mismatch");
+    }
+    if (expansion.reservation_token !== reservationToken) {
+      fail("task subgraph expansion reservation_token mismatch");
+    }
+    if (request.reason !== expansion.reason) {
+      fail("task subgraph expansion reason must match the worker request");
+    }
+    const parentSubjectState = subjectStateForTask(state, parent);
+    if (parentSubjectState.current_task_id !== parent.id) {
+      fail(`execution subject is not assigned to task ${parent.id}`);
+    }
+    if (parentState.status === "running") {
+      if (parentState.task_baseline_ref === null || parentState.task_baseline_digest === null) {
+        fail(`task ${parent.id} baseline is missing`);
+      }
+      if (digestFile(parentState.task_baseline_ref) !== parentState.task_baseline_digest) {
+        fail(`task ${parent.id} baseline digest mismatch`);
+      }
+      const baseline = parseWorktreeBaseline(
+        readJson(parentState.task_baseline_ref),
+        goal.workspace.root,
+      );
+      const current = captureWorktreeSnapshot(goal.workspace.root);
+      if (current.tree_oid !== baseline.tree_oid) {
+        fail(`task ${parent.id} observed a Git tree content change`);
+      }
+      const attributed = changedWorktreePaths(baseline, current).filter((path) =>
+        effectiveWritablePaths(parent, parentState).some((pattern) => pathMatchesPattern(path, pattern))
+      );
+      if (attributed.length > 0) {
+        fail(`task ${parent.id} must expand before making attributable changes: ${attributed.join(", ")}`);
+      }
+    }
+    ensureUnique(expansion.children.map((child) => child.id), "subgraph child task id");
+    ensureUnique(expansion.children.map((child) => child.logical_id), "subgraph child logical id");
+    ensureUnique(expansion.entry_task_ids, "subgraph entry task id");
+    ensureUnique(expansion.exit_task_ids, "subgraph exit task id");
+    const existingTaskIds = new Set(plan.tasks.map((task) => task.id));
+    const existingLogicalIds = new Set(plan.tasks.map((task) => task.logical_id));
+    for (const child of expansion.children) {
+      if (existingTaskIds.has(child.id)) fail(`subgraph task already exists: ${child.id}`);
+      if (existingLogicalIds.has(child.logical_id)) {
+        fail(`subgraph logical task already exists: ${child.logical_id}`);
+      }
+      if (child.parent_task_id !== parent.id) {
+        fail(`subgraph task ${child.id} parent_task_id must equal ${parent.id}`);
+      }
+      if (child.satisfies_goal_gates.length > 0) {
+        fail(`subgraph task ${child.id} cannot directly satisfy goal gates`);
+      }
+    }
+    const coveredPlanItems = new Set(expansion.children
+      .filter((child) => child.coverage_effect === parent.coverage_effect)
+      .flatMap((child) => child.plan_item_ids));
+    for (const itemId of parent.plan_item_ids) {
+      if (!coveredPlanItems.has(itemId)) {
+        fail(`subgraph does not preserve parent coverage ${itemId}:${parent.coverage_effect}`);
+      }
+    }
+    const coveredVerificationIds = new Set(expansion.children.flatMap((child) => child.verification_ids));
+    for (const verificationId of parent.verification_ids) {
+      if (!coveredVerificationIds.has(verificationId)) {
+        fail(`subgraph does not preserve parent verification: ${verificationId}`);
+      }
+    }
+    const auditPath = join(
+      dirname(planPath),
+      "expansions",
+      parent.id,
+      `revision-${expansion.revision}.json`,
+    );
+    const auditDigest = digestJson(expansion);
+    const expandedParent                 = {
+      ...parent,
+      node_type: "composite",
+      subgraph: {
+        contract: "TASK_SUBGRAPH_V1",
+        parent_task_id: parent.id,
+        task_ids: expansion.children.map((child) => child.id),
+        entry_task_ids: expansion.entry_task_ids,
+        exit_task_ids: expansion.exit_task_ids,
+        completion_policy: "all_required",
+        expanded_from_attempt: parentState.attempt,
+        expansion_reason: expansion.reason,
+        expansion_ref: auditPath,
+        expansion_digest: auditDigest,
+      },
+    };
+    const nextPlan       = {
+      ...plan,
+      revision: expansion.revision,
+      tasks: plan.tasks.map((task) => task.id === parent.id ? expandedParent : task)
+        .concat(expansion.children),
+      safety: expansion.safety,
+    };
+    const liveTaskIds = new Set(nextPlan.tasks
+      .filter((task) => state.tasks[task.id]?.status !== "superseded")
+      .map((task) => task.id));
+    validateGraph(nextPlan, goal, false, liveTaskIds);
+    for (const child of expansion.children) state.tasks[child.id] = pendingTaskState(state.source_revision);
+    parentState.status = "pending";
+    parentState.reservation_token = null;
+    parentState.owner_generation = null;
+    parentState.executor_id = null;
+    parentState.reserved_at = null;
+    parentState.result_path = null;
+    parentState.result_ref = null;
+    parentState.result_digest = null;
+    parentState.task_baseline_ref = null;
+    parentState.task_baseline_digest = null;
+    parentState.accepted_change_seq = null;
+    parentSubjectState.status = parentSubjectState.bound_executor_id === null ? "unbound" : "idle";
+    parentSubjectState.current_task_id = null;
+    const canonicalPlanDigest = digestJson(nextPlan);
+    const nextCoverage               = {
+      ...coverage,
+      plan_revision: nextPlan.revision,
+      plan_digest: canonicalPlanDigest,
+    };
+    state.plan_digest = canonicalPlanDigest;
+    state.revision = nextPlan.revision;
+    const writes                           = [
+      [auditPath, expansion],
+      [planPath, nextPlan],
+      [plan.coverage_path, nextCoverage],
+    ];
+    if (parent.owner_id !== null) {
+      const owner = subjectForTask(nextPlan, expandedParent)                   ;
+      const capsule = loadOwnerCapsule(owner, parentSubjectState, state.goal_digest, state.source_revision);
+      capsule.active_task_id = null;
+      capsule.progress = `expanded ${parent.id} into ${expansion.children.length} subgraph tasks`;
+      capsule.checkpoint_ref = null;
+      capsule.next_steps = expansion.entry_task_ids;
+      capsule.updated_at = new Date().toISOString();
+      writes.push([parentSubjectState.capsule_ref          , capsule]);
+    }
+    writes.push([statePath, state]);
+    writeTransaction(statePath, writes);
+    releaseOwnerLease(goal, parent, reservationToken);
+    return {
+      status: "expanded",
+      parent_task_id: parent.id,
+      node_type: "composite",
+      child_task_ids: expansion.children.map((child) => child.id),
+      entry_task_ids: expansion.entry_task_ids,
+      exit_task_ids: expansion.exit_task_ids,
+      plan_revision: nextPlan.revision,
+      plan_digest: canonicalPlanDigest,
+      expansion_ref: auditPath,
+      expansion_digest: auditDigest,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function subgraphRequestCommand(
+  planArgument        ,
+  stateArgument        ,
+  taskId        ,
+  reservationToken        ,
+  reasonArgument        ,
+  suggestedSubtasks          ,
+)       {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const reason = requireString(reasonArgument, "reason");
+  const payload = withStateLock(statePath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+    assertGoalMutable(planPath, plan, goal);
+    const task = plan.tasks.find((candidate) => candidate.id === taskId);
+    if (task === undefined) fail(`unknown task: ${taskId}`);
+    const taskState = state.tasks[taskId];
+    if (task.node_type !== "leaf") fail(`task ${taskId} is already composite`);
+    if (taskState.status !== "running") fail(`task ${taskId} is not running`);
+    if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
+    if (
+      taskState.result_path === null || taskState.owner_generation === null ||
+      taskState.executor_id === null
+    ) fail(`task ${taskId} binding is incomplete`);
+    const requestPath = subgraphRequestPathFor(taskState.result_path);
+    const request = {
+      contract: "TASK_SUBGRAPH_REQUEST_V1",
+      task_id: task.id,
+      reservation_token: reservationToken,
+      attempt: taskState.attempt,
+      source_revision: taskState.source_revision,
+      owner_generation: taskState.owner_generation,
+      executor_id: taskState.executor_id,
+      reason,
+      required_capabilities: [],
+      suggested_subtasks: suggestedSubtasks.map((value, index) =>
+        requireString(value, `suggested_subtasks[${index}]`)
+      ),
+    };
+    validateTaskSubgraphRequest(request, task, taskState);
+    const status = writeImmutableJson(requestPath, request);
+    return {
+      contract: "TASK_SUBGRAPH_REQUEST_RECEIPT_V1",
+      status,
+      task_id: task.id,
+      request_ref: requestPath,
+      request_digest: digestFile(requestPath),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+const SCRIPT_MANAGED_JSON_BASENAMES = new Set([
+  "state.json",
+  "goal-state.json",
+  "progress.json",
+  "threads.json",
+  "registry.json",
+  "capsule.json",
+]);
+
+function readStructuredInput(expectedContract        )                          {
+  const raw = readFileSync(0, "utf8");
+  if (Buffer.byteLength(raw, "utf8") > 16 * 1024 * 1024) {
+    fail("structured input exceeds 16 MiB");
+  }
+  let value         ;
+  try {
+    value = JSON.parse(raw);
+  } catch (error) {
+    fail(`structured input is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const body = requireRecord(value, "structured input");
+  if (expectedContract !== "-" && body.contract !== expectedContract) {
+    fail(`structured input contract must equal ${expectedContract}`);
+  }
+  return body;
+}
+
+function validateThreadEndpoint(value         , label        )       {
+  const endpoint = requireRecord(value, label);
+  assertExactFields(endpoint, ["thread_id", "host_id"], label);
+  requireString(endpoint.thread_id, `${label}.thread_id`);
+  requireString(endpoint.host_id, `${label}.host_id`);
+}
+
+function assertExactFields(
+  source                         ,
+  expected          ,
+  label        ,
+)       {
+  requireExactKeys(source, expected, label);
+}
+
+function validateThreadRegistry(value                         )       {
+  assertExactFields(
+    value,
+    ["contract", "goal_id", "main", "threads", "watches"],
+    "thread registry",
+  );
+  if (value.contract !== "THREAD_REGISTRY_V1") {
+    fail("thread registry contract must equal THREAD_REGISTRY_V1");
+  }
+  requireIdentifier(value.goal_id, "thread registry.goal_id");
+  validateThreadEndpoint(value.main, "thread registry.main");
+  const threads = requireRecord(value.threads, "thread registry.threads");
+  const threadIds           = [];
+  for (const [threadKeyValue, threadValue] of Object.entries(threads)) {
+    if (!THREAD_KEY_PATTERN.test(threadKeyValue) || threadKeyValue.length > THREAD_KEY_MAX_LENGTH) {
+      fail(`thread registry key is invalid: ${threadKeyValue}`);
+    }
+    const thread = requireRecord(threadValue, `thread registry.threads.${threadKeyValue}`);
+    assertExactFields(
+      thread,
+      ["thread_id", "host_id", "role", "status"],
+      `thread registry.threads.${threadKeyValue}`,
+    );
+    threadIds.push(requireString(thread.thread_id, `thread registry.threads.${threadKeyValue}.thread_id`));
+    requireString(thread.host_id, `thread registry.threads.${threadKeyValue}.host_id`);
+    if (!["owner", "runtime", "planner", "review", "supervisor", "dag_view"].includes(
+      String(thread.role),
+    )) fail(`thread registry.threads.${threadKeyValue}.role is invalid`);
+    if (!["idle", "running", "lost"].includes(String(thread.status))) {
+      fail(`thread registry.threads.${threadKeyValue}.status is invalid`);
+    }
+  }
+  ensureUnique(threadIds, "thread registry thread id");
+  if (!Array.isArray(value.watches)) fail("thread registry.watches must be an array");
+  const watchIds           = [];
+  value.watches.forEach((watchValue, index) => {
+    const watch = requireRecord(watchValue, `thread registry.watches[${index}]`);
+    assertExactFields(
+      watch,
+      ["task_id", "attempt", "thread_key", "cursor"],
+      `thread registry.watches[${index}]`,
+    );
+    const taskId = requireIdentifier(watch.task_id, `thread registry.watches[${index}].task_id`);
+    const attempt = requirePositiveInteger(watch.attempt, `thread registry.watches[${index}].attempt`);
+    const threadKeyValue = requireString(
+      watch.thread_key,
+      `thread registry.watches[${index}].thread_key`,
+    );
+    if (!Object.hasOwn(threads, threadKeyValue)) {
+      fail(`thread registry watch references unknown thread: ${threadKeyValue}`);
+    }
+    watchIds.push(`${taskId}\u0000${attempt}\u0000${threadKeyValue}`);
+    requireNullableString(watch.cursor, `thread registry.watches[${index}].cursor`);
+  });
+  ensureUnique(watchIds, "thread registry watch identity");
+}
+
+function threadRegistryCommand(action        , args          )       {
+  const path = resolve(args[0] ?? fail("thread-registry requires <threads.json>"));
+  const receipt = withStateLock(path, () => {
+    if (action === "init") {
+      if (args.length !== 4) {
+        fail("thread-registry init requires <threads.json> <goal_id> <main_thread_id> <main_host_id>");
+      }
+      const next = {
+        contract: "THREAD_REGISTRY_V1",
+        goal_id: requireIdentifier(args[1], "goal_id"),
+        main: {
+          thread_id: requireString(args[2], "main_thread_id"),
+          host_id: requireString(args[3], "main_host_id"),
+        },
+        threads: {},
+        watches: [],
+      };
+      validateThreadRegistry(next);
+      if (existsSync(path)) {
+        const current = requireRecord(readJson(path), "thread registry");
+        validateThreadRegistry(current);
+        if (digestJson(current) !== digestJson(next)) {
+          fail("thread registry already exists with different main routing");
+        }
+        return { status: "current", path, digest: digestFile(path) };
+      }
+      writeJson(path, next);
+      return { status: "initialized", path, digest: digestFile(path) };
+    }
+    if (!existsSync(path)) fail(`thread registry is missing: ${path}`);
+    const registry = requireRecord(readJson(path), "thread registry");
+    validateThreadRegistry(registry);
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const watches = registry.watches                             ;
+    if (action === "put-thread") {
+      if (args.length !== 6) {
+        fail("thread-registry put-thread requires <threads.json> <thread_key> <thread_id> <host_id> <role> <status>");
+      }
+      threads[requireString(args[1], "thread_key")] = {
+        thread_id: requireString(args[2], "thread_id"),
+        host_id: requireString(args[3], "host_id"),
+        role: requireString(args[4], "role"),
+        status: requireString(args[5], "status"),
+      };
+      validateThreadRegistry(registry);
+      writeJson(path, registry);
+      return { status: "thread_saved", thread_key: args[1], digest: digestFile(path) };
+    }
+    if (action === "set-status") {
+      if (args.length !== 3) {
+        fail("thread-registry set-status requires <threads.json> <thread_key> <status>");
+      }
+      const threadKeyValue = requireString(args[1], "thread_key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      thread.status = requireString(args[2], "status");
+      validateThreadRegistry(registry);
+      writeJson(path, registry);
+      return { status: "thread_status_saved", thread_key: threadKeyValue, digest: digestFile(path) };
+    }
+    if (action === "put-watch") {
+      if (args.length < 4 || args.length > 5) {
+        fail("thread-registry put-watch requires <threads.json> <task_id> <attempt> <thread_key> [cursor|-]");
+      }
+      const taskId = requireIdentifier(args[1], "task_id");
+      const attempt = requirePositiveInteger(Number(args[2]), "attempt");
+      const threadKeyValue = requireString(args[3], "thread_key");
+      if (!Object.hasOwn(threads, threadKeyValue)) fail(`unknown thread key: ${threadKeyValue}`);
+      const cursor = args[4] === undefined || args[4] === "-" ? null : requireString(args[4], "cursor");
+      const next = { task_id: taskId, attempt, thread_key: threadKeyValue, cursor };
+      const index = watches.findIndex((watch) =>
+        watch.task_id === taskId && watch.attempt === attempt && watch.thread_key === threadKeyValue
+      );
+      if (index < 0) watches.push(next);
+      else watches[index] = next;
+      validateThreadRegistry(registry);
+      writeJson(path, registry);
+      return { status: "watch_saved", task_id: taskId, attempt, digest: digestFile(path) };
+    }
+    if (action === "remove-watch") {
+      if (args.length !== 4) {
+        fail("thread-registry remove-watch requires <threads.json> <task_id> <attempt> <thread_key>");
+      }
+      const taskId = requireIdentifier(args[1], "task_id");
+      const attempt = requirePositiveInteger(Number(args[2]), "attempt");
+      const threadKeyValue = requireString(args[3], "thread_key");
+      registry.watches = watches.filter((watch) => !(
+        watch.task_id === taskId && watch.attempt === attempt && watch.thread_key === threadKeyValue
+      ));
+      validateThreadRegistry(registry);
+      writeJson(path, registry);
+      return { status: "watch_removed", task_id: taskId, attempt, digest: digestFile(path) };
+    }
+    if (action === "show") {
+      if (args.length !== 1) fail("thread-registry show requires <threads.json>");
+      return { status: "current", path, registry, digest: digestFile(path) };
+    }
+    fail(`unknown thread-registry action: ${action}`);
+  });
+  process.stdout.write(`${JSON.stringify({ contract: "THREAD_REGISTRY_RECEIPT_V1", ...receipt })}\n`);
+}
+
+function validateStructuredWrite(value                         , expectedContract        )       {
+  if (expectedContract === "THREAD_REGISTRY_V1") validateThreadRegistry(value);
+}
+
+function jsonWriteCommand(
+  targetArgument        ,
+  expectedContract        ,
+  replaceArgument         ,
+)       {
+  const target = resolve(targetArgument);
+  if (SCRIPT_MANAGED_JSON_BASENAMES.has(basename(target))) {
+    fail(`${basename(target)} is runtime-managed and cannot be written with json-write`);
+  }
+  if (replaceArgument !== undefined && replaceArgument !== "--replace") {
+    fail("json-write optional third argument must equal --replace");
+  }
+  const value = readStructuredInput(expectedContract);
+  validateStructuredWrite(value, expectedContract);
+  let mode                                     ;
+  if (replaceArgument === "--replace") {
+    writeJson(target, value);
+    mode = "replaced";
+  } else {
+    mode = writeImmutableJson(target, value);
+  }
+  process.stdout.write(`${JSON.stringify({
+    contract: "STRUCTURED_WRITE_RECEIPT_V1",
+    status: mode,
+    target,
+    data_contract: value.contract ?? null,
+    digest: digestFile(target),
+  })}\n`);
+}
+
+function expandEvidenceInput(value         , index        )                          {
+  const evidence = requireRecord(value, `result input.evidence[${index}]`);
+  if (evidence.verification_id !== undefined) return evidence;
+  requireAllowedKeys(
+    evidence,
+    ["id", "outcome", "summary", "artifact"],
+    `result input.evidence[${index}]`,
+  );
+  const id = requireIdentifier(evidence.id, `result input.evidence[${index}].id`);
+  const outcome = evidence.outcome === undefined
+    ? "passed"
+    : requireString(evidence.outcome, `result input.evidence[${index}].outcome`);
+  const artifactRef = evidence.artifact === undefined || evidence.artifact === null
+    ? null
+    : resolve(requireString(evidence.artifact, `result input.evidence[${index}].artifact`));
+  if (artifactRef !== null && !existsSync(artifactRef)) {
+    fail(`result input.evidence[${index}].artifact is missing: ${artifactRef}`);
+  }
+  return {
+    verification_id: id,
+    outcome,
+    summary: evidence.summary === undefined
+      ? `${id}: ${outcome}`
+      : requireString(evidence.summary, `result input.evidence[${index}].summary`),
+    artifact_ref: artifactRef,
+    artifact_digest: artifactRef === null ? null : digestFile(artifactRef),
+  };
+}
+
+function expandScopeRequestInput(
+  value         ,
+  task                ,
+)                                 {
+  if (value === undefined || value === null) return null;
+  const scope = requireRecord(value, "result input.scope");
+  if (scope.required_for_done_when !== undefined) return scope;
+  requireAllowedKeys(scope, ["paths", "reason", "owner"], "result input.scope");
+  return {
+    paths: requireStringArray(scope.paths, "result input.scope.paths", false),
+    reason: requireString(scope.reason, "result input.scope.reason"),
+    required_for_done_when: task.done_when.join("; "),
+    suggested_owner: scope.owner === undefined
+      ? task.owner_id ?? "runtime"
+      : requireString(scope.owner, "result input.scope.owner"),
+    split_hints: [],
+    overlap_hints: [],
+  };
+}
+
+function expandPublishedArtifactInput(value         , index        )                          {
+  const artifact = requireRecord(value, `result input.publish[${index}]`);
+  if (artifact.contract !== undefined) return artifact;
+  requireAllowedKeys(
+    artifact,
+    ["type", "path", "audience"],
+    `result input.publish[${index}]`,
+  );
+  const type = requireString(artifact.type, `result input.publish[${index}].type`);
+  const contracts                                                     = {
+    interface: "OWNER_INTERFACE_V1",
+    handoff: "OWNER_HANDOFF_V1",
+    attestation: "COMMIT_ATTESTATION_V1",
+  };
+  const contract = contracts[type];
+  if (contract === undefined) fail(`result input.publish[${index}].type is invalid: ${type}`);
+  const ref = resolve(requireString(artifact.path, `result input.publish[${index}].path`));
+  if (!existsSync(ref)) fail(`result input.publish[${index}].path is missing: ${ref}`);
+  return {
+    contract,
+    ref,
+    digest: digestFile(ref),
+    audience: requireStringArray(
+      artifact.audience,
+      `result input.publish[${index}].audience`,
+      false,
+    ),
+  };
+}
+
+function expandWorkerResultInput(
+  input                         ,
+  task                ,
+  taskState           ,
+  plan      ,
+  state          ,
+)                          {
+  if (input.contract === "WORKER_RESULT_V5") return input;
+  if (input.contract !== "TASK_RESULT_INPUT_V1" && input.contract !== "TASK_RESULT_INPUT_V2") {
+    fail("result input contract must equal TASK_RESULT_INPUT_V2");
+  }
+  const compact = input.contract === "TASK_RESULT_INPUT_V2";
+  if (compact) {
+    requireAllowedKeys(input, [
+      "contract",
+      "status",
+      "summary",
+      "evidence",
+      "blocking",
+      "notes",
+      "follow_ups",
+      "scope",
+      "owner",
+      "publish",
+      "review_upgrade",
+    ], "result input");
+  }
+  const status = requireString(input.status, "result input.status")                        ;
+  if (!TERMINAL_STATUSES.has(status)) fail(`result input.status is invalid: ${status}`);
+  const reviewContext = task.role === "review" ? reviewContextForTask(plan, state, task) : null;
+  const ownerValue = compact ? input.owner : input.owner_updates;
+  const ownerUpdates = ownerValue === undefined
+    ? { decisions: [], invariants: [], risks: [] }
+    : requireRecord(ownerValue, "result input.owner");
+  requireAllowedKeys(ownerUpdates, ["decisions", "invariants", "risks"], "result input.owner");
+  const evidenceInput = input.evidence ?? [];
+  if (!Array.isArray(evidenceInput)) fail("result input.evidence must be an array");
+  const publishInput = compact ? (input.publish ?? []) : (input.published_artifacts ?? []);
+  if (!Array.isArray(publishInput)) fail("result input.publish must be an array");
+  return {
+    contract: "WORKER_RESULT_V5",
+    status,
+    task_id: task.id,
+    logical_id: task.logical_id,
+    role: task.role,
+    owner_id: task.owner_id,
+    runtime_actor_id: task.runtime_actor_id,
+    owner_generation: taskState.owner_generation,
+    executor_id: taskState.executor_id,
+    reservation_token: taskState.reservation_token,
+    attempt: taskState.attempt,
+    source_revision: taskState.source_revision,
+    changed_files: [],
+    evidence: evidenceInput.map(expandEvidenceInput),
+    diff_self_check: status === "completed"
+      ? "pass"
+      : status === "needs_repair"
+        ? "scope_exception"
+        : "fail",
+    blocking_findings: compact ? (input.blocking ?? []) : (input.blocking_findings ?? []),
+    non_blocking_findings: compact ? (input.notes ?? []) : (input.non_blocking_findings ?? []),
+    follow_up_suggestions: compact ? (input.follow_ups ?? []) : (input.follow_up_suggestions ?? []),
+    reviewed_results: reviewContext?.reviewed_results ?? [],
+    review_plan_digest: reviewContext?.plan_digest ?? null,
+    review_workspace_digest: reviewContext?.workspace_digest ?? null,
+    review_upgrade_reason: compact ? (input.review_upgrade ?? null) : (input.review_upgrade_reason ?? null),
+    scope_request: expandScopeRequestInput(compact ? input.scope : input.scope_request, task),
+    summary: requireString(input.summary, "result input.summary"),
+    owner_updates: {
+      decisions: ownerUpdates.decisions ?? [],
+      invariants: ownerUpdates.invariants ?? [],
+      risks: ownerUpdates.risks ?? [],
+    },
+    published_artifacts: publishInput.map(expandPublishedArtifactInput),
+  };
+}
+
+function resultSubmitCommand(
+  planArgument        ,
+  stateArgument        ,
+  taskId        ,
+  reservationToken        ,
+)       {
+  const planPath = resolve(planArgument);
+  const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const payload = withStateLock(statePath, () => {
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+    assertGoalMutable(planPath, plan, goal);
+    const task = plan.tasks.find((candidate) => candidate.id === taskId);
+    if (task === undefined) fail(`unknown task: ${taskId}`);
+    const taskState = state.tasks[taskId];
+    if (taskState.status !== "running") fail(`task ${taskId} is not running`);
+    if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
+    if (taskState.result_path === null) fail("task result_path is missing");
+    const owner = subjectForTask(plan, task);
+    const resultInput = readStructuredInput("-");
+    const result = parseWorkerResult(
+      expandWorkerResultInput(resultInput, task, taskState, plan, state),
+      task,
+      owner,
+      taskState,
+      isOwnerDefinition(owner)
+        ? persistentOwnerInterfaceDirectoryFor(
+          goal.workspace.root,
+          owner.id,
+          goal.goal_id,
+          task.id,
+          taskState.attempt,
+        )
+        : undefined,
+    );
+    validateReviewResultBinding(plan, state, task, result);
+    writeImmutableJson(taskState.result_path, result);
+    return {
+      contract: "THREAD_TASK_RECEIPT_V1",
+      status: result.status,
+      task_id: task.id,
+      attempt: taskState.attempt,
+      result_ref: taskState.result_path,
+      result_digest: digestFile(taskState.result_path),
+      blocking_count: result.blocking_findings.length,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
 function main(argv          )       {
   const [command, ...args] = argv;
+  if (command === "goal-create" && args.length === 2) return goalCreateCommand(args[0], args[1]);
   if (command === "goal-validate" && args.length === 1) return goalValidateCommand(args[0]);
   if (command === "goal-refresh" && args.length === 4) {
     return refreshGoalCommand(args[0], args[1], args[2], args[3]);
   }
+  if (command === "plan-create" && args.length === 2) return planCreateCommand(args[0], args[1]);
   if (command === "validate" && args.length === 1) return validateCommand(args[0]);
   if (command === "render" && args.length === 1) return renderCommand(args[0]);
   if (command === "reserve" && (args.length === 2 || args.length === 3)) {
@@ -7183,6 +10798,9 @@ function main(argv          )       {
   }
   if (command === "source-audit" && args.length === 5) {
     return sourceAuditCommand(args[0], args[1], args[2], args[3], args[4]);
+  }
+  if (command === "source-audit-auto" && args.length === 4) {
+    return sourceAuditCommand(args[0], args[1], args[2], args[3], "-");
   }
   if (command === "commit-readiness" && args.length === 4) {
     return commitReadinessCommand(args[0], args[1], args[2], args[3]);
@@ -7199,8 +10817,14 @@ function main(argv          )       {
   if (command === "checkpoint" && args.length === 5) {
     return checkpointCommand(args[0], args[1], args[2], args[3], args[4]);
   }
+  if (command === "checkpoint-save" && args.length === 4) {
+    return checkpointCommand(args[0], args[1], args[2], args[3], "-");
+  }
   if (command === "rotate-owner" && args.length === 5) {
     return rotateOwnerCommand(args[0], args[1], args[2], args[3], args[4]);
+  }
+  if (command === "owner-change-pause" && args.length === 3) {
+    return ownerChangePauseCommand(args[0], args[1], args[2]);
   }
   if (command === "apply-delta" && args.length === 3) {
     return applyDeltaCommand(args[0], args[1], args[2]);
@@ -7215,6 +10839,13 @@ function main(argv          )       {
     return confirmStaleExecutorCommand(args[0], args[1], args[2]);
   }
   if (command === "status" && args.length === 2) return statusCommand(args[0], args[1]);
+  if (command === "dashboard-snapshot" && args.length === 2) {
+    return dashboardSnapshotCommand(args[0], args[1]);
+  }
+  if (command === "progress-document" && args.length === 2) {
+    return progressDocumentCommand(args[0], args[1]);
+  }
+  if (command === "dashboard" && args.length >= 1) return dashboardCommand(args);
   if (command === "finalize" && args.length === 4) {
     return finalizeCommand(args[0], args[1], args[2], args[3]);
   }
@@ -7233,8 +10864,23 @@ function main(argv          )       {
   if (command === "expand-task-scope" && args.length >= 5) {
     return expandTaskScopeCommand(args[0], args[1], args[2], args[3], args.slice(4));
   }
+  if (command === "expand-subgraph" && args.length === 5) {
+    return expandSubgraphCommand(args[0], args[1], args[2], args[3], args[4]);
+  }
+  if (command === "subgraph-request" && args.length >= 5) {
+    return subgraphRequestCommand(args[0], args[1], args[2], args[3], args[4], args.slice(5));
+  }
+  if (command === "thread-registry" && args.length >= 2) {
+    return threadRegistryCommand(args[0], args.slice(1));
+  }
+  if (command === "json-write" && (args.length === 2 || args.length === 3)) {
+    return jsonWriteCommand(args[0], args[1], args[2]);
+  }
+  if (command === "result-submit" && args.length === 4) {
+    return resultSubmitCommand(args[0], args[1], args[2], args[3]);
+  }
   fail(
-    "usage: goal-dag.mjs goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | validate <plan.json> | render <plan.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <executor_id> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | apply-delta <plan.json> <state.json> <delta.json> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <executor_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>...",
+    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
   );
 }
 

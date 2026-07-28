@@ -1,0 +1,7 @@
+interface:
+  display_name: "DAG 看板后台启动器"
+  short_description: "在后台启动本地只读 DAG 网页并自动维护固定进度文档。"
+  default_prompt: "使用 $start-dag-dashboard 在后台启动当前 Goal 的只读 DAG 进度网页。"
+
+policy:
+  allow_implicit_invocation: false

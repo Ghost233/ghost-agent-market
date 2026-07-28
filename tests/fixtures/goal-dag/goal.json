@@ -11,9 +11,15 @@
     "revision": 1
   },
   "objective": "重构页面状态并完成集成验证",
-  "scope": ["状态类型、页面读取、测试夹具和集成验证"],
-  "non_goals": ["部署和发布"],
-  "constraints": ["保持现有公开接口兼容"],
+  "scope": [
+    "状态类型、页面读取、测试夹具和集成验证"
+  ],
+  "non_goals": [
+    "部署和发布"
+  ],
+  "constraints": [
+    "保持现有公开接口兼容"
+  ],
   "lifecycle": {
     "controller": "codex_native",
     "native_goal": {
@@ -22,7 +28,7 @@
     }
   },
   "execution": {
-    "mode": "subagent",
+    "mode": "thread",
     "max_concurrency": 3,
     "reuse_policy": "owner_affinity"
   },

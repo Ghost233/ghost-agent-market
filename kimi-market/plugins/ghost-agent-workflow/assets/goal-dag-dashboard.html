@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goal DAG 进度</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07110f;
+      --panel: rgba(13, 28, 25, 0.84);
+      --panel-strong: #10231f;
+      --line: rgba(173, 255, 218, 0.14);
+      --line-strong: rgba(173, 255, 218, 0.28);
+      --text: #ecfff6;
+      --muted: #89aa9d;
+      --accent: #55f2b2;
+      --accent-soft: rgba(85, 242, 178, 0.12);
+      --amber: #ffc766;
+      --red: #ff7b7b;
+      --blue: #74b9ff;
+      --purple: #c7a6ff;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% -10%, rgba(85, 242, 178, 0.17), transparent 34rem),
+        radial-gradient(circle at 100% 20%, rgba(116, 185, 255, 0.1), transparent 32rem),
+        linear-gradient(180deg, #081411 0%, var(--bg) 72%);
+    }
+
+    button { font: inherit; }
+    a { font: inherit; text-decoration: none; }
+    .shell { width: min(1680px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 56px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; max-width: 980px; font-size: clamp(23px, 3vw, 42px); line-height: 1.12; letter-spacing: -0.04em; }
+    .goal-id { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+    .live { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .live-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--amber); box-shadow: 0 0 0 5px rgba(255, 199, 102, 0.1); }
+    .live-dot.online { background: var(--accent); box-shadow: 0 0 0 5px rgba(85, 242, 178, 0.11); }
+    .live-dot.error { background: var(--red); box-shadow: 0 0 0 5px rgba(255, 123, 123, 0.1); }
+
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 30px 0 18px; }
+    .metric, .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .metric { min-height: 108px; padding: 17px 18px; border-radius: 16px; }
+    .metric-label { color: var(--muted); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .metric-value { margin-top: 12px; font-size: clamp(21px, 2vw, 30px); line-height: 1; font-weight: 800; }
+    .metric-note { margin-top: 10px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress-track { height: 4px; margin-top: 13px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, 0.07); }
+    .progress-fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #c8ffe7); transition: width 300ms ease; }
+
+    .panel { border-radius: 18px; overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+    .panel-title { display: flex; align-items: baseline; gap: 12px; }
+    .panel-title h2 { margin: 0; font-size: 14px; letter-spacing: -0.02em; }
+    .panel-title span { color: var(--muted); font-size: 11px; }
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .filter, .icon-button {
+      border: 1px solid transparent;
+      border-radius: 9px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      transition: 140ms ease;
+    }
+    .filter { padding: 7px 10px; font-size: 11px; }
+    .filter:hover, .icon-button:hover { color: var(--text); border-color: var(--line-strong); background: rgba(255,255,255,0.035); }
+    .filter.active { color: var(--text); border-color: rgba(85, 242, 178, 0.35); background: var(--accent-soft); }
+    .icon-button { padding: 7px 9px; }
+
+    .graph-wrap { position: relative; min-height: 560px; overflow: auto; background-image: radial-gradient(rgba(173, 255, 218, 0.08) 0.8px, transparent 0.8px); background-size: 24px 24px; }
+    #graph { display: block; min-width: 100%; }
+    .edge { fill: none; stroke: rgba(155, 198, 181, 0.27); stroke-width: 1.4; }
+    .edge.containment { stroke: rgba(199, 166, 255, 0.55); stroke-dasharray: 5 5; }
+    .edge.selected { stroke: var(--accent); stroke-width: 2.2; }
+    .node { cursor: pointer; outline: none; transition: opacity 140ms ease; }
+    .node.dim { opacity: 0.18; }
+    .node rect { fill: #0c1e1a; stroke: rgba(173, 255, 218, 0.2); stroke-width: 1.2; filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.22)); }
+    .node:hover rect, .node:focus rect, .node.selected rect { stroke: var(--accent); stroke-width: 2; }
+    .node.composite rect { stroke: rgba(199, 166, 255, 0.72); stroke-width: 1.8; }
+    .node .status-bar { stroke: none; }
+    .node-id { fill: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; }
+    .node-title { fill: var(--text); font-size: 12px; font-weight: 700; }
+    .node-meta { fill: var(--muted); font-size: 9px; }
+    .node-status { font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    .status-completed { color: var(--accent); }
+    .status-running, .status-reserved { color: var(--blue); }
+    .status-ready { color: var(--amber); }
+    .status-failed, .status-blocked, .status-needs_repair { color: var(--red); }
+    .status-superseded { color: var(--purple); }
+    .status-waiting, .status-pending { color: var(--muted); }
+
+    .lower { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.7fr); gap: 16px; margin-top: 16px; }
+    .task-list { max-height: 520px; overflow: auto; }
+    .task-row { display: grid; grid-template-columns: 74px minmax(190px, 1fr) 132px 110px; gap: 12px; align-items: center; width: 100%; padding: 13px 16px; border: 0; border-bottom: 1px solid var(--line); color: inherit; text-align: left; background: transparent; cursor: pointer; }
+    .task-row:hover, .task-row.selected { background: rgba(85, 242, 178, 0.055); }
+    .task-row:last-child { border-bottom: 0; }
+    .task-row-id { color: var(--muted); font-size: 11px; }
+    .disclosure { display: inline-block; width: 18px; color: var(--purple); }
+    .task-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; width: fit-content; padding: 5px 8px; border: 1px solid currentColor; border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .pill::before { content: ""; width: 5px; height: 5px; border-radius: 99px; background: currentColor; }
+    .subject { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inspector { min-height: 320px; padding: 20px; }
+    .inspector-empty { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .inspector h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.35; }
+    .inspector .task-code { margin-bottom: 18px; color: var(--accent); font-size: 11px; }
+    .detail-grid { display: grid; grid-template-columns: 112px 1fr; gap: 10px 14px; margin: 0; font-size: 11px; line-height: 1.55; }
+    .detail-grid dt { color: var(--muted); }
+    .detail-grid dd { margin: 0; word-break: break-word; }
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 4px 7px; border-radius: 7px; background: rgba(255,255,255,0.045); color: #bdd5cb; }
+    .error-banner { display: none; margin: 14px 0 0; padding: 12px 14px; border: 1px solid rgba(255, 123, 123, 0.3); border-radius: 12px; color: #ffd0d0; background: rgba(255, 123, 123, 0.08); font-size: 11px; }
+    .error-banner.visible { display: block; }
+
+    @media (max-width: 1080px) {
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+      .lower { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 18px, 1680px); padding-top: 20px; }
+      .topbar { flex-direction: column; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .panel-head { align-items: flex-start; flex-direction: column; }
+      .actions { justify-content: flex-start; }
+      .task-row { grid-template-columns: 48px minmax(130px, 1fr) 100px; }
+      .task-row .subject { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Ghost Agent Workflow / Live DAG</p>
+        <h1 id="objective">正在读取 Goal…</h1>
+        <p class="goal-id" id="goal-id">—</p>
+      </div>
+      <div class="live" aria-live="polite">
+        <span class="live-dot" id="live-dot"></span>
+        <span id="live-label">连接中</span>
+      </div>
+    </header>
+
+    <div class="error-banner" id="error-banner" role="alert"></div>
+
+    <section class="metrics" aria-label="进度概览">
+      <article class="metric">
+        <div class="metric-label">任务完成</div>
+        <div class="metric-value" id="task-progress">—</div>
+        <div class="progress-track"><div class="progress-fill" id="task-progress-bar"></div></div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">效果覆盖</div>
+        <div class="metric-value" id="coverage-progress">—</div>
+        <div class="progress-track"><div class="progress-fill" id="coverage-progress-bar"></div></div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">当前活动</div>
+        <div class="metric-value" id="active-count">—</div>
+        <div class="metric-note" id="active-note">running + reserved</div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">下一动作</div>
+        <div class="metric-value" id="next-action">—</div>
+        <div class="metric-note" id="source-status">source —</div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">计划版本</div>
+        <div class="metric-value" id="plan-revision">—</div>
+        <div class="metric-note" id="plan-note">—</div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2>DAG 拓扑</h2>
+          <span id="graph-note">自动刷新 · 只读</span>
+        </div>
+        <div class="actions" id="filters">
+          <button class="filter active" data-filter="all">全部</button>
+          <button class="filter" data-filter="active">活动</button>
+          <button class="filter" data-filter="ready">可调度</button>
+          <button class="filter" data-filter="attention">需处理</button>
+          <button class="filter" data-filter="completed">已完成</button>
+          <a class="icon-button" href="/api/progress-document" target="_blank" rel="noopener">进度文档</a>
+          <a class="icon-button" href="/api/progress-events?after=0&amp;limit=100" target="_blank" rel="noopener">更新事件</a>
+          <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新">↻</button>
+        </div>
+      </div>
+      <div class="graph-wrap" id="graph-wrap">
+        <svg id="graph" role="img" aria-label="任务依赖图"></svg>
+      </div>
+    </section>
+
+    <div class="lower">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><h2>任务</h2><span id="task-count">—</span></div>
+        </div>
+        <div class="task-list" id="task-list"></div>
+      </section>
+      <aside class="panel inspector" id="inspector">
+        <div class="inspector-empty">选择 DAG 节点或任务行，查看依赖、Owner、coverage effect 与 gate。</div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const POLL_MS = 2000;
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const statusLabels = {
+      waiting: "等待依赖", ready: "可调度", reserved: "已预留", running: "运行中",
+      completed: "已完成", blocked: "阻塞", failed: "失败", needs_repair: "需修复",
+      superseded: "已替换", pending: "待处理"
+    };
+    const statusColors = {
+      waiting: "#637f74", ready: "#ffc766", reserved: "#74b9ff", running: "#74b9ff",
+      completed: "#55f2b2", blocked: "#ff7b7b", failed: "#ff7b7b", needs_repair: "#ff7b7b",
+      superseded: "#c7a6ff", pending: "#637f74"
+    };
+    let snapshot = null;
+    let selectedTaskId = null;
+    let activeFilter = "all";
+    let polling = false;
+    const expandedCompositeIds = new Set();
+
+    const byId = (id) => document.getElementById(id);
+    const setText = (id, value) => { byId(id).textContent = String(value); };
+    const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+    const statusClass = (phase) => `status-${phase}`;
+    const phaseLabel = (phase) => statusLabels[phase] || phase;
+
+    function element(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function svgElement(tag, attributes = {}) {
+      const node = document.createElementNS(SVG_NS, tag);
+      for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+      return node;
+    }
+
+    function taskMatchesFilter(task) {
+      if (activeFilter === "all") return true;
+      if (activeFilter === "active") return task.phase === "running" || task.phase === "reserved";
+      if (activeFilter === "ready") return task.phase === "ready";
+      if (activeFilter === "attention") return ["blocked", "failed", "needs_repair"].includes(task.phase);
+      if (activeFilter === "completed") return task.phase === "completed";
+      return true;
+    }
+
+    function taskIsVisible(task) {
+      let parentId = task.parent_task_id;
+      const visited = new Set();
+      while (parentId) {
+        if (visited.has(parentId) || !expandedCompositeIds.has(parentId)) return false;
+        visited.add(parentId);
+        parentId = snapshot.tasks.find((item) => item.id === parentId)?.parent_task_id || null;
+      }
+      return true;
+    }
+
+    function visibleTasks() {
+      return snapshot ? snapshot.tasks.filter(taskIsVisible) : [];
+    }
+
+    function toggleComposite(taskId) {
+      const task = snapshot && snapshot.tasks.find((item) => item.id === taskId);
+      if (!task || task.node_type !== "composite") return;
+      if (expandedCompositeIds.has(taskId)) expandedCompositeIds.delete(taskId);
+      else expandedCompositeIds.add(taskId);
+      renderGraph();
+      renderTaskList();
+      renderInspector();
+    }
+
+    function wrapTitle(value, max = 18) {
+      const result = [];
+      let line = "";
+      for (const character of value) {
+        const width = /[\u0000-\u00ff]/.test(character) ? 0.55 : 1;
+        const current = [...line].reduce((sum, item) => sum + (/[\u0000-\u00ff]/.test(item) ? 0.55 : 1), 0);
+        if (current + width > max && line) {
+          result.push(line);
+          line = character;
+        } else line += character;
+        if (result.length === 2) break;
+      }
+      if (line && result.length < 2) result.push(line);
+      if (result.join("").length < value.length && result.length) {
+        result[result.length - 1] = `${result[result.length - 1].slice(0, -1)}…`;
+      }
+      return result;
+    }
+
+    function graphLayout(tasks) {
+      const map = new Map(tasks.map((task) => [task.id, task]));
+      const layers = new Map();
+      const visiting = new Set();
+      const endLayers = new Map();
+      const ending = new Set();
+      function layerFor(taskId) {
+        if (layers.has(taskId)) return layers.get(taskId);
+        if (visiting.has(taskId)) return 0;
+        visiting.add(taskId);
+        const task = map.get(taskId);
+        const dependencyLayers = task
+          ? task.depends_on.filter((id) => map.has(id)).map(endLayerFor)
+          : [];
+        if (task?.parent_task_id && map.has(task.parent_task_id)) {
+          dependencyLayers.push(layerFor(task.parent_task_id));
+        }
+        const layer = dependencyLayers.length ? 1 + Math.max(...dependencyLayers) : 0;
+        visiting.delete(taskId);
+        layers.set(taskId, layer);
+        return layer;
+      }
+      function endLayerFor(taskId) {
+        if (endLayers.has(taskId)) return endLayers.get(taskId);
+        if (ending.has(taskId)) return layerFor(taskId);
+        ending.add(taskId);
+        const task = map.get(taskId);
+        let layer = layerFor(taskId);
+        if (task?.node_type === "composite" && expandedCompositeIds.has(taskId)) {
+          const children = tasks.filter((candidate) => candidate.parent_task_id === taskId);
+          if (children.length) layer = Math.max(layer, ...children.map((child) => endLayerFor(child.id)));
+        }
+        ending.delete(taskId);
+        endLayers.set(taskId, layer);
+        return layer;
+      }
+      tasks.forEach((task) => layerFor(task.id));
+      const columns = new Map();
+      tasks.forEach((task) => {
+        const layer = layers.get(task.id) || 0;
+        if (!columns.has(layer)) columns.set(layer, []);
+        columns.get(layer).push(task);
+      });
+      for (const column of columns.values()) column.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      const positions = new Map();
+      const nodeWidth = 236;
+      const nodeHeight = 104;
+      const gapX = 92;
+      const gapY = 30;
+      const maxRows = Math.max(1, ...[...columns.values()].map((column) => column.length));
+      for (const [layer, column] of columns) {
+        const offsetY = 54;
+        column.forEach((task, index) => positions.set(task.id, {
+          x: 52 + layer * (nodeWidth + gapX),
+          y: offsetY + index * (nodeHeight + gapY),
+          width: nodeWidth,
+          height: nodeHeight
+        }));
+      }
+      return {
+        positions,
+        width: 104 + (Math.max(0, ...layers.values()) + 1) * nodeWidth + Math.max(0, ...layers.values()) * gapX,
+        height: 108 + maxRows * nodeHeight + Math.max(0, maxRows - 1) * gapY
+      };
+    }
+
+    function renderGraph() {
+      const graph = byId("graph");
+      graph.replaceChildren();
+      if (!snapshot) return;
+      const tasks = visibleTasks();
+      const { positions, width, height } = graphLayout(tasks);
+      graph.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      graph.style.width = `${Math.max(width, byId("graph-wrap").clientWidth)}px`;
+      graph.style.height = `${Math.max(560, height)}px`;
+
+      const selected = selectedTaskId;
+      const selectedTask = tasks.find((task) => task.id === selected);
+      const related = new Set(selectedTask ? [selectedTask.id, ...selectedTask.depends_on] : []);
+      if (selectedTask) {
+        tasks.filter((task) => task.depends_on.includes(selectedTask.id)).forEach((task) => related.add(task.id));
+      }
+
+      for (const edge of snapshot.edges) {
+          const source = positions.get(edge.from);
+          const target = positions.get(edge.to);
+          if (!source || !target) continue;
+          const x1 = source.x + source.width;
+          const y1 = source.y + source.height / 2;
+          const x2 = target.x;
+          const y2 = target.y + target.height / 2;
+          const bend = Math.max(34, (x2 - x1) * 0.48);
+          const path = svgElement("path", {
+            d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`,
+            class: `edge ${edge.kind || "boundary"}${selected && related.has(edge.to) && related.has(edge.from) ? " selected" : ""}`
+          });
+          graph.append(path);
+      }
+
+      for (const task of tasks) {
+        const position = positions.get(task.id);
+        const group = svgElement("g", {
+          class: ["node", task.node_type === "composite" ? "composite" : "", task.id === selected ? "selected" : "", taskMatchesFilter(task) ? "" : "dim"].filter(Boolean).join(" "),
+          transform: `translate(${position.x}, ${position.y})`,
+          tabindex: "0",
+          role: "button",
+          "aria-label": `${task.id} ${task.title} ${phaseLabel(task.phase)}`
+        });
+        group.append(svgElement("rect", { x: 0, y: 0, width: position.width, height: position.height, rx: 12 }));
+        group.append(svgElement("rect", { class: "status-bar", x: 0, y: 0, width: 5, height: position.height, rx: 3, fill: statusColors[task.phase] || statusColors.pending }));
+
+        const idText = svgElement("text", { x: 18, y: 23, class: "node-id" });
+        idText.textContent = task.node_type === "composite"
+          ? `${expandedCompositeIds.has(task.id) ? "▾" : "▸"} ${task.id}`
+          : task.id;
+        group.append(idText);
+        const statusText = svgElement("text", { x: position.width - 16, y: 23, class: "node-status", fill: statusColors[task.phase] || statusColors.pending, "text-anchor": "end" });
+        statusText.textContent = phaseLabel(task.phase);
+        group.append(statusText);
+        wrapTitle(task.title).forEach((line, index) => {
+          const title = svgElement("text", { x: 18, y: 49 + index * 16, class: "node-title" });
+          title.textContent = line;
+          group.append(title);
+        });
+        const meta = svgElement("text", { x: 18, y: 90, class: "node-meta" });
+        meta.textContent = task.node_type === "composite"
+          ? `子 DAG · ${task.subgraph.task_ids.length} nodes · ${task.subgraph.completion_policy}`
+          : `${task.subject.kind}:${task.subject.id} · ${task.coverage_effect}`;
+        group.append(meta);
+        const select = () => { selectedTaskId = task.id; renderGraph(); renderTaskList(); renderInspector(); };
+        group.addEventListener("click", select);
+        group.addEventListener("dblclick", () => toggleComposite(task.id));
+        group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") select(); });
+        graph.append(group);
+      }
+    }
+
+    function renderTaskList() {
+      const list = byId("task-list");
+      list.replaceChildren();
+      if (!snapshot) return;
+      const hierarchyVisible = visibleTasks();
+      const visible = hierarchyVisible.filter(taskMatchesFilter);
+      setText("task-count", `${visible.length} / ${snapshot.tasks.length}`);
+      for (const task of visible) {
+        const row = element("button", `task-row${task.id === selectedTaskId ? " selected" : ""}`);
+        row.type = "button";
+        const idCell = element("span", "task-row-id");
+        idCell.style.paddingLeft = `${task.depth * 14}px`;
+        const disclosure = element("span", "disclosure", task.node_type === "composite"
+          ? (expandedCompositeIds.has(task.id) ? "▾" : "▸")
+          : "·");
+        disclosure.addEventListener("click", (event) => {
+          event.stopPropagation();
+          toggleComposite(task.id);
+        });
+        idCell.append(disclosure, document.createTextNode(task.id));
+        row.append(idCell);
+        row.append(element("span", "task-row-title", task.title));
+        row.append(element("span", `pill ${statusClass(task.phase)}`, phaseLabel(task.phase)));
+        row.append(element("span", "subject", `${task.subject.kind}:${task.subject.id}`));
+        row.addEventListener("click", () => { selectedTaskId = task.id; renderGraph(); renderTaskList(); renderInspector(); });
+        list.append(row);
+      }
+    }
+
+    function appendDetail(grid, label, value) {
+      grid.append(element("dt", "", label));
+      const cell = element("dd");
+      if (Array.isArray(value)) {
+        const chips = element("div", "chip-list");
+        (value.length ? value : ["—"]).forEach((item) => chips.append(element("span", "chip", item)));
+        cell.append(chips);
+      } else cell.textContent = value == null || value === "" ? "—" : String(value);
+      grid.append(cell);
+    }
+
+    function renderInspector() {
+      const inspector = byId("inspector");
+      inspector.replaceChildren();
+      const task = snapshot && snapshot.tasks.find((item) => item.id === selectedTaskId);
+      if (!task) {
+        inspector.append(element("div", "inspector-empty", "选择 DAG 节点或任务行，查看依赖、Owner、coverage effect 与 gate。"));
+        return;
+      }
+      inspector.append(element("div", "task-code", `${task.id} · ${task.logical_id}`));
+      inspector.append(element("h3", "", task.title));
+      const grid = element("dl", "detail-grid");
+      appendDetail(grid, "状态", `${phaseLabel(task.phase)} · attempt ${task.attempt}`);
+      appendDetail(grid, "节点类型", task.node_type === "composite" ? "扩展任务 / 子 DAG" : "叶子任务");
+      appendDetail(grid, "父任务", task.parent_task_id);
+      appendDetail(grid, "执行主体", `${task.subject.kind}:${task.subject.id}`);
+      appendDetail(grid, "角色 / 效果", `${task.role} / ${task.coverage_effect}`);
+      appendDetail(grid, "依赖", task.depends_on);
+      appendDetail(grid, "阻塞依赖", task.blocking_dependencies);
+      appendDetail(grid, "计划项", task.plan_item_ids);
+      appendDetail(grid, "目标门禁", task.satisfies_goal_gates);
+      appendDetail(grid, "优先级 / 成本", `${task.priority} / ${task.estimated_cost}`);
+      if (task.subgraph) {
+        appendDetail(grid, "子任务", task.subgraph.task_ids);
+        appendDetail(grid, "入口 / 出口", `${task.subgraph.entry_task_ids.join(", ")} / ${task.subgraph.exit_task_ids.join(", ")}`);
+        appendDetail(grid, "扩展原因", task.subgraph.expansion_reason);
+        const toggle = element("button", "filter active", expandedCompositeIds.has(task.id) ? "收起子 DAG" : "展开子 DAG");
+        toggle.type = "button";
+        toggle.addEventListener("click", () => toggleComposite(task.id));
+        inspector.append(toggle);
+      }
+      inspector.append(grid);
+    }
+
+    function renderMetrics() {
+      const total = snapshot.progress.top_level.total;
+      const completed = snapshot.progress.top_level.completed;
+      const taskPercent = total ? (completed / total) * 100 : 0;
+      const coverage = snapshot.progress.coverage;
+      const active = (snapshot.progress.summary.running || 0) + (snapshot.progress.summary.reserved || 0);
+      setText("objective", snapshot.goal.title || snapshot.goal.objective);
+      setText("goal-id", `${snapshot.goal.id} · ${snapshot.goal.status}`);
+      setText("task-progress", `${completed}/${total}`);
+      byId("task-progress-bar").style.width = `${clampPercent(taskPercent)}%`;
+      setText("coverage-progress", `${coverage.completed_percent}%`);
+      byId("coverage-progress-bar").style.width = `${clampPercent(coverage.completed_percent)}%`;
+      setText("active-count", active);
+      setText("active-note", `${snapshot.progress.summary.running || 0} running · ${snapshot.progress.summary.reserved || 0} reserved · ${snapshot.progress.ready} ready`);
+      setText("next-action", snapshot.progress.next_action);
+      setText("source-status", `source ${snapshot.progress.source_status}`);
+      setText("plan-revision", `r${snapshot.plan.revision}`);
+      setText("plan-note", `source r${snapshot.plan.source_revision} · seq ${snapshot.plan.workspace_change_seq}`);
+      setText("graph-note", `${snapshot.tasks.length} tasks · ${snapshot.edges.length} edges · ${snapshot.plan.safety}`);
+    }
+
+    function renderAll() {
+      renderMetrics();
+      renderGraph();
+      renderTaskList();
+      renderInspector();
+    }
+
+    function setConnection(mode, label) {
+      byId("live-dot").className = `live-dot ${mode}`;
+      setText("live-label", label);
+    }
+
+    async function refresh() {
+      if (polling) return;
+      polling = true;
+      try {
+        const response = await fetch("/api/snapshot", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const next = await response.json();
+        snapshot = next;
+        if (selectedTaskId && !snapshot.tasks.some((task) => task.id === selectedTaskId)) selectedTaskId = null;
+        renderAll();
+        const time = new Date(snapshot.generated_at).toLocaleTimeString();
+        setConnection("online", `实时 · ${time}`);
+        byId("error-banner").classList.remove("visible");
+      } catch (error) {
+        setConnection("error", "连接中断");
+        byId("error-banner").textContent = `无法刷新 DAG：${error instanceof Error ? error.message : String(error)}。页面会继续重试。`;
+        byId("error-banner").classList.add("visible");
+      } finally {
+        polling = false;
+      }
+    }
+
+    byId("filters").addEventListener("click", (event) => {
+      const target = event.target.closest("[data-filter]");
+      if (!target) return;
+      activeFilter = target.dataset.filter;
+      document.querySelectorAll("[data-filter]").forEach((button) => button.classList.toggle("active", button === target));
+      renderGraph();
+      renderTaskList();
+    });
+    byId("refresh").addEventListener("click", refresh);
+    window.addEventListener("resize", () => { if (snapshot) renderGraph(); });
+    refresh();
+    setInterval(refresh, POLL_MS);
+  </script>
+</body>
+</html>
