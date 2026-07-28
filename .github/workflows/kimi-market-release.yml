@@ -19,6 +19,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Regenerate portable skills and runtimes
+        run: |
+          node tooling/goal-dag/sync-thread-skills.mjs
+          node tooling/goal-dag/build.mjs
+          node tooling/owner-registry/build.mjs
+          git diff --exit-code -- claude-code-market codex-market kimi-market
+
+      - name: Validate workflow contracts
+        run: |
+          python3 -m unittest \
+            tests.test_goal_dag_cli \
+            tests.test_kimi_goal_dag_cli \
+            tests.test_owner_registry_cli \
+            tests.test_sub_thread_skill_contract \
+            tests.test_kimi_sub_thread_contract \
+            tests.test_start_dag_dashboard_skill
+
       - name: Build plugin zip
         run: |
           cd kimi-market/plugins

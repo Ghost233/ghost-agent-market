@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.1.7",
-  "description": "面向 Kimi Code local_fallback 生命周期的永久 Owner、v5 DAG、短续跑恢复与 Owner 化 Git 提交技能。",
+  "version": "0.2.4",
+  "description": "长期子线程 Owner DAG、显式 Review、递归子图与脚本化状态；缺少持久子线程 API 时 fail closed。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -10,20 +10,24 @@
   "repository": "https://github.com/Ghost233/ghost-agent-market",
   "license": "MIT",
   "keywords": [
-    "subagent-coordination",
     "parallel-task-planner",
     "task-dag",
+    "dag-dashboard",
     "parallel-planning",
     "git-commit",
     "agent-skills",
     "kimi",
-    "kimi-code"
+    "kimi-code",
+    "thread-coordination",
+    "explicit-review-dag",
+    "sub-thread-coordination",
+    "task-supervisor"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "显式 /skill 入口的 subagent-only coverage 与 Owner DAG 工作流，local_fallback 生命周期，附 git-commit。",
-    "longDescription": "Kimi 使用 local_fallback 生命周期与 DAG_PLAN_V5。Owner 是仓库级永久代码模块，scope include/exclude、用户批准治理和跨 Goal lease 由脚本硬校验；source/diff/commit-readiness 是独立 runtime actor。只有 Owner Registry、Capsule、接口和历史持久化，Goal/Plan/runtime 不进入 Git；提交由 Owner attestation 与 delivery manifest 驱动。",
+    "shortDescription": "持久子线程 Owner DAG；Review 显式入图，结构化状态只由脚本写入。",
+    "longDescription": "默认 standalone_thread，不强制 Goal。支持 Owner 亲和、递归 composite 子图、显式 Review、gpt-5.6-luna/low 极简任务监督和独立 DAG 视图；模型只提交最小语义输入，契约与状态由脚本生成。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

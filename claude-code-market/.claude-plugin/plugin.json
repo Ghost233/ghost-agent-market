@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "description": "面向 Claude Code local_fallback 生命周期的永久 Owner、v5 DAG、短续跑恢复与 Owner 化 Git 提交技能。",
-  "version": "0.4.8",
+  "description": "长期子线程 Owner DAG、显式 Review、递归子图与脚本化状态；缺少持久子线程 API 时 fail closed。",
+  "version": "0.5.5",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -10,12 +10,16 @@
   "repository": "https://github.com/Ghost233/ghost-agent-market",
   "license": "MIT",
   "keywords": [
-    "subagent-coordination",
     "parallel-task-planner",
     "task-dag",
+    "dag-dashboard",
     "parallel-planning",
     "git-commit",
     "agent-skills",
-    "claude-code"
+    "claude-code",
+    "thread-coordination",
+    "explicit-review-dag",
+    "sub-thread-coordination",
+    "task-supervisor"
   ]
 }
