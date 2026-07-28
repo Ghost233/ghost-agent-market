@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -86,13 +87,20 @@ type PersistentOwnerCapsule = {
   risks: string[];
   important_symbols: string[];
   next_steps: string[];
-  history: Array<{
-    event: "created" | "changed" | "split_from" | "merged_from";
-    request_digest: string;
-    at: string;
-  }>;
+  current_change_digest: string;
   updated_at: string;
 };
+
+const WORKFLOW_GITIGNORE = [
+  "# Managed by Ghost Agent Workflow.",
+  "*",
+  "!.gitignore",
+  "!config.json",
+  "!owners/",
+  "!owners/**",
+  "owners/*/interfaces/",
+  "",
+].join("\n");
 
 function fail(message: string): never {
   throw new Error(message);
@@ -166,6 +174,19 @@ function writeJsonAtomic(path: string, value: unknown): void {
   const temporary = `${path}.tmp-${process.pid}`;
   writeFileSync(temporary, serialized(value), { encoding: "utf8", flag: "wx" });
   renameSync(temporary, path);
+}
+
+function ensureWorkflowGitignore(workspaceRoot: string): string {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow");
+  const path = join(root, ".gitignore");
+  mkdirSync(root, { recursive: true });
+  if (existsSync(path)) return path;
+  try {
+    writeFileSync(path, WORKFLOW_GITIGNORE, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "EEXIST") throw error;
+  }
+  return path;
 }
 
 function normalizeRepositoryPath(value: string): string {
@@ -621,13 +642,6 @@ function newCapsule(
 ): PersistentOwnerCapsule {
   const combined = <T>(select: (capsule: PersistentOwnerCapsule) => T[]): T[] =>
     [...new Set(inherited.flatMap(select))];
-  const event = inherited.length === 0
-    ? "created"
-    : request.operation === "split"
-      ? "split_from"
-      : request.operation === "merge"
-        ? "merged_from"
-        : "changed";
   return {
     contract: "OWNER_CAPSULE_V2",
     owner_id: owner.id,
@@ -643,14 +657,7 @@ function newCapsule(
     risks: combined((capsule) => capsule.risks),
     important_symbols: combined((capsule) => capsule.important_symbols),
     next_steps: combined((capsule) => capsule.next_steps),
-    history: [
-      ...combined((capsule) => capsule.history),
-      {
-        event,
-        request_digest: requestDigest,
-        at: request.created_at,
-      },
-    ],
+    current_change_digest: requestDigest,
     updated_at: request.created_at,
   };
 }
@@ -660,16 +667,47 @@ function parsePersistentCapsule(value: unknown, ownerId: string): PersistentOwne
   if (source.contract !== "OWNER_CAPSULE_V2" || source.owner_id !== ownerId) {
     fail(`invalid persistent capsule for owner ${ownerId}`);
   }
+  const legacyHistory = Array.isArray(source.history) ? source.history : [];
+  const legacyDigest = [...legacyHistory].reverse().flatMap((entry) =>
+    isRecord(entry) && typeof entry.request_digest === "string"
+      ? [entry.request_digest]
+      : []
+  )[0];
   return {
-    ...(source as unknown as PersistentOwnerCapsule),
+    contract: "OWNER_CAPSULE_V2",
+    owner_id: ownerId,
+    generation: positiveInteger(source.generation, `owner capsule ${ownerId}.generation`),
+    registry_revision: positiveInteger(
+      source.registry_revision,
+      `owner capsule ${ownerId}.registry_revision`,
+    ),
+    scope_patterns: stringArray(
+      source.scope_patterns,
+      `owner capsule ${ownerId}.scope_patterns`,
+      false,
+    ).map(normalizePattern),
     scope_excludes: source.scope_excludes === undefined
       ? []
       : stringArray(source.scope_excludes, `owner capsule ${ownerId}.scope_excludes`).map(normalizePattern),
+    responsibility: stringValue(source.responsibility, `owner capsule ${ownerId}.responsibility`),
+    worker_context: stringValue(source.worker_context, `owner capsule ${ownerId}.worker_context`),
     inherited_from: source.inherited_from === null
       ? []
       : Array.isArray(source.inherited_from)
         ? stringArray(source.inherited_from, `owner capsule ${ownerId}.inherited_from`)
         : [stringValue(source.inherited_from, `owner capsule ${ownerId}.inherited_from`)],
+    decisions: stringArray(source.decisions, `owner capsule ${ownerId}.decisions`),
+    invariants: stringArray(source.invariants, `owner capsule ${ownerId}.invariants`),
+    risks: stringArray(source.risks, `owner capsule ${ownerId}.risks`),
+    important_symbols: stringArray(
+      source.important_symbols,
+      `owner capsule ${ownerId}.important_symbols`,
+    ),
+    next_steps: stringArray(source.next_steps, `owner capsule ${ownerId}.next_steps`),
+    current_change_digest: source.current_change_digest === undefined
+      ? stringValue(legacyDigest ?? "legacy-current", `owner capsule ${ownerId}.current_change_digest`)
+      : stringValue(source.current_change_digest, `owner capsule ${ownerId}.current_change_digest`),
+    updated_at: stringValue(source.updated_at, `owner capsule ${ownerId}.updated_at`),
   };
 }
 
@@ -679,7 +717,18 @@ function capsuleContainsChange(
   requestDigest: string,
 ): boolean {
   return capsule.registry_revision === registryRevision &&
-    capsule.history.some((entry) => entry.request_digest === requestDigest);
+    capsule.current_change_digest === requestDigest;
+}
+
+function compactOwnerCapsules(registryPath: string, registry: OwnerRegistry): void {
+  for (const owner of registry.owners) {
+    const path = capsulePath(registryPath, owner.id);
+    if (!existsSync(path)) continue;
+    const compact = parsePersistentCapsule(readJson(path), owner.id);
+    writeJsonAtomic(path, compact);
+    const historyDirectory = join(dirname(path), "history");
+    if (existsSync(historyDirectory)) rmSync(historyDirectory, { recursive: true, force: true });
+  }
 }
 
 function activeGoalCount(workspaceRoot: string): number {
@@ -699,6 +748,50 @@ function activeGoalCount(workspaceRoot: string): number {
         } catch {
           fail(`cannot inspect active Goal state: ${path}`);
         }
+      } else if (
+        entry.isFile() && entry.name === "workflow-state.json" &&
+        !existsSync(join(directory, "goal-state.json"))
+      ) {
+        try {
+          const workflowState = record(readJson(path), `workflow state ${path}`);
+          if (workflowState.status === "active") count += 1;
+        } catch {
+          fail(`cannot inspect active workflow state: ${path}`);
+        }
+      }
+    }
+  };
+  visit(workflowRoot);
+  return count;
+}
+
+function activeExecutionCount(workspaceRoot: string): number {
+  const workflowRoot = join(workspaceRoot, ".ghost-agent-workflow");
+  if (!existsSync(workflowRoot)) return 0;
+  let count = 0;
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        if (entry.name === "workflow-state.json") {
+          const workflowState = record(readJson(path), `workflow state ${path}`);
+          if (workflowState.status === "active" && workflowState.run !== null) count += 1;
+        } else if (entry.name === "state.json") {
+          const state = record(readJson(path), `DAG state ${path}`);
+          const tasks = record(state.tasks, `DAG state tasks ${path}`);
+          count += Object.values(tasks).filter((value) => {
+            const task = record(value, `DAG task state ${path}`);
+            return task.status === "reserved" || task.status === "running";
+          }).length;
+        }
+      } catch {
+        fail(`cannot inspect active execution state: ${path}`);
       }
     }
   };
@@ -709,6 +802,7 @@ function activeGoalCount(workspaceRoot: string): number {
 function validateCommand(registryArgument: string): void {
   const registryPath = resolve(registryArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath);
+  compactOwnerCapsules(registryPath, registry);
   process.stdout.write(`${JSON.stringify({
     status: "passed",
     registry_digest: digestFile(registryPath),
@@ -721,9 +815,11 @@ function validateCommand(registryArgument: string): void {
 function initCommand(workspaceArgument: string): void {
   const workspaceRoot = resolve(workspaceArgument);
   gitFiles(workspaceRoot);
+  ensureWorkflowGitignore(workspaceRoot);
   const registryPath = join(workspaceRoot, ".ghost-agent-workflow", "owners", "registry.json");
   if (existsSync(registryPath)) {
     const current = parseRegistry(readJson(registryPath), registryPath, false);
+    compactOwnerCapsules(registryPath, current);
     process.stdout.write(`${JSON.stringify({
       status: current.owners.length === 0 ? "pending_owner_approval" : "current",
       registry_ref: registryPath,
@@ -1002,7 +1098,11 @@ function applyChangeCommand(
     fail("owner registry changed after validation");
   }
   if (activeGoalCount(registry.workspace_root) > 1) {
-    fail("owner change requires only one active Goal; complete the other active Goals first");
+    fail("owner change requires only one active workflow; complete the others first");
+  }
+  const activeExecutions = activeExecutionCount(registry.workspace_root);
+  if (activeExecutions > 0) {
+    fail(`owner change requires a safe boundary; ${activeExecutions} task run(s) are still active`);
   }
   const recomputed = nextRegistry(registry, request, currentRegistryDigest);
   if (digestJson(recomputed) !== nextDigest) fail("approved owner registry no longer reproduces");
@@ -1049,6 +1149,126 @@ function applyChangeCommand(
   })}\n`);
 }
 
+function currentChangePaths(workspaceArgument: string): {
+  workspaceRoot: string;
+  registry: string;
+  directory: string;
+  request: string;
+  validation: string;
+  approval: string;
+} {
+  const workspaceRoot = resolve(workspaceArgument);
+  const directory = join(workspaceRoot, ".ghost-agent-workflow", "runtime", "owner-change", "current");
+  return {
+    workspaceRoot,
+    registry: join(workspaceRoot, ".ghost-agent-workflow", "owners", "registry.json"),
+    directory,
+    request: join(directory, "request.json"),
+    validation: join(directory, "validation.json"),
+    approval: join(directory, "approval.json"),
+  };
+}
+
+function runSelfJson(args: string[]): Record<string, unknown> {
+  const result = spawnSync(process.execPath, [process.argv[1], ...args], {
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+  });
+  if (result.error !== undefined || result.status !== 0) {
+    const detail = result.error?.message ?? String(result.stderr).trim();
+    fail(detail || `command failed: ${args[0]}`);
+  }
+  try {
+    return record(JSON.parse(result.stdout), `${args[0]} receipt`);
+  } catch (error) {
+    fail(`${args[0]} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function proposeCurrentChangeCommand(args: string[]): void {
+  if (args.length < 4) {
+    fail("propose requires <workspace> <operation> <reason> and at least one --owner");
+  }
+  const paths = currentChangePaths(args[0]);
+  if (existsSync(paths.directory)) {
+    fail("a current Owner change already exists; finish or clear it before proposing another");
+  }
+  mkdirSync(paths.directory, { recursive: true });
+  try {
+    const created = runSelfJson([
+      "request-change",
+      paths.registry,
+      paths.request,
+      args[1],
+      args[2],
+      ...args.slice(3),
+    ]);
+    const validated = runSelfJson([
+      "validate-change",
+      paths.registry,
+      paths.request,
+      paths.validation,
+    ]);
+    process.stdout.write(`${JSON.stringify({
+      status: "awaiting_user_approval",
+      operation: args[1],
+      request_ref: created.request_ref,
+      validation_ref: validated.validation_ref,
+      validation_digest: validated.validation_digest,
+    })}\n`);
+  } catch (error) {
+    rmSync(paths.directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function currentChangeCommand(workspaceArgument: string): void {
+  const paths = currentChangePaths(workspaceArgument);
+  if (!existsSync(paths.request) || !existsSync(paths.validation)) {
+    process.stdout.write(`${JSON.stringify({ status: "none" })}\n`);
+    return;
+  }
+  const request = parseRequest(readJson(paths.request));
+  process.stdout.write(`${JSON.stringify({
+    status: existsSync(paths.approval) ? "approved" : "awaiting_user_approval",
+    operation: request.operation,
+    source_owner_ids: request.source_owner_ids,
+    owner_ids: request.new_owners.map((owner) => owner.id),
+    scopes: Object.fromEntries(request.new_owners.map((owner) => [owner.id, owner.scope_patterns])),
+  })}\n`);
+}
+
+function approveCurrentChangeCommand(workspaceArgument: string): void {
+  const paths = currentChangePaths(workspaceArgument);
+  const receipt = runSelfJson([
+    "approve-change",
+    paths.request,
+    paths.validation,
+    paths.approval,
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function applyCurrentChangeCommand(workspaceArgument: string): void {
+  const paths = currentChangePaths(workspaceArgument);
+  const receipt = runSelfJson([
+    "apply-change",
+    paths.registry,
+    paths.request,
+    paths.validation,
+    paths.approval,
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function clearCurrentChangeCommand(workspaceArgument: string): void {
+  const paths = currentChangePaths(workspaceArgument);
+  const existed = existsSync(paths.directory);
+  if (existed) rmSync(paths.directory, { recursive: true, force: true });
+  process.stdout.write(`${JSON.stringify({ status: "cleared", existed })}\n`);
+}
+
 function main(argv: string[]): void {
   const [command, ...args] = argv;
   if (command === "init" && args.length === 1) return initCommand(args[0]);
@@ -1064,8 +1284,19 @@ function main(argv: string[]): void {
   if (command === "apply-change" && args.length === 4) {
     return applyChangeCommand(args[0], args[1], args[2], args[3]);
   }
+  if (command === "propose" && args.length >= 4) return proposeCurrentChangeCommand(args);
+  if (command === "current" && args.length === 1) return currentChangeCommand(args[0]);
+  if (command === "approve-current" && args.length === 1) {
+    return approveCurrentChangeCommand(args[0]);
+  }
+  if (command === "apply-current" && args.length === 1) {
+    return applyCurrentChangeCommand(args[0]);
+  }
+  if (command === "clear-current" && args.length === 1) {
+    return clearCurrentChangeCommand(args[0]);
+  }
   fail(
-    "usage: owner-registry.mjs init <workspace> | validate <registry.json> | route <registry.json> <path> | request-change <registry.json> <request.json> <operation> <reason> [--source <id>] [--owner <id> <responsibility> <worker_context> --scope <id> <pattern> [--exclude <id> <pattern>]] | validate-change <registry.json> <request.json> <validation.json> | approve-change <request.json> <validation.json> <approval.json> | apply-change <registry.json> <request.json> <validation.json> <approval.json>",
+    "usage: owner-registry.mjs propose <workspace> <operation> <reason> ... | current|approve-current|apply-current|clear-current <workspace> | internal owner commands",
   );
 }
 

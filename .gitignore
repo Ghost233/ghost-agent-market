@@ -2,8 +2,11 @@
 .codebase-memory/
 .skillopt-reinforce/
 .ghost-agent-workflow/*
+!.ghost-agent-workflow/.gitignore
+!.ghost-agent-workflow/config.json
 !.ghost-agent-workflow/owners/
 !.ghost-agent-workflow/owners/**
+.ghost-agent-workflow/owners/*/interfaces/
 __pycache__/
 *.log
 tmp/

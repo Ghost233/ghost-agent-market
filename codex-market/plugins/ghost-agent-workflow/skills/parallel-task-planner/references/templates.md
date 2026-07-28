@@ -1,36 +1,27 @@
 # Planner 最小契约
 
-不要复制完整 canonical schema。Planner 只提供脚本无法推导的语义；所有对象直接送入命令 stdin，不创建中间 JSON 文件。
+Planner 是唯一允许提交结构化语义 DAG 的模型角色，因为 task 目标、依赖和范围无法由脚本推导。它不写文件。先调用 `planner-open <goal-dir> [cursor]`；每页最多 50 个节点。输出直接送入 `planner-submit` stdin，由脚本校验并生成 canonical Plan/Delta/Expansion。
 
-## 顶层 Plan
+## 初始最小 Plan
 
-- `PLAN_INPUT_V1.items[]`：`id/description/source_refs/effects`。
-- `PLAN_INPUT_V1.tasks[]` 常用字段：`id/title/owner/work/after/write/done/verify/gates/items`。
-- `role/actor/risk/review/review_batch/review_reason/reviews/priority/cost/parent/locks` 仅在默认值不合适时填写。
-- 调用 `goal-dag.mjs plan-create <goal> <plan>`；脚本生成 `PLAN_COVERAGE_V1` 和 `DAG_PLAN_V5`。
-- draft 创建后由 Planner Reviewer 审查；如需修改，只能把第二份 `PLAN_INPUT_V1` 送入一次 `plan-revise`。
-- task 标题包含中文；work 有 writable scope，review/verify 没有 writable scope。
-- immediate Review 节点依赖 subject，subject 的业务下游经过该 Review。
+只提供：
 
-## Review 升级 Delta
+- `items`：需求 id、说明、source refs、implementation/verification 覆盖；
+- `tasks`：id、中文 title、Owner、work、after、write、done、verify、items；
+- 默认值确实不适用时才加 risk/review/priority/cost。
 
-`DAG_DELTA_INPUT_V1.review[]` 每项只有：
+初始 tasks 只能是顶层节点，不能带 parent/child。每个节点至少提供上下文隔离、真实并行、职责专业化或独立验证中的一种价值；否则合并。不要为达到配置并行数拆节点。
 
-```json
-{"task":"T2","review_task":"T2R","reason":"公共接口变化"}
-```
+Review 不是默认隐藏阶段。无需 Review 时使用脚本默认 `none`；需要 Review 时显式加入 `role: review` 节点，并让相关下游依赖该节点。
 
-`T2R` 同时出现在 `tasks`。通过 `goal-dag.mjs apply-delta <plan> <state> -` 应用；runtime 自动补元数据、修改 subject policy、重连下游并清除 pending 状态。
+脚本自动加入 source/diff/commit 三个 runtime gate、Owner 定义、actor、identity、digest、revision 和路径。初次调用 `planner-submit <goal-dir> initial`；Reviewer 要求修改时最多调用一次 `planner-submit <goal-dir> revise`。
 
-## 子图 Expansion
+## 局部变化
 
-`TASK_SUBGRAPH_INPUT_V1` 只提供 `children/entry/exit` 和可选 safety。通过 `expand-subgraph ... -` 应用；父 id/token 来自命令参数，request/ref/digest/reason/revision 由 runtime 绑定。runtime 校验：
+- Review 升级只给 subject、Review task 和固定 reason；通过 `planner-submit <goal-dir> delta`，runtime 重连下游。
+- 子图只给 children、内部依赖、entry、exit；通过 `planner-submit <goal-dir> subgraph <run-id>`，runtime 保持父节点外部边。
+- Quick 升级 source 中的已验收输入不是 DAG 节点；初始 Plan 只覆盖剩余工作。
+- Owner delta 只描述 `owner.rebind` 中受影响的 pending task/新 Owner；不要传 validation、approval、Registry digest 或路径。同样走 `planner-submit ... delta`，runtime 读取当前批准状态。
+- source delta 只描述受影响 task 的 carry forward/invalidate；被审结果 invalidate 时对应 Review 一起 invalidate。
 
-- 父仍是 running leaf，token/digest 匹配且没有越界修改；
-- children 使用 `<parent>-<n>`，只依赖兄弟；
-- entry/exit 与真实内部 DAG 一致；
-- 外部边不穿透父节点。
-
-## Owner transition
-
-`DAG_DELTA_INPUT_V1.owner` 只写 `validation/approval/rebind`。Registry digest、文件 digest 和 Owner 定义由脚本读取，不能重复手写。
+禁止传 Plan/State 路径、parent task、attempt 或 token；禁止复制 canonical schema、补默认空字段、手写 JSON 文件或绕过 `planner-submit`。

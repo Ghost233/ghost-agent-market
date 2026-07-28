@@ -4,6 +4,16 @@ import { dirname, join, resolve } from "node:path";
 const RECEIPT_CONTRACT = "THREAD_WORKFLOW_CONFIG_RECEIPT_V1";
 const ROLES = ["planner", "owner", "review", "supervisor"];
 const EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+const WORKFLOW_GITIGNORE = [
+  "# Managed by Ghost Agent Workflow.",
+  "*",
+  "!.gitignore",
+  "!config.json",
+  "!owners/",
+  "!owners/**",
+  "owners/*/interfaces/",
+  "",
+].join("\n");
 
 const DEFAULT_CONFIG = {
   parallel: 8,
@@ -90,6 +100,19 @@ function configPath(workspaceRoot) {
   return join(resolve(workspaceRoot), ".ghost-agent-workflow", "config.json");
 }
 
+function ensureWorkflowGitignore(workspaceRoot) {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow");
+  const path = join(root, ".gitignore");
+  mkdirSync(root, { recursive: true });
+  if (existsSync(path)) return path;
+  try {
+    writeFileSync(path, WORKFLOW_GITIGNORE, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "EEXIST") throw error;
+  }
+  return path;
+}
+
 function readConfig(path) {
   try {
     return parseStoredConfig(JSON.parse(readFileSync(path, "utf8")));
@@ -134,14 +157,15 @@ function loadOrCreate(path) {
 function main() {
   const [command, workspaceRoot, ...args] = process.argv.slice(2);
   if (!command || !workspaceRoot) {
-    fail("usage: workflow-config.mjs <init|show|validate|set-parallel|set-profile> <workspace> [args]");
+    fail("usage: workflow-config.mjs <ensure|init|show|validate|set-parallel|set-profile> <workspace> [args]");
   }
+  ensureWorkflowGitignore(workspaceRoot);
   const path = configPath(workspaceRoot);
 
-  if (command === "init") {
-    if (args.length !== 0) fail("init takes no extra arguments");
+  if (command === "init" || command === "ensure") {
+    if (args.length !== 0) fail(`${command} takes no extra arguments`);
     const { status, config } = loadOrCreate(path);
-    receipt(status, path, config);
+    receipt(command === "ensure" ? "ensured" : status, path, config);
     return;
   }
 

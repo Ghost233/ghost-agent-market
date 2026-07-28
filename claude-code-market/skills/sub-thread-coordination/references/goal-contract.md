@@ -1,41 +1,42 @@
-# 运行契约
+# 运行模式
 
-`GOAL_CONTRACT_V1` 是本地执行批次，不等同于 Codex 原生 Goal。
+两种模式共用 Owner、run-id、Binding、fence、scope、机械验收和最终 Result 内核。模式不是仓库配置：每次调用 `workflow start <workspace> <quick|dag>` 选择。用户没有明确选择时必须先询问并等待，不能默认 Quick 或 DAG。
 
-## 生命周期
+Claude Code 固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。
 
-- 默认 `standalone_thread`：不调用原生 Goal 工具。
-- 用户已启动或明确要求 Goal 时使用 `codex_native`：绑定 fresh `get_goal` 返回的 identity；本地 finalize 后才完成原生 Goal。
-- task 失败、Review 等待和 Owner 用户决策都不映射为原生 blocked。
+## Quick
 
-## 创建
-
-Goal 的业务字段来自用户和 source 计划；workspace、source digest、revision、execution mode、默认 gate 和状态文件由 runtime 生成。只向 stdin 提交精简 `GOAL_INPUT_V1`，不写 canonical JSON：
+Quick 是显式选择的串行模式，不创建 Goal、Plan、Planner、Supervisor 或 Dashboard。
 
 ```text
-goal-dag.mjs goal-create <goal.json> <workspace_root>
-goal-dag.mjs goal-validate <goal.json>
+workflow start ... quick
+→ workflow thread ... main ...
+→ workflow step
+→ workflow dispatch ... <owner>
+→ workflow attach ... <thread> <host>
+→ Owner Worker
+→ workflow step 机械验收
+→ 可选下一 Owner
+→ workflow review
+→ 独立 Review Worker
+→ workflow step 生成 result.json
 ```
 
-输入只需 `id/objective/source/scope`；`non_goals/constraints/max_concurrency/controller/native_thread_id/gates` 按需增加。省略 `max_concurrency` 时 Goal 保存安全上限 8；每次 reserve 都重新读取 `.ghost-agent-workflow/config.json` 的 `parallel`，因此 1–8 的修改立即影响后续调度。固定机械 gate、side-effect 默认值、平台、digest、revision 和生命周期结构由脚本补齐。
+跨 Owner 只读取脚本生成的当前 handoff，不读取前一线程聊天。Review 必须使用干净线程。Quick 只保留 `workflow.json`、`workflow-state.json`、Owner 当前上下文和最终 `result.json`；运行中的 baseline、Binding、candidate 与 handoff 验收或完成后删除。
 
-`goal-validate` 初始化 Goal State、source blocks 和轻量 workspace fence。Fence 用内容/tree 与 task scope 判断冲突；HEAD 指针单独变化不作废 attempt。
+Worker 使用 `worker request-dag` 时，脚本接受安全边界，把当前成果作为“已验收输入”，并只为剩余工作创建 DAG。该转换不可逆。
 
-`plan-create` 只生成并机械校验 draft。随后依次运行 `planner-review-context --compact`、独立 Planner Reviewer、`planner-review-submit` 和 `activate`。Reviewer 从收据的 `context_ref` 读取一次上下文；Main 不接收完整 context。Reviewer 最多要求一次 `plan-revise`；第二轮仍不通过时通知 Main。
+## DAG
 
-## Gate
+DAG 用于用户明确要求的并行、DAG 或网页进度。初始 Planner 只生成顶层最小图；初始 Plan 中出现 child 会被 runtime 拒绝。父节点无法直接完成时再由 Composite Planner 展开内部子图。
 
-机械 gate 固定为 source coverage、diff scope 和 commit readiness，由 `runtime-execute` 直接运行脚本，不创建模型线程。业务 Review 必须是显式 DAG 节点；verify 是确定性验证节点。三者不能互相替代。
+Plan draft 必须经过独立 Planner Reviewer 才能激活。Implementation Review 是显式 DAG 节点；普通完成不产生隐形 Review。风险上升时 runtime 进入明确的 Review upgrade action，只影响相关下游。
 
-Evidence 默认不复用；当前 `evidence_cache` 只是已接受证据登记表，不是跨 task 缓存。模型不得自行宣布缓存命中或跳过 verify。
+Supervisor 最多调度八个 ready 节点；八个是上限，不是目标。Plan 激活后，`workflow step` 先要求 Main 启动并确认 Dashboard，之后才进入执行调度。
 
-## 变化
+## 持久化
 
-- source 变化：drain active，`goal-refresh`，再用 delta 处理受影响 task。
-- Review 升级：result 的 `review_upgrade` 触发 runtime 待升级状态；精简 delta 只提交 subject、Review task id 和 reason，runtime 自动重连边。
-- Owner 变化：暂停当前 DAG，使用 Owner domain commands，用户批准并完成 transition 后恢复。
-- 子图变化：Worker 调用 `subgraph-request`，Planner 生成 Expansion，runtime `expand-subgraph` 应用。
+- Quick：当前 workflow 状态、Owner 当前上下文、最终结果。
+- DAG：当前 Plan/State、`progress.json`、唯一历史 `events.jsonl`、最终结果。
 
-## 完成
-
-`finalize` 只在 coverage、required task、Review/verify、blocking findings、scope 和 delivery gate 全部通过且没有 active reservation/Owner action 时成功。codex_native 随后才执行原生完成桥接。
+事务恢复文件成功后立即清理。禁止 attempt、Review、evidence、recovery 和聊天 history。

@@ -1,7 +1,7 @@
 interface:
-  display_name: "Planner Reviewer"
-  short_description: "在 Plan 激活前审查 DAG 的并行度与结构复杂度。"
-  default_prompt: "使用 $planner-reviewer 审查当前 DAG draft 的并行度与结构复杂度。"
+  display_name: "DAG 规划审查"
+  short_description: "在 Plan 激活前审查最小 DAG 的真实并行度与结构复杂度。"
+  default_prompt: "使用 $planner-reviewer，审查当前最小 DAG 的并行度和结构复杂度。"
 
 policy:
   allow_implicit_invocation: false

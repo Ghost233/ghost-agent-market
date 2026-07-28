@@ -1,7 +1,7 @@
 interface:
-  display_name: "子线程 DAG 控制器"
-  short_description: "最多八个长期子线程、显式 Review、递归子图和进度页。"
-  default_prompt: "使用 $sub-thread-coordination，以长期子线程完整执行 ./plan.md；默认不创建 Goal。"
+  display_name: "Owner 工作流协调器"
+  short_description: "要求用户选择 Quick 或 DAG，再协调长期 Owner 线程。"
+  default_prompt: "使用 $sub-thread-coordination；如果我没有明确指定 Quick 或 DAG，先要求我选择运行模式，确认后再启动。"
 
 policy:
   allow_implicit_invocation: false

@@ -4,19 +4,73 @@ import { spawnSync } from "node:child_process";
 import { createServer,                                           } from "node:http";
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
+  readdirSync,
   readFileSync,
+  readSync,
   readlinkSync,
   renameSync,
+  rmSync,
+  statSync,
   unlinkSync,
   watch,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -473,6 +527,16 @@ if (
 const DIFF_SCOPE_GATE_ID = "diff-scope-audit";
 const SOURCE_COVERAGE_GATE_ID = "source-coverage-audit";
 const COMMIT_READINESS_GATE_ID = "commit-readiness";
+const WORKFLOW_GITIGNORE = [
+  "# Managed by Ghost Agent Workflow.",
+  "*",
+  "!.gitignore",
+  "!config.json",
+  "!owners/",
+  "!owners/**",
+  "owners/*/interfaces/",
+  "",
+].join("\n");
 const ROLES = new Set          (["work", "review", "verify"]);
 const RUNTIME_ACTOR_IDS = new Set                ([
   "source-audit",
@@ -711,11 +775,24 @@ function writeTextAtomic(path        , payload        )       {
 
 function writeJson(path        , value         )       {
   writeTextAtomic(path, serializedJson(value));
-  refreshProgressDocumentsForMutation([path]);
+  refreshProgressDocumentsForMutation([path], true);
 }
 
 function threadWorkflowConfigPath(workspaceRoot        )         {
   return join(resolve(workspaceRoot), ".ghost-agent-workflow", "config.json");
+}
+
+function ensureWorkflowGitignore(workspaceRoot        )         {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow");
+  const path = join(root, ".gitignore");
+  mkdirSync(root, { recursive: true });
+  if (existsSync(path)) return path;
+  try {
+    writeFileSync(path, WORKFLOW_GITIGNORE, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "EEXIST") throw error;
+  }
+  return path;
 }
 
 function parseThreadWorkflowConfig(value         )                       {
@@ -756,6 +833,7 @@ function parseThreadWorkflowConfig(value         )                       {
 }
 
 function loadThreadWorkflowConfig(workspaceRoot        )                       {
+  ensureWorkflowGitignore(workspaceRoot);
   const path = threadWorkflowConfigPath(workspaceRoot);
   if (!existsSync(path)) {
     writeTextAtomic(path, serializedJson({
@@ -857,8 +935,8 @@ function recoverTransaction(anchorPath        )          {
       writeTextAtomic(write.path, write.payload);
     }
   }
+  refreshProgressDocumentsForMutation(writes.map((write) => write.path), true);
   unlinkSync(journalPath);
-  refreshProgressDocumentsForMutation(writes.map((write) => write.path));
   return true;
 }
 
@@ -893,8 +971,8 @@ function writeTransaction(anchorPath        , entries                          )
       fail(`injected transaction failure after ${failAfter} writes`);
     }
   }
+  refreshProgressDocumentsForMutation(writes.map((write) => write.path), true);
   unlinkSync(journalPath);
-  refreshProgressDocumentsForMutation(writes.map((write) => write.path));
 }
 
 const PROGRESS_MUTATION_FILES = new Set([
@@ -904,7 +982,7 @@ const PROGRESS_MUTATION_FILES = new Set([
   "goal-state.json",
 ]);
 
-function refreshProgressDocumentsForMutation(paths          )       {
+function refreshProgressDocumentsForMutation(paths          , strict = false)       {
   const directories = new Set(
     paths
       .filter((path) => PROGRESS_MUTATION_FILES.has(basename(path)))
@@ -918,6 +996,7 @@ function refreshProgressDocumentsForMutation(paths          )       {
       refreshProgressDocument(planPath, statePath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (strict) throw error;
       process.stderr.write(`warning: progress document refresh failed: ${message}\n`);
     }
   }
@@ -1492,20 +1571,17 @@ function persistentOwnerCapsulePathFor(workspaceRoot        , ownerId        )  
 
 function persistentOwnerInterfaceDirectoryFor(
   workspaceRoot        ,
-  ownerId        ,
   goalId        ,
   taskId        ,
-  attempt        ,
 )         {
   return join(
     resolve(workspaceRoot),
     ".ghost-agent-workflow",
-    "owners",
-    ownerId,
-    "interfaces",
+    "runtime",
+    "goals",
     goalId,
+    "handoffs",
     taskId,
-    `attempt-${attempt}`,
   );
 }
 
@@ -1517,17 +1593,6 @@ function ownerLeasePathFor(workspaceRoot        , ownerId        )         {
     "owners",
     ownerId,
     "lease.json",
-  );
-}
-
-function ownerLeaseRecoveryDirectoryFor(workspaceRoot        , ownerId        )         {
-  return join(
-    resolve(workspaceRoot),
-    ".ghost-agent-workflow",
-    "runtime",
-    "owners",
-    ownerId,
-    "recoveries",
   );
 }
 
@@ -2432,9 +2497,7 @@ function expandPlanInputTask(
   if (!new Set           (["low", "medium", "high"]).has(risk)) {
     fail(`plan input.tasks[${index}].risk is invalid: ${String(input.risk)}`);
   }
-  const defaultReview               = role === "work"
-    ? risk === "high" ? "immediate" : "batch"
-    : "none";
+  const defaultReview               = role === "work" && risk === "high" ? "immediate" : "none";
   const review = (input.review ?? defaultReview)                ;
   if (!new Set              (["batch", "immediate", "final_only", "none"]).has(review)) {
     fail(`plan input.tasks[${index}].review is invalid: ${String(input.review)}`);
@@ -2503,6 +2566,108 @@ function expandPlanInputTask(
   return parseTask(canonical, index);
 }
 
+function addFixedRuntimeTasks(
+  semanticTasks                  ,
+  itemIds          ,
+)                   {
+  const fixedActors = new Set(["source-audit", "diff-audit", "commit-readiness"]);
+  const existing = semanticTasks.filter((task) =>
+    task.runtime_actor_id !== null && fixedActors.has(task.runtime_actor_id)
+  );
+  if (existing.length === 3) return semanticTasks;
+  if (existing.length !== 0) {
+    fail("plan input must omit all runtime gate tasks or provide all three legacy gate tasks");
+  }
+  const usedIds = new Set(semanticTasks.map((task) => task.id));
+  for (const id of ["GA-SOURCE", "GA-DIFF", "GA-COMMIT"]) {
+    if (usedIds.has(id)) fail(`plan input task id is reserved by runtime: ${id}`);
+  }
+  const sourceId = "GA-SOURCE";
+  const diffId = "GA-DIFF";
+  const commitId = "GA-COMMIT";
+  const businessTasks = semanticTasks.map((task) =>
+    task.role === "work"
+      ? { ...task, depends_on: uniqueStrings([...task.depends_on, sourceId]) }
+      : task
+  );
+  const dependedOn = new Set(businessTasks.flatMap((task) => task.depends_on));
+  const exitIds = businessTasks
+    .filter((task) => !dependedOn.has(task.id))
+    .map((task) => task.id)
+    .sort(compareStableStrings);
+  if (exitIds.length === 0) fail("plan input has no business DAG exit task");
+  const runtimeTask = (
+    id        ,
+    logicalId        ,
+    title        ,
+    actor                                                    ,
+    task        ,
+    after          ,
+    gate        ,
+    done        ,
+  )                 => parseTask({
+    id,
+    logical_id: logicalId,
+    title,
+    role: "verify",
+    owner_id: null,
+    runtime_actor_id: actor,
+    task,
+    depends_on: after,
+    writable_paths: [],
+    resource_locks: [gate],
+    done_when: [done],
+    verification_ids: [gate],
+    satisfies_goal_gates: [gate],
+    plan_item_ids: itemIds,
+    coverage_effect: "audit",
+    priority: 100,
+    estimated_cost: 1,
+    risk_level: "low",
+    review_policy: "none",
+    review_batch_key: null,
+    review_blocks_dependents: false,
+    review_reasons: [],
+    reviews_task_ids: [],
+    node_type: "leaf",
+    parent_task_id: null,
+    subgraph: null,
+  }, semanticTasks.length);
+  return [
+    runtimeTask(
+      sourceId,
+      "runtime.source-coverage",
+      "审计计划源覆盖",
+      "source-audit",
+      "由运行时审计计划源与覆盖项映射",
+      [],
+      SOURCE_COVERAGE_GATE_ID,
+      "计划源覆盖审计通过",
+    ),
+    ...businessTasks,
+    runtimeTask(
+      diffId,
+      "runtime.diff-scope",
+      "审计最终差异范围",
+      "diff-audit",
+      "由运行时审计最终工作树差异",
+      exitIds,
+      DIFF_SCOPE_GATE_ID,
+      "最终差异全部在已接受范围内",
+    ),
+    runtimeTask(
+      commitId,
+      "runtime.commit-readiness",
+      "检查提交就绪状态",
+      "commit-readiness",
+      "由运行时检查提交就绪状态",
+      [diffId],
+      COMMIT_READINESS_GATE_ID,
+      "提交就绪检查通过",
+    ),
+  ];
+}
+
 function buildPlanDraft(
   goalPath        ,
   planPath        ,
@@ -2522,8 +2687,17 @@ function buildPlanDraft(
     fail("plan input.tasks must be a non-empty array");
   }
   const items = input.items.map(parsePlanInputItem);
-  const tasks = input.tasks.map((value, index) => expandPlanInputTask(value, index));
+  const semanticTasks = input.tasks.map((value, index) => expandPlanInputTask(value, index));
+  const prematureChildren = semanticTasks.filter((task) => task.parent_task_id !== null);
+  if (prematureChildren.length > 0) {
+    fail(
+      `initial Plan must contain only top-level tasks; expand children on demand: ${
+        prematureChildren.map((task) => task.id).join(", ")
+      }`,
+    );
+  }
   ensureUnique(items.map((item) => item.id), "plan input item id");
+  const tasks = addFixedRuntimeTasks(semanticTasks, items.map((item) => item.id));
   ensureUnique(tasks.map((task) => task.id), "plan input task id");
   const registry = approvedOwnerRegistry(goal);
   const owners = registry.owners.map(ownerDefinitionFromApproved);
@@ -3413,6 +3587,50 @@ function goalStatePathFor(goalPath        )         {
   return join(dirname(goalPath), "goal-state.json");
 }
 
+function goalResultPathFor(goalPath        )         {
+  return join(dirname(goalPath), "result.json");
+}
+
+function cleanupCompletedGoal(goalPath        )       {
+  const goalDirectory = dirname(goalPath);
+  if (existsSync(goalPath)) {
+    const goal = parseGoal(readJson(goalPath), false);
+    const ownerRoot = join(goal.workspace.root, ".ghost-agent-workflow", "owners");
+    if (existsSync(ownerRoot)) {
+      for (const entry of readdirSync(ownerRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+        rmSync(join(ownerRoot, entry.name, "interfaces", goal.goal_id), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+  }
+  for (const directory of [
+    "artifacts",
+    "bindings",
+    "delivery",
+    "evidence",
+    "execution-fences",
+    "handoffs",
+    "owners",
+    "planner-reviews",
+    "quick",
+    "results",
+  ]) {
+    rmSync(join(goalDirectory, directory), { recursive: true, force: true });
+  }
+  for (const file of [
+    "dashboard.json",
+    "source-blocks.json",
+    "source.md",
+    "threads.json",
+    "workspace-fence.json",
+  ]) {
+    rmSync(join(goalDirectory, file), { force: true });
+  }
+}
+
 function continuationPayloadFor(goalPath        )                         {
   if (EXPECTED_PLATFORM === "codex") return {};
   if (EXPECTED_PLATFORM === "kimi") {
@@ -3527,6 +3745,21 @@ function checkpointPathFor(planPath        , ownerId        , taskId        )   
   return join(dirname(planPath), "owners", ownerId, "checkpoints", `${taskId}.json`);
 }
 
+function taskAttemptCleanupPaths(
+  planPath        ,
+  task                ,
+  taskState           ,
+)           {
+  const result = [
+    ...(taskState.result_path === null ? [] : [taskState.result_path]),
+    ...(taskState.task_baseline_ref === null ? [] : [taskState.task_baseline_ref]),
+    taskBindingSnapshotPath(dirname(planPath), task, taskState),
+    join(dirname(planPath), "artifacts", "verification", task.id),
+  ];
+  if (task.owner_id !== null) result.push(checkpointPathFor(planPath, task.owner_id, task.id));
+  return uniqueStrings(result);
+}
+
 function canonicalPath(expected        , actual        , label        )         {
   const normalizedExpected = resolve(expected);
   if (resolve(actual) !== normalizedExpected) fail(`${label} must equal ${normalizedExpected}`);
@@ -3584,7 +3817,8 @@ function parseGoalState(
   if (!/^[0-9a-f]{64}$/u.test(baselineDigest)) {
     fail("goal state.worktree_baseline.digest is invalid");
   }
-  if (options.verifyExecutionArtifacts ?? true) {
+  const verifyExecutionArtifacts = options.verifyExecutionArtifacts ?? source.status !== "completed";
+  if (verifyExecutionArtifacts) {
     if (!existsSync(baselineRef) || digestFile(baselineRef) !== baselineDigest) {
       fail("goal state worktree baseline is missing or has a digest mismatch");
     }
@@ -3604,7 +3838,7 @@ function parseGoalState(
   if (!/^[0-9a-f]{64}$/u.test(sourceBlocksDigest)) {
     fail("goal state.source_blocks.digest is invalid");
   }
-  if (options.verifyExecutionArtifacts ?? true) {
+  if (verifyExecutionArtifacts) {
     if (!existsSync(sourceBlocksRef) || digestFile(sourceBlocksRef) !== sourceBlocksDigest) {
       fail("goal state source blocks are missing or have a digest mismatch");
     }
@@ -3663,6 +3897,16 @@ function parseGoalState(
   if ((source.status === "active") !== (completedAt === null)) {
     fail("goal state.completed_at must be null only while active");
   }
+  const resultRef = source.result_ref === undefined
+    ? null
+    : requireNullableString(source.result_ref, "goal state.result_ref");
+  if (source.status === "active" && resultRef !== null) {
+    fail("active goal state cannot contain result_ref");
+  }
+  if (source.status === "completed" && resultRef !== null) {
+    canonicalPath(join(dirname(baselineRef), "result.json"), resultRef, "goal state.result_ref");
+    if (!existsSync(resultRef)) fail("completed goal result is missing");
+  }
   return {
     contract: "GOAL_STATE_V1",
     goal_digest: requireString(source.goal_digest, "goal state.goal_digest"),
@@ -3672,16 +3916,18 @@ function parseGoalState(
     worktree_baseline: { ref: resolve(baselineRef), digest: baselineDigest },
     source_blocks: { ref: resolve(sourceBlocksRef), digest: sourceBlocksDigest },
     active_plan_path: requireNullableString(source.active_plan_path, "goal state.active_plan_path"),
-    completion_evidence: requireStringArray(
-      source.completion_evidence,
-      "goal state.completion_evidence",
-    ),
+    result_ref: resultRef,
     completed_at: completedAt,
     native_sync: nativeSync,
   };
 }
 
-function parseTaskState(value         , task                , planPath        )            {
+function parseTaskState(
+  value         ,
+  task                ,
+  planPath        ,
+  verifyExecutionArtifacts = true,
+)            {
   const taskId = task.id;
   const source = requireRecord(value, `state.tasks.${taskId}`);
   const statuses = new Set            ([
@@ -3776,9 +4022,9 @@ function parseTaskState(value         , task                , planPath        ) 
   if ((result.status === "running" || workerTerminal) && result.executor_id === null) {
     fail(`state.tasks.${taskId} ${result.status} state requires executor_id`);
   }
-  if ((result.status === "running" || workerTerminal) && (
+  if (result.status === "running" && (
     result.task_baseline_ref === null || result.task_baseline_digest === null
-  )) fail(`state.tasks.${taskId} ${result.status} state requires task baseline`);
+  )) fail(`state.tasks.${taskId} running state requires task baseline`);
   if ((result.task_baseline_ref === null) !== (result.task_baseline_digest === null)) {
     fail(`state.tasks.${taskId} task baseline ref and digest must be paired`);
   }
@@ -3788,7 +4034,10 @@ function parseTaskState(value         , task                , planPath        ) 
       result.task_baseline_ref,
       `state.tasks.${taskId}.task_baseline_ref`,
     );
-    if (!existsSync(result.task_baseline_ref) || digestFile(result.task_baseline_ref) !== result.task_baseline_digest) {
+    if (verifyExecutionArtifacts && (
+      !existsSync(result.task_baseline_ref) ||
+      digestFile(result.task_baseline_ref) !== result.task_baseline_digest
+    )) {
       fail(`state.tasks.${taskId} task baseline is missing or changed`);
     }
   }
@@ -3911,7 +4160,12 @@ function parseStaleExecutor(value         , index        )                {
   };
 }
 
-function parseState(value         , plan      , planPath        )           {
+function parseState(
+  value         ,
+  plan      ,
+  planPath        ,
+  options                                         = {},
+)           {
   const source = requireRecord(value, "state");
   if (source.contract !== "DAG_RUN_STATE_V5") {
     fail("state contract must equal DAG_RUN_STATE_V5");
@@ -3921,7 +4175,15 @@ function parseState(value         , plan      , planPath        )           {
   const rawActors = requireRecord(source.runtime_actors, "state.runtime_actors");
   const rawReviewers = requireRecord(source.reviewers, "state.reviewers");
   const tasks = Object.fromEntries(
-    plan.tasks.map((task) => [task.id, parseTaskState(rawTasks[task.id], task, planPath)]),
+    plan.tasks.map((task) => [
+      task.id,
+      parseTaskState(
+        rawTasks[task.id],
+        task,
+        planPath,
+        options.verifyExecutionArtifacts ?? true,
+      ),
+    ]),
   );
   const owners = Object.fromEntries(
     plan.owners.map((owner) => [
@@ -3954,20 +4216,7 @@ function parseState(value         , plan      , planPath        )           {
   if (Object.keys(rawReviewers).length !== reviewTasks.length) {
     fail("state reviewer set does not match plan review tasks");
   }
-  const rawEvidenceCache = requireRecord(source.evidence_cache, "state.evidence_cache");
   const rawOwnerRegistry = requireRecord(source.owner_registry, "state.owner_registry");
-  const evidenceCache = Object.fromEntries(Object.entries(rawEvidenceCache).map(([verificationId, value]) => {
-    const item = requireRecord(value, `state.evidence_cache.${verificationId}`);
-    return [requireIdentifier(verificationId, "evidence cache id"), {
-      task_id: requireIdentifier(item.task_id, `state.evidence_cache.${verificationId}.task_id`),
-      result_ref: requireString(item.result_ref, `state.evidence_cache.${verificationId}.result_ref`),
-      result_digest: requireString(item.result_digest, `state.evidence_cache.${verificationId}.result_digest`),
-      workspace_change_seq: requireNonNegativeInteger(
-        item.workspace_change_seq,
-        `state.evidence_cache.${verificationId}.workspace_change_seq`,
-      ),
-    }];
-  }));
   const result           = {
     contract: "DAG_RUN_STATE_V5",
     plan_digest: requireString(source.plan_digest, "state.plan_digest"),
@@ -4009,7 +4258,6 @@ function parseState(value         , plan      , planPath        )           {
     owners,
     runtime_actors: runtimeActors,
     reviewers,
-    evidence_cache: evidenceCache,
     review_pending: source.review_pending === undefined
       ? []
       : requireStringArray(source.review_pending, "state.review_pending")
@@ -4102,19 +4350,6 @@ function parseState(value         , plan      , planPath        )           {
     }
     if (reviewerState.completed_task_ids.some((id) => id !== task.id || result.tasks[id].status !== "completed")) {
       fail(`state.reviewers.${subjectId}.completed_task_ids is inconsistent`);
-    }
-  }
-  for (const [verificationId, evidence] of Object.entries(result.evidence_cache)) {
-    if (evidence.workspace_change_seq > result.workspace_change_seq) {
-      fail(`state.evidence_cache.${verificationId} exceeds workspace_change_seq`);
-    }
-    const task = taskById.get(evidence.task_id);
-    if (
-      task === undefined || result.tasks[task.id].result_ref !== evidence.result_ref ||
-      result.tasks[task.id].result_digest !== evidence.result_digest
-    ) fail(`state.evidence_cache.${verificationId} references non-current task evidence`);
-    if (!existsSync(evidence.result_ref) || digestFile(evidence.result_ref) !== evidence.result_digest) {
-      fail(`state.evidence_cache.${verificationId} result is missing or changed`);
     }
   }
   for (const stale of result.stale_executors) {
@@ -4216,49 +4451,21 @@ function updatePersistentOwnerCapsule(
       ...requireStringArray(source.risks, `persistent owner capsule ${owner.id}.risks`),
       ...result.owner_updates.risks,
     ]).slice(-100);
-    if (!Array.isArray(source.history)) {
-      fail(`persistent owner capsule ${owner.id}.history must be an array`);
-    }
-    const event = {
-      event: "goal_task",
-      goal_id: goal.goal_id,
-      task_id: result.task_id,
-      status: result.status,
-      result_digest: resultDigest,
-      summary: result.summary,
-      at: new Date().toISOString(),
-    };
-    const alreadyRecorded = source.history.some((value) => {
-      if (!isRecord(value)) return false;
-      return value.event === event.event && value.goal_id === event.goal_id &&
-        value.task_id === event.task_id && value.result_digest === event.result_digest;
-    });
-    const historyRef = join(
-      dirname(path),
-      "history",
-      `${event.at.replaceAll(":", "-")}-${resultDigest}.json`,
-    );
-    writeImmutableJson(historyRef, {
-      contract: "OWNER_HISTORY_EVENT_V1",
-      owner_id: owner.id,
-      ...event,
-      changed_files: result.changed_files,
-      published_artifacts: result.published_artifacts,
-      owner_updates: result.owner_updates,
-    });
-    const history = alreadyRecorded ? source.history : [...source.history, event];
+    const {
+      history: _history,
+      history_journal: _historyJournal,
+      ...current
+    } = source;
+    void resultDigest;
     writeJson(path, {
-      ...source,
+      ...current,
       decisions,
       invariants,
       risks,
-      history: history.slice(-50),
-      history_journal: {
-        directory: dirname(historyRef),
-        latest_ref: historyRef,
-      },
       updated_at: new Date().toISOString(),
     });
+    const historyDirectory = join(dirname(path), "history");
+    if (existsSync(historyDirectory)) rmSync(historyDirectory, { recursive: true, force: true });
   });
 }
 
@@ -4349,7 +4556,6 @@ function initializeState(planPath        , plan      )           {
     owners,
     runtime_actors: runtimeActors,
     reviewers,
-    evidence_cache: {},
     review_pending: [],
     stale_executors: [],
   };
@@ -4385,12 +4591,14 @@ function loadPlanAndState(
       skipOwnerRegistryValidation: options.allowOwnerRegistryDrift ?? false,
     },
   );
-  const state = parseState(rawState, plan, planPath);
+  const state = parseState(rawState, plan, planPath, {
+    verifyExecutionArtifacts: !completedFrozen,
+  });
   const currentRegistry = approvedOwnerRegistry(goal);
-  if (resolve(state.owner_registry.ref) !== resolve(currentRegistry.ref)) {
+  if (!completedFrozen && resolve(state.owner_registry.ref) !== resolve(currentRegistry.ref)) {
     fail("state owner registry ref mismatch");
   }
-  if (!(options.allowOwnerRegistryDrift ?? false) && (
+  if (!completedFrozen && !(options.allowOwnerRegistryDrift ?? false) && (
     state.owner_registry.digest !== currentRegistry.digest ||
     state.owner_registry.revision !== currentRegistry.revision
   )) fail("owner registry changed; an approved owner transition delta is required");
@@ -4495,7 +4703,7 @@ function goalValidateCommand(goalArgument        )       {
         digest: digestJson(sourceBlocks),
       },
       active_plan_path: null,
-      completion_evidence: [],
+      result_ref: null,
       completed_at: null,
       native_sync: {
         status: goal.lifecycle.controller === "codex_native" ? "not_started" : "not_required",
@@ -4580,6 +4788,7 @@ function validateCommand(planArgument        )       {
     return { state, plan, coverage };
   }));
   const { state, plan, coverage } = payload;
+  rmSync(plannerReviewDirectory(planPath), { recursive: true, force: true });
   process.stdout.write(`${JSON.stringify({ status: "valid", plan_path: planPath, state_path: statePath, coverage_path: plan.coverage_path, progress_document_path: progressDocumentPathFor(planPath), goal_id: plan.goal_id, revision: plan.revision, safety: plan.safety.status, owner_count: plan.owners.length, task_count: plan.tasks.length, required_plan_item_count: coverage.required_plan_items.length, state_contract: state.contract })}\n`);
 }
 
@@ -5149,21 +5358,22 @@ function threadKey(
 function threadTitle(task                , subject                   )         {
   void subject;
   return task.role === "review"
-    ? `[GA][任务][实现审查] ${task.title}`
-    : `[GA][任务][责任域] ${task.title}`;
+    ? `[GA][任务][实现审查] ${compactUserSummary(task.title)}`
+    : `[GA][任务][责任域] ${compactUserSummary(task.title)}`;
 }
 
 function goalThreadTitles(goal              )                         {
+  const title = compactUserSummary(goal.objective);
   return {
-    main: `[GA][任务][主控] ${goal.objective}`,
-    planner: `[GA][任务][规划] ${goal.objective}`,
-    planner_reviewer: `[GA][任务][规划审查] ${goal.objective}`,
-    supervisor: `[GA][任务][监督] ${goal.objective}`,
+    main: `[GA][任务][主控] ${title}`,
+    planner: `[GA][任务][规划] ${title}`,
+    planner_reviewer: `[GA][任务][规划审查] ${title}`,
+    supervisor: `[GA][任务][监督] ${title}`,
   };
 }
 
 function compositePlannerThreadTitle(task                )         {
-  return `[GA][任务][子图规划] ${task.title}`;
+  return `[GA][任务][子图规划] ${compactUserSummary(task.title)}`;
 }
 
 function acceptedResultUserMessage(task                , result                )         {
@@ -5215,6 +5425,14 @@ function runtimeProfileForTask(
   if (task.role === "review") return config.profiles.review;
   if (task.owner_id === null) fail(`runtime actor ${task.runtime_actor_id} is script-only`);
   return config.profiles.owner;
+}
+
+function threadProfileReceipt(
+  workspaceRoot        ,
+  role                   ,
+)                                    {
+  const profile = loadThreadWorkflowConfig(workspaceRoot).profiles[role];
+  return { model: profile.model, effort: profile.reasoning_effort };
 }
 
 function taskBinding(
@@ -5341,10 +5559,8 @@ function taskBinding(
       artifact_dir: moduleOwner
         ? persistentOwnerInterfaceDirectoryFor(
           goal.workspace.root,
-          subject.id,
           goal.goal_id,
           task.id,
-          taskState.attempt,
         )
         : null,
       checkpoint: moduleOwner ? checkpointPathFor(planPath, subject.id, task.id) : null,
@@ -5616,6 +5832,7 @@ function abandonCommand(
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const abandonReason = requireString(reason, "reason");
+  let cleanupPaths           = [];
   const payload = withStateLock(statePath, () => {
     const { plan, goal, coverage, state } = loadPlanAndState(
       planPath,
@@ -5630,6 +5847,7 @@ function abandonCommand(
       fail(`task ${taskId} can only be abandoned before bind; running tasks require reclaim`);
     }
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
+    cleanupPaths = taskAttemptCleanupPaths(planPath, task, taskState);
     const ownerState = subjectStateForTask(state, task);
     if (ownerState.current_task_id !== taskId) fail("owner current task mismatch");
     taskState.status = "pending";
@@ -5664,6 +5882,7 @@ function abandonCommand(
     releaseOwnerLease(goal, task, reservationToken);
     return { task_id: taskId, status: "pending", reason: abandonReason };
   });
+  for (const path of cleanupPaths) rmSync(path, { recursive: true, force: true });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -7381,21 +7600,13 @@ function updateCapsule(
   capsule.decisions = uniqueStrings([...(capsule.decisions ?? []), ...result.owner_updates.decisions]);
   capsule.invariants = uniqueStrings([...(capsule.invariants ?? []), ...result.owner_updates.invariants]);
   capsule.risks = uniqueStrings([...(capsule.risks ?? []), ...result.owner_updates.risks]);
-  capsule.result_refs = uniqueStrings([...(capsule.result_refs ?? []), resultRef]);
-  if (result.status === "completed") {
-    capsule.completed_tasks = uniqueStrings([...(capsule.completed_tasks ?? []), result.task_id]);
-  }
-  const combinedVerification = [
-    ...(capsule.verification ?? []),
-    ...result.evidence.map((item) => ({ ...item, task_id: result.task_id, result_ref: resultRef })),
-  ];
-  capsule.verification = combinedVerification.filter((item, index) =>
-    combinedVerification.findIndex((candidate) =>
-      candidate.task_id === item.task_id &&
-      candidate.verification_id === item.verification_id &&
-      candidate.result_ref === item.result_ref,
-    ) === index,
-  );
+  capsule.result_refs = [resultRef];
+  capsule.completed_tasks = result.status === "completed" ? [result.task_id] : [];
+  capsule.verification = result.evidence.map((item) => ({
+    ...item,
+    task_id: result.task_id,
+    result_ref: resultRef,
+  }));
   capsule.active_task_id = null;
   capsule.progress = result.summary;
   capsule.important_symbols = [];
@@ -7411,9 +7622,12 @@ function finishCommand(
   taskId        ,
   reservationToken        ,
   resultArgument        ,
+  compact = false,
 )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  let consumedCandidatePath                = null;
+  const cleanupAfterFinish           = [];
   const payload = withStateLock(statePath, () => {
     const { plan, goal, coverage, state } = loadPlanAndState(
       planPath,
@@ -7484,6 +7698,7 @@ function finishCommand(
         acceptedResult,
         true,
       );
+      consumedCandidatePath = resultPath;
       return {
         task_id: taskId,
         owner_id: task.owner_id,
@@ -7495,6 +7710,7 @@ function finishCommand(
         result_ref: acceptedResultPath,
         user_message: acceptedResultUserMessage(task, acceptedResult),
         owner_reusable: isOwnerDefinition(owner),
+        changed_file_count: acceptedResult.changed_files.length,
         idempotent: true,
       };
     }
@@ -7511,10 +7727,8 @@ function finishCommand(
       isOwnerDefinition(owner)
         ? persistentOwnerInterfaceDirectoryFor(
           goal.workspace.root,
-          owner.id,
           goal.goal_id,
           task.id,
-          taskState.attempt,
         )
         : undefined,
     );
@@ -7564,23 +7778,20 @@ function finishCommand(
     taskState.status = result.status;
     taskState.result_ref = acceptedResultPath;
     taskState.result_digest = digestFile(acceptedResultPath);
+    if (taskState.task_baseline_ref !== null) cleanupAfterFinish.push(taskState.task_baseline_ref);
+    cleanupAfterFinish.push(taskBindingSnapshotPath(dirname(planPath), task, taskState));
+    if (isOwnerDefinition(owner)) cleanupAfterFinish.push(checkpointPathFor(planPath, owner.id, task.id));
+    taskState.task_baseline_ref = null;
+    taskState.task_baseline_digest = null;
     if (automaticallyAttributedChanges.length > 0) state.workspace_change_seq += 1;
     taskState.accepted_change_seq = state.workspace_change_seq;
     ownerState.status = "idle";
     ownerState.current_task_id = null;
-    ownerState.result_refs = uniqueStrings([...ownerState.result_refs, acceptedResultPath]);
+    ownerState.result_refs = [acceptedResultPath];
     if (result.status === "completed") {
-      ownerState.completed_task_ids = uniqueStrings([...ownerState.completed_task_ids, taskId]);
+      ownerState.completed_task_ids = [taskId];
       if ((result.review_upgrade_reason ?? null) !== null) {
         state.review_pending = uniqueStrings([...state.review_pending, taskId]);
-      }
-      for (const evidence of result.evidence.filter((item) => item.outcome === "passed")) {
-        state.evidence_cache[evidence.verification_id] = {
-          task_id: task.id,
-          result_ref: acceptedResultPath,
-          result_digest: taskState.result_digest,
-          workspace_change_seq: state.workspace_change_seq,
-        };
       }
     }
     if (isOwnerDefinition(owner)) {
@@ -7606,6 +7817,7 @@ function finishCommand(
       writeJson(statePath, state);
     }
     releaseOwnerLease(goal, task, reservationToken);
+    consumedCandidatePath = resultPath;
     return {
       task_id: taskId,
       owner_id: task.owner_id,
@@ -7618,11 +7830,22 @@ function finishCommand(
       user_message: acceptedResultUserMessage(task, result),
       owner_reusable: isOwnerDefinition(owner),
       changed_files: automaticallyAttributedChanges,
+      changed_file_count: automaticallyAttributedChanges.length,
       workspace_change_seq: state.workspace_change_seq,
       idempotent: false,
     };
   });
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (consumedCandidatePath !== null) rmSync(consumedCandidatePath, { force: true });
+  for (const path of cleanupAfterFinish) rmSync(path, { recursive: true, force: true });
+  const receipt = payload                           ;
+  process.stdout.write(`${JSON.stringify(compact ? {
+    status: receipt.status,
+    task_id: receipt.task_id,
+    result_ref: receipt.result_ref,
+    user_message: receipt.user_message,
+    changed_file_count: receipt.changed_file_count,
+    idempotent: receipt.idempotent,
+  } : payload)}\n`);
 }
 
 function rotateOwnerCommand(
@@ -7694,6 +7917,7 @@ function ownerChangePauseCommand(
   const payload = withStateLock(statePath, () => {
     const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
       allowSourceDrift: true,
+      allowOwnerRegistryDrift: true,
     });
     assertGoalMutable(planPath, plan, goal);
     const request = requireRecord(readJson(requestPath), "owner change request");
@@ -7997,9 +8221,17 @@ function expandDeltaInput(
   let ownerTransition                                 = null;
   if (value.owner !== undefined && value.owner !== null) {
     const owner = requireRecord(value.owner, "delta input.owner");
-    requireAllowedKeys(owner, ["validation", "approval", "rebind"], "delta input.owner");
-    const validationPath = resolve(requireString(owner.validation, "delta input.owner.validation"));
-    const approvalPath = resolve(requireString(owner.approval, "delta input.owner.approval"));
+    requireAllowedKeys(owner, ["rebind"], "delta input.owner");
+    const goal = parseGoal(readJson(plan.goal_contract_path), false);
+    const currentDirectory = join(
+      goal.workspace.root,
+      ".ghost-agent-workflow",
+      "runtime",
+      "owner-change",
+      "current",
+    );
+    const validationPath = join(currentDirectory, "validation.json");
+    const approvalPath = join(currentDirectory, "approval.json");
     if (!existsSync(validationPath) || !existsSync(approvalPath)) {
       fail("delta input Owner validation or approval is missing");
     }
@@ -8138,6 +8370,7 @@ function applyDeltaCommand(
 )       {
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
+  const obsoleteResultRefs           = [];
   const payload = withStateLock(statePath, () => {
     const deltaInput = deltaArgument === "-"
       ? readStructuredInput("-")
@@ -8196,18 +8429,20 @@ function applyDeltaCommand(
     for (const [taskId, ownerId] of rebindingByTaskId) {
       const task = plan.tasks.find((candidate) => candidate.id === taskId);
       if (task === undefined) fail(`owner transition rebinds unknown task: ${taskId}`);
-      if (task.role !== "work" || task.owner_id === null) {
-        fail(`owner transition can only rebind work tasks: ${taskId}`);
+      if (task.owner_id === null) {
+        fail(`owner transition can only rebind Owner tasks: ${taskId}`);
       }
       if (state.tasks[taskId].status !== "pending") {
         fail(`owner transition can only rebind pending tasks: ${taskId}`);
       }
       const approved = transitionOwnerById.get(ownerId);
       if (approved === undefined) fail(`owner transition target is not active: ${ownerId}`);
-      const owner = ownerDefinitionFromApproved(approved);
-      for (const path of effectiveWritablePaths(task, state.tasks[taskId])) {
-        if (!ownerAllowsPath(owner, path)) {
-          fail(`owner transition target ${ownerId} does not cover task ${taskId} path: ${path}`);
+      if (task.role === "work") {
+        const owner = ownerDefinitionFromApproved(approved);
+        for (const path of effectiveWritablePaths(task, state.tasks[taskId])) {
+          if (!ownerAllowsPath(owner, path)) {
+            fail(`owner transition target ${ownerId} does not cover task ${taskId} path: ${path}`);
+          }
         }
       }
     }
@@ -8586,8 +8821,41 @@ function applyDeltaCommand(
       }
     }
     for (const repair of delta.repairs) {
-      state.tasks[repair.task_id].status = "superseded";
-      state.tasks[repair.task_id].replacement_task_id = repair.replacement_task_id;
+      const repairedTask = plan.tasks.find((task) => task.id === repair.task_id)                  ;
+      const repairedState = state.tasks[repair.task_id];
+      const previousResultRef = repairedState.result_ref;
+      repairedState.status = "superseded";
+      repairedState.replacement_task_id = repair.replacement_task_id;
+      repairedState.result_ref = null;
+      repairedState.result_digest = null;
+      const repairedSubjectState = subjectStateForTask(state, repairedTask);
+      repairedSubjectState.completed_task_ids = repairedSubjectState.completed_task_ids
+        .filter((taskId) => taskId !== repair.task_id);
+      if (previousResultRef !== null) {
+        obsoleteResultRefs.push(previousResultRef);
+        repairedSubjectState.result_refs = repairedSubjectState.result_refs
+          .filter((ref) => ref !== previousResultRef);
+      }
+      const repairedSubject = subjectForTask(plan, repairedTask);
+      if (isOwnerDefinition(repairedSubject)) {
+        const capsule = capsuleWrites.get(repairedSubjectState.capsule_ref          ) ??
+          loadOwnerCapsule(
+            repairedSubject,
+            repairedSubjectState,
+            state.goal_digest,
+            state.source_revision,
+          );
+        capsule.completed_tasks = capsule.completed_tasks
+          .filter((taskId) => taskId !== repair.task_id);
+        if (previousResultRef !== null) {
+          capsule.result_refs = capsule.result_refs.filter((ref) => ref !== previousResultRef);
+          capsule.verification = capsule.verification.filter(
+            (item) => item.result_ref !== previousResultRef,
+          );
+        }
+        capsule.updated_at = new Date().toISOString();
+        capsuleWrites.set(repairedSubjectState.capsule_ref          , capsule);
+      }
     }
     for (const disposition of delta.source_dispositions) {
       const taskState = state.tasks[disposition.task_id];
@@ -8595,6 +8863,9 @@ function applyDeltaCommand(
         const oldResultRef = taskState.result_ref;
         taskState.status = "superseded";
         taskState.replacement_task_id = disposition.replacement_task_id;
+        taskState.result_ref = null;
+        taskState.result_digest = null;
+        if (oldResultRef !== null) obsoleteResultRefs.push(oldResultRef);
         const task = nextPlan.tasks.find((candidate) => candidate.id === disposition.task_id)                  ;
         const subject = subjectForTask(nextPlan, task);
         const ownerState = subjectStateForTask(state, task);
@@ -8667,6 +8938,9 @@ function applyDeltaCommand(
       [statePath, state],
     );
     writeTransaction(statePath, writes);
+    if (transitionRegistry !== null) {
+      rmSync(currentOwnerChangeDirectory(goal.workspace.root), { recursive: true, force: true });
+    }
     return {
       status: "applied",
       revision: nextPlan.revision,
@@ -8685,6 +8959,7 @@ function applyDeltaCommand(
         .map((task) => task.id),
     };
   });
+  for (const path of uniqueStrings(obsoleteResultRefs)) rmSync(path, { force: true });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -9072,6 +9347,7 @@ function reclaimCommand(
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   const reclaimReason = requireString(reason, "reason");
+  let cleanupPaths           = [];
   const payload = withStateLock(statePath, () => {
     const { plan, goal, state } = loadPlanAndState(
       planPath,
@@ -9094,6 +9370,7 @@ function reclaimCommand(
     }
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
     if (ownerState.current_task_id !== taskId) fail("owner current task mismatch");
+    cleanupPaths = taskAttemptCleanupPaths(planPath, task, taskState);
     const reclaimedExecutorId = taskState.executor_id ?? ownerState.bound_executor_id;
     const reclaimedAttempt = taskState.attempt;
     const reclaimedSourceRevision = taskState.source_revision;
@@ -9150,6 +9427,7 @@ function reclaimCommand(
       reason: reclaimReason,
     };
   });
+  for (const path of cleanupPaths) rmSync(path, { recursive: true, force: true });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -9222,6 +9500,30 @@ function statusCommand(planArgument        , stateArgument        , compact = fa
       : inspectCompletion(planPath, plan, goal, coverage, state);
     const subgraphRequests = pendingSubgraphRequests(plan, state);
     const reviewUpgrades = pendingReviewUpgrades(state);
+    const nextAction = state.owner_change !== null
+      ? "awaiting_owner_action"
+      : reviewUpgrades.length > 0
+      ? "upgrade_review"
+      : subgraphRequests.length > 0
+      ? "expand_subgraph"
+      : coordinatedNextAction(planPath, plan, goal, coverage, state, goalState);
+    const activeReservations = activeReservationRecords(planPath, plan, goal, state);
+    if (compact) {
+      return {
+        goal_id: goal.goal_id,
+        goal_status: goalState.status,
+        revision: plan.revision,
+        source_revision: state.source_revision,
+        ...sourceDriftPayload(goal, goalState, plan, state),
+        next_action: nextAction,
+        summary: summarizeState(state),
+        active_reservations: compactActiveReservationRecords(activeReservations),
+        owner_change_pending: state.owner_change !== null,
+        review_upgrade_count: reviewUpgrades.length,
+        subgraph_request_count: subgraphRequests.length,
+        stale_executor_count: state.stale_executors.length,
+      };
+    }
     return {
       goal_id: goal.goal_id,
       objective: goal.objective,
@@ -9232,22 +9534,13 @@ function statusCommand(planArgument        , stateArgument        , compact = fa
       source_revision: state.source_revision,
       workspace_change_seq: state.workspace_change_seq,
       ...sourceDriftPayload(goal, goalState, plan, state),
-      next_action: state.owner_change !== null
-        ? "awaiting_owner_action"
-        : reviewUpgrades.length > 0
-        ? "upgrade_review"
-        : subgraphRequests.length > 0
-        ? "expand_subgraph"
-        : coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
+      next_action: nextAction,
       owner_change: state.owner_change,
       review_upgrades: reviewUpgrades,
       subgraph_requests: subgraphRequests,
       summary: summarizeState(state),
       coverage: summarizeCoverage(plan, coverage, state),
-      active_reservations: (() => {
-        const records = activeReservationRecords(planPath, plan, goal, state);
-        return compact ? compactActiveReservationRecords(records) : records;
-      })(),
+      active_reservations: activeReservations,
       stale_executors: state.stale_executors,
       completion_problems: inspection.problems,
       owners,
@@ -9483,27 +9776,54 @@ function progressEventsPathFor(planPath        )         {
   return join(dirname(planPath), "events.jsonl");
 }
 
+function parseProgressEventLine(line        , label        )                          {
+  let parsed         ;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    fail(`${label} is not valid JSON`);
+  }
+  const event = requireRecord(parsed, label);
+  if (event.contract !== "DAG_PROGRESS_EVENT_V1") fail(`${label} has an invalid contract`);
+  requireNonNegativeInteger(event.seq, `${label}.seq`);
+  requireString(event.event_id, `${label}.event_id`);
+  requireString(event.type, `${label}.type`);
+  return event;
+}
+
 function readProgressEvents(path        )                            {
   if (!existsSync(path)) return [];
   const contents = readFileSync(path, "utf8");
   if (!contents.trim()) return [];
   return contents.split("\n").flatMap((line, index) => {
     if (!line.trim()) return [];
-    let parsed         ;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      fail(`progress event line ${index + 1} is not valid JSON`);
-    }
-    const event = requireRecord(parsed, `progress event line ${index + 1}`);
-    if (event.contract !== "DAG_PROGRESS_EVENT_V1") {
-      fail(`progress event line ${index + 1} has an invalid contract`);
-    }
-    requireNonNegativeInteger(event.seq, `progress event line ${index + 1}.seq`);
-    requireString(event.event_id, `progress event line ${index + 1}.event_id`);
-    requireString(event.type, `progress event line ${index + 1}.type`);
-    return [event];
+    return [parseProgressEventLine(line, `progress event line ${index + 1}`)];
   });
+}
+
+function readProgressEventTail(path        , maxBytes = 256 * 1024)                            {
+  if (!existsSync(path)) return [];
+  const size = statSync(path).size;
+  if (size === 0) return [];
+  const start = Math.max(0, size - maxBytes);
+  const length = size - start;
+  const buffer = Buffer.alloc(length);
+  const descriptor = openSync(path, "r");
+  try {
+    readSync(descriptor, buffer, 0, length, start);
+  } finally {
+    closeSync(descriptor);
+  }
+  let contents = buffer.toString("utf8");
+  if (start > 0) {
+    const firstNewline = contents.indexOf("\n");
+    contents = firstNewline < 0 ? "" : contents.slice(firstNewline + 1);
+  }
+  return contents.split("\n").flatMap((line, index) =>
+    line.trim()
+      ? [parseProgressEventLine(line, `progress event tail line ${index + 1}`)]
+      : []
+  );
 }
 
 function progressEventsPage(
@@ -9553,18 +9873,19 @@ function observeProgressSources(planPath        , statePath        )            
     .sort(([left], [right]) => compareStableStrings(left, right))
     .map(([taskId, value]) => {
       const taskState = requireRecord(value, `progress state.tasks.${taskId}`);
+      const status = requireString(taskState.status, `progress state.tasks.${taskId}.status`);
       const resultPath = typeof taskState.result_path === "string" && taskState.result_path
         ? taskState.result_path
         : null;
       return {
         task_id: taskId,
-        status: requireString(taskState.status, `progress state.tasks.${taskId}.status`),
+        status,
         attempt: requireNonNegativeInteger(taskState.attempt, `progress state.tasks.${taskId}.attempt`),
         source_revision: requireNonNegativeInteger(
           taskState.source_revision,
           `progress state.tasks.${taskId}.source_revision`,
         ),
-        submitted_result_digest: resultPath !== null && existsSync(resultPath)
+        submitted_result_digest: status === "running" && resultPath !== null && existsSync(resultPath)
           ? digestFile(resultPath)
           : null,
         result_digest: typeof taskState.result_digest === "string" && taskState.result_digest
@@ -9599,6 +9920,7 @@ function observeProgressSources(planPath        , statePath        )            
   const goalState = existsSync(goalStatePath)
     ? requireRecord(readJson(goalStatePath), "progress goal state")
     : {};
+  const visibleTaskResults = goalState.status === "completed" ? [] : taskResults;
   const nativeSync = isRecord(goalState.native_sync) ? goalState.native_sync : {};
   const source = {
     plan_digest: digestFile(planPath),
@@ -9607,7 +9929,7 @@ function observeProgressSources(planPath        , statePath        )            
     goal_status: goalState.status ?? null,
     native_sync_status: nativeSync.status ?? null,
     task_states: taskObservations,
-    task_results: taskResults.map((result) => ({
+    task_results: visibleTaskResults.map((result) => ({
       task_id: result.task_id,
       status: result.status,
       attempt: result.attempt,
@@ -9619,27 +9941,12 @@ function observeProgressSources(planPath        , statePath        )            
     fingerprint: digestJson(source),
     source,
     taskStates: taskObservations,
-    taskResults,
+    taskResults: visibleTaskResults,
   };
 }
 
 function publicTaskResult(result                           )                          {
   const raw = requireRecord(readJson(result.result_ref), `task result ${result.task_id}`);
-  const evidence = Array.isArray(raw.evidence)
-    ? raw.evidence.flatMap((value) => {
-      if (!isRecord(value)) return [];
-      if (
-        typeof value.verification_id !== "string" ||
-        typeof value.outcome !== "string" ||
-        typeof value.summary !== "string"
-      ) return [];
-      return [{
-        verification_id: value.verification_id,
-        outcome: value.outcome,
-        summary: value.summary,
-      }];
-    })
-    : [];
   return {
     task_id: result.task_id,
     title: result.title,
@@ -9648,7 +9955,6 @@ function publicTaskResult(result                           )                    
     source_revision: result.source_revision,
     result_digest: result.result_digest,
     summary: typeof raw.summary === "string" ? raw.summary : "",
-    evidence,
     changed_file_count: Array.isArray(raw.changed_files) ? raw.changed_files.length : 0,
     blocking_finding_count: Array.isArray(raw.blocking_findings)
       ? raw.blocking_findings.length
@@ -9708,11 +10014,22 @@ function refreshProgressDocument(
       const currentTaskResults = new Map(
         taskResults.map((result) => [result.task_id          , result]),
       );
-      const persistedEvents = readProgressEvents(eventsPath);
-      let eventSequence = persistedEvents.reduce((maximum, event) =>
+      const previousEventStream = isRecord(previous?.event_stream) ? previous.event_stream : null;
+      const previousEventSequence = previousEventStream === null
+        ? 0
+        : requireNonNegativeInteger(previousEventStream.last_seq, "progress event stream.last_seq");
+      const tailEvents = readProgressEventTail(eventsPath);
+      const tailSequence = tailEvents.reduce((maximum, event) =>
         typeof event.seq === "number" && Number.isInteger(event.seq)
           ? Math.max(maximum, event.seq)
-          : maximum, 0);
+        : maximum, 0);
+      if (tailSequence < previousEventSequence) {
+        fail("progress event stream is shorter than the recorded sequence");
+      }
+      const persistedEvents = tailSequence > previousEventSequence
+        ? readProgressEvents(eventsPath)
+        : tailEvents;
+      let eventSequence = Math.max(previousEventSequence, tailSequence);
       const existingEventIds = new Set(
         persistedEvents.flatMap((event) =>
           typeof event.event_id === "string" ? [event.event_id] : []
@@ -9745,7 +10062,6 @@ function refreshProgressDocument(
           type: "dag_initialized",
           plan_revision: confirmed.source.plan_revision,
           source_revision: confirmed.source.source_revision,
-          plan_digest: confirmed.source.plan_digest,
         });
       } else if (
         previousSource?.plan_digest !== confirmed.source.plan_digest ||
@@ -9756,7 +10072,6 @@ function refreshProgressDocument(
           type: "dag_updated",
           plan_revision: confirmed.source.plan_revision,
           source_revision: confirmed.source.source_revision,
-          plan_digest: confirmed.source.plan_digest,
         });
       }
       if (
@@ -9790,7 +10105,6 @@ function refreshProgressDocument(
               task_id: taskState.task_id,
               attempt: taskState.attempt,
               source_revision: taskState.source_revision,
-              result_digest: taskState.submitted_result_digest,
             });
           }
           if (
@@ -9845,8 +10159,7 @@ function refreshProgressDocument(
             status: result.status,
             attempt: result.attempt,
             source_revision: result.source_revision,
-            result_digest: result.result_digest,
-            summary: result.summary,
+            summary: compactUserSummary(String(result.summary)),
           });
         }
       }
@@ -9856,7 +10169,6 @@ function refreshProgressDocument(
             type: "task_result_removed",
             task_id: taskId,
             previous_status: result.status,
-            previous_result_digest: result.result_digest,
           });
         }
       }
@@ -10172,6 +10484,7 @@ function finalizeCommand(
   goalStateArgument        ,
   planArgument        ,
   stateArgument        ,
+  compact = false,
 )       {
   const goalPath = resolve(goalArgument);
   const goalStatePath = canonicalPath(goalStatePathFor(goalPath), goalStateArgument, "goal state path");
@@ -10190,10 +10503,12 @@ function finalizeCommand(
       native_goal: goal.lifecycle.native_goal,
     });
     if (goalState.status === "completed") {
+      const resultRef = goalState.result_ref;
       return {
         status: "completed",
         goal_id: goal.goal_id,
-        evidence_refs: goalState.completion_evidence,
+        result_ref: resultRef,
+        task_count: plan.tasks.filter((task) => task.node_type === "leaf").length,
         native_sync: goalState.native_sync.status,
         ...(goalState.native_sync.status === "pending" ? { native_action: nativeAction() } : {}),
         idempotent: true,
@@ -10222,24 +10537,74 @@ function finalizeCommand(
     if (!existsSync(goal.source.path) || digestFile(goal.source.path) !== goal.source.digest) {
       fail("finalize source changed before completion freeze");
     }
+    const completedAt = new Date().toISOString();
+    const resultRef = goalResultPathFor(goalPath);
+    const finalTasks = plan.tasks
+      .filter((task) => task.node_type === "leaf" && state.tasks[task.id].status !== "superseded")
+      .map((task) => {
+        const taskState = state.tasks[task.id];
+        const raw = taskState.result_ref === null
+          ? null
+          : requireRecord(readJson(taskState.result_ref), `final task result ${task.id}`);
+        return {
+          id: task.id,
+          title: task.title,
+          role: task.role,
+          status: taskState.status,
+          summary: raw === null || typeof raw.summary !== "string"
+            ? ""
+            : compactUserSummary(raw.summary),
+          changed_files: raw === null || !Array.isArray(raw.changed_files)
+            ? []
+            : requireStringArray(raw.changed_files, `final task result ${task.id}.changed_files`),
+          blocking_findings: raw === null || !Array.isArray(raw.blocking_findings)
+            ? []
+            : requireStringArray(
+              raw.blocking_findings,
+              `final task result ${task.id}.blocking_findings`,
+            ),
+        };
+      });
+    const finalResult = {
+      contract: "GOAL_RESULT_V1",
+      goal_id: goal.goal_id,
+      objective: goal.objective,
+      status: "completed",
+      completed_at: completedAt,
+      task_count: finalTasks.length,
+      tasks: finalTasks,
+    };
     goalState.status = "completed";
-    goalState.completion_evidence = uniqueStrings(inspection.result_refs);
-    goalState.completed_at = new Date().toISOString();
+    goalState.result_ref = resultRef;
+    goalState.completed_at = completedAt;
     if (goalState.controller === "codex_native") {
       goalState.native_sync.status = "pending";
       goalState.native_sync.completion_token = randomUUID();
     }
-    writeJson(goalStatePath, goalState);
+    writeTransaction(goalStatePath, [[resultRef, finalResult], [goalStatePath, goalState]]);
     return {
       status: "completed",
       goal_id: goal.goal_id,
-      evidence_refs: goalState.completion_evidence,
+      result_ref: resultRef,
+      task_count: finalTasks.length,
       native_sync: goalState.native_sync.status,
       ...(goalState.native_sync.status === "pending" ? { native_action: nativeAction() } : {}),
       idempotent: false,
     };
   }));
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  const receipt = payload                           ;
+  if (receipt.status === "completed") {
+    cleanupCompletedGoal(goalPath);
+  }
+  process.stdout.write(`${JSON.stringify(compact ? {
+    status: receipt.status,
+    goal_id: receipt.goal_id,
+    result_ref: receipt.result_ref,
+    task_count: receipt.task_count,
+    native_sync: receipt.native_sync,
+    ...(receipt.native_action === undefined ? {} : { native_action: receipt.native_action }),
+    idempotent: receipt.idempotent,
+  } : payload)}\n`);
 }
 
 function nativeConfirmCommand(
@@ -10345,27 +10710,15 @@ function ownerLeaseRecoverCommand(
     }
     const lease = parseOwnerLease(readJson(leasePath), ownerId);
     if (lease.reservation_token !== token) fail("owner lease reservation token mismatch");
-    const recoveredAt = new Date().toISOString();
-    const recoveryRef = join(
-      ownerLeaseRecoveryDirectoryFor(workspaceRoot, ownerId),
-      `${recoveredAt.replaceAll(":", "-")}-${randomUUID()}.json`,
-    );
-    writeImmutableJson(recoveryRef, {
-      contract: "OWNER_LEASE_RECOVERY_V1",
-      owner_id: ownerId,
-      reason,
-      recovered_at: recoveredAt,
-      recovered_by: "goal-dag-controller",
-      lease,
-    });
+    void reason;
     unlinkSync(leasePath);
     return {
       owner_id: ownerId,
       status: "free",
       recovered: true,
       idempotent: false,
-      recovery_ref: recoveryRef,
-      previous_lease: lease,
+      previous_goal_id: lease.goal_id,
+      previous_task_id: lease.task_id,
     };
   });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -10381,6 +10734,7 @@ function expandTaskScopeCommand(
   const planPath = resolve(planArgument);
   const statePath = canonicalPath(statePathFor(planPath), stateArgument, "state path");
   if (requestedPaths.length === 0) fail("expand-task-scope requires at least one path");
+  let obsoleteResultRef                = null;
   const payload = withStateLock(statePath, () => {
     const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
       allowSourceDrift: true,
@@ -10442,6 +10796,7 @@ function expandTaskScopeCommand(
     let reopenedCapsule                      = null;
     if (reopenRepair) {
       const previousResultRef = taskState.result_ref          ;
+      obsoleteResultRef = previousResultRef;
       const owner = subjectForTask(plan, task)                   ;
       const ownerState = subjectStateForTask(state, task);
       ownerState.result_refs = ownerState.result_refs.filter((ref) => ref !== previousResultRef);
@@ -10486,6 +10841,7 @@ function expandTaskScopeCommand(
       binding: reopenRepair ? null : taskBinding(planPath, plan, goal, state, task),
     };
   });
+  if (obsoleteResultRef !== null) rmSync(obsoleteResultRef, { force: true });
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -10961,16 +11317,6 @@ function subgraphRequestCommand(
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-const SCRIPT_MANAGED_JSON_BASENAMES = new Set([
-  "config.json",
-  "state.json",
-  "goal-state.json",
-  "progress.json",
-  "threads.json",
-  "registry.json",
-  "capsule.json",
-]);
-
 function readStructuredInput(expectedContract        )                          {
   const raw = readFileSync(0, "utf8");
   if (Buffer.byteLength(raw, "utf8") > 16 * 1024 * 1024) {
@@ -11022,9 +11368,10 @@ function validateThreadRegistry(value                         )       {
       fail(`thread registry key is invalid: ${threadKeyValue}`);
     }
     const thread = requireRecord(threadValue, `thread registry.threads.${threadKeyValue}`);
+    if (!Object.hasOwn(thread, "cursor")) thread.cursor = null;
     assertExactFields(
       thread,
-      ["thread_id", "host_id", "role", "status"],
+      ["thread_id", "host_id", "role", "status", "cursor"],
       `thread registry.threads.${threadKeyValue}`,
     );
     threadIds.push(requireString(thread.thread_id, `thread registry.threads.${threadKeyValue}.thread_id`));
@@ -11046,6 +11393,7 @@ function validateThreadRegistry(value                         )       {
     ].includes(String(thread.status))) {
       fail(`thread registry.threads.${threadKeyValue}.status is invalid`);
     }
+    requireNullableString(thread.cursor, `thread registry.threads.${threadKeyValue}.cursor`);
   }
   ensureUnique(threadIds, "thread registry thread id");
   if (!Array.isArray(value.watches)) fail("thread registry.watches must be an array");
@@ -11053,11 +11401,6 @@ function validateThreadRegistry(value                         )       {
   value.watches.forEach((watchValue, index) => {
     const watch = requireRecord(watchValue, `thread registry.watches[${index}]`);
     if (!Object.hasOwn(watch, "unchanged_waits")) watch.unchanged_waits = 0;
-    assertExactFields(
-      watch,
-      ["task_id", "attempt", "thread_key", "cursor", "unchanged_waits"],
-      `thread registry.watches[${index}]`,
-    );
     const taskId = requireIdentifier(watch.task_id, `thread registry.watches[${index}].task_id`);
     const attempt = requirePositiveInteger(watch.attempt, `thread registry.watches[${index}].attempt`);
     const threadKeyValue = requireString(
@@ -11067,8 +11410,21 @@ function validateThreadRegistry(value                         )       {
     if (!Object.hasOwn(threads, threadKeyValue)) {
       fail(`thread registry watch references unknown thread: ${threadKeyValue}`);
     }
+    if (Object.hasOwn(watch, "cursor")) {
+      const legacyCursor = requireNullableString(
+        watch.cursor,
+        `thread registry.watches[${index}].cursor`,
+      );
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      if (thread.cursor === null) thread.cursor = legacyCursor;
+      delete watch.cursor;
+    }
+    assertExactFields(
+      watch,
+      ["task_id", "attempt", "thread_key", "unchanged_waits"],
+      `thread registry.watches[${index}]`,
+    );
     watchIds.push(`${taskId}\u0000${attempt}\u0000${threadKeyValue}`);
-    requireNullableString(watch.cursor, `thread registry.watches[${index}].cursor`);
     requireNonNegativeInteger(
       watch.unchanged_waits,
       `thread registry.watches[${index}].unchanged_waits`,
@@ -11112,14 +11468,25 @@ function threadRegistryCommand(action        , args          )       {
     const threads = requireRecord(registry.threads, "thread registry.threads");
     const watches = registry.watches                             ;
     if (action === "put-thread") {
-      if (args.length !== 6) {
-        fail("thread-registry put-thread requires <threads.json> <thread_key> <thread_id> <host_id> <role> <status>");
+      if (args.length !== 6 && args.length !== 7) {
+        fail("thread-registry put-thread requires <threads.json> <thread_key> <thread_id> <host_id> <role> <status> [cursor|-]");
       }
-      threads[requireString(args[1], "thread_key")] = {
-        thread_id: requireString(args[2], "thread_id"),
+      const threadKeyValue = requireString(args[1], "thread_key");
+      const threadId = requireString(args[2], "thread_id");
+      const current = Object.hasOwn(threads, threadKeyValue)
+        ? requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`)
+        : null;
+      const cursor = args.length === 7
+        ? args[6] === "-" ? null : requireString(args[6], "cursor")
+        : current !== null && current.thread_id === threadId
+        ? requireNullableString(current.cursor, "thread cursor")
+        : null;
+      threads[threadKeyValue] = {
+        thread_id: threadId,
         host_id: requireString(args[3], "host_id"),
         role: requireString(args[4], "role"),
         status: requireString(args[5], "status"),
+        cursor,
       };
       validateThreadRegistry(registry);
       writeJson(path, registry);
@@ -11145,11 +11512,14 @@ function threadRegistryCommand(action        , args          )       {
       const threadKeyValue = requireString(args[3], "thread_key");
       if (!Object.hasOwn(threads, threadKeyValue)) fail(`unknown thread key: ${threadKeyValue}`);
       const cursor = args[4] === undefined || args[4] === "-" ? null : requireString(args[4], "cursor");
+      if (args[4] !== undefined) {
+        const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+        thread.cursor = cursor;
+      }
       const next = {
         task_id: taskId,
         attempt,
         thread_key: threadKeyValue,
-        cursor,
         unchanged_waits: 0,
       };
       const index = watches.findIndex((watch) =>
@@ -11196,6 +11566,42 @@ const SUPERVISOR_NOTIFY_STATES = new Set([
   "needs_attention",
 ]);
 
+
+
+function supervisorActionId(kind                      , taskId        , attempt        )         {
+  const encoded = Buffer.from(JSON.stringify({ kind, task: taskId, attempt }), "utf8").toString("base64url");
+  return `sa.${encoded}.${createHash("sha256").update(encoded).digest("hex").slice(0, 12)}`;
+}
+
+function parseSupervisorActionId(value        )
+
+
+
+  {
+  const match = /^sa\.([A-Za-z0-9_-]+)\.([0-9a-f]{12})$/u.exec(requireString(value, "action_id"));
+  if (match === null) fail("supervisor action id is invalid");
+  if (createHash("sha256").update(match[1]).digest("hex").slice(0, 12) !== match[2]) {
+    fail("supervisor action id checksum mismatch");
+  }
+  let decoded         ;
+  try {
+    decoded = JSON.parse(Buffer.from(match[1], "base64url").toString("utf8"));
+  } catch {
+    fail("supervisor action id payload is invalid");
+  }
+  const payload = requireRecord(decoded, "supervisor action id payload");
+  assertExactFields(payload, ["kind", "task", "attempt"], "supervisor action id payload");
+  const kind = requireString(payload.kind, "supervisor action kind")                        ;
+  if (!new Set                      (["create", "wait", "stalled", "notify"]).has(kind)) {
+    fail("supervisor action kind is invalid");
+  }
+  return {
+    kind,
+    task: requireIdentifier(payload.task, "supervisor action task"),
+    attempt: requirePositiveInteger(payload.attempt, "supervisor action attempt"),
+  };
+}
+
 function supervisorPaths(goalDirectoryArgument        )
 
 
@@ -11240,6 +11646,44 @@ function taskBindingSnapshotPath(
   return join(goalDirectory, "bindings", `${task.id}-attempt-${taskState.attempt}.json`);
 }
 
+function readTaskBindingSnapshot(
+  bindingPath        ,
+  planPath        ,
+  statePath        ,
+  task                ,
+  taskState           ,
+  executorId        ,
+)                          {
+  if (!existsSync(bindingPath)) fail(`task binding snapshot is missing: ${bindingPath}`);
+  const binding = requireRecord(readJson(bindingPath), "task binding snapshot");
+  if (binding.contract !== "TASK_BINDING_V6") fail("task binding contract must equal TASK_BINDING_V6");
+  const bindingTask = requireRecord(binding.task, "task binding.task");
+  if (bindingTask.id !== task.id) fail("task binding task id mismatch");
+  const run = requireRecord(binding.run, "task binding.run");
+  if (requirePositiveInteger(run.attempt, "task binding.run.attempt") !== taskState.attempt) {
+    fail("task binding attempt mismatch");
+  }
+  if (requireString(run.token, "task binding.run.token") !== taskState.reservation_token) {
+    fail("task binding reservation token mismatch");
+  }
+  if (requirePositiveInteger(run.source_revision, "task binding.run.source_revision") !== taskState.source_revision) {
+    fail("task binding source revision mismatch");
+  }
+  if (requireString(run.executor, "task binding.run.executor") !== executorId) {
+    fail("task binding executor mismatch");
+  }
+  const refs = requireRecord(binding.refs, "task binding.refs");
+  canonicalPath(planPath, requireString(refs.plan, "task binding.refs.plan"), "task binding plan ref");
+  canonicalPath(statePath, requireString(refs.state, "task binding.refs.state"), "task binding state ref");
+  if (taskState.result_path === null) fail("task binding result path is unavailable");
+  canonicalPath(
+    taskState.result_path,
+    requireString(refs.result, "task binding.refs.result"),
+    "task binding result ref",
+  );
+  return binding;
+}
+
 function supervisorResultNotice(
   plan      ,
   task                ,
@@ -11270,7 +11714,11 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
     ? MAX_PARALLEL_THREADS
     : requireParallelCount(Number(limitArgument), "supervisor limit");
   const payload = withStateLock(statePath, () => withStateLock(threadsPath, () => {
-    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
+      allowSourceDrift: true,
+    });
+    const sourceCurrent = existsSync(goal.source.path) &&
+      digestFile(goal.source.path) === goal.source.digest;
     const registry = readThreadRegistry(threadsPath, plan.goal_id);
     const threads = requireRecord(registry.threads, "thread registry.threads");
     const watches = registry.watches                             ;
@@ -11280,6 +11728,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       if (create.length >= limit) break;
       const taskState = state.tasks[task.id];
       if (taskState.status !== "reserved" || task.owner_id === null) continue;
+      if (!sourceCurrent) continue;
       const subject = subjectForTask(plan, task);
       const subjectState = subjectStateForTask(state, task);
       const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
@@ -11300,8 +11749,10 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       }
       const profile = runtimeProfileForTask(goal, task);
       create.push({
+        action_id: supervisorActionId("create", task.id, taskState.attempt),
         task: task.id,
         attempt: taskState.attempt,
+        run: taskRunId(task.id, taskState),
         title: threadTitle(task, subject),
         model: profile.model,
         effort: profile.reasoning_effort,
@@ -11334,17 +11785,25 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
         "thread registry watch.unchanged_waits",
       );
       if (status === "running" && unchangedWaits >= 3 && stalledActions.length < limit) {
-        stalledActions.push({ ...compact, unchanged_waits: unchangedWaits });
+        stalledActions.push({
+          action_id: supervisorActionId("stalled", taskId, attempt),
+          ...compact,
+          unchanged_waits: unchangedWaits,
+        });
       } else if (status === "running" && waitActions.length < limit) {
         waitActions.push({
+          action_id: supervisorActionId("wait", taskId, attempt),
           ...compact,
-          cursor: requireNullableString(watch.cursor, "thread registry watch.cursor"),
+          run: taskRunId(taskId, taskState),
+          cursor: requireNullableString(thread.cursor, "thread registry thread.cursor"),
         });
       } else if (SUPERVISOR_NOTIFY_STATES.has(status) && notifications.length < limit) {
         const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
           fail(`unknown watched task: ${taskId}`);
         notifications.push({
+          action_id: supervisorActionId("notify", taskId, attempt),
           ...compact,
+          run: taskRunId(taskId, taskState),
           status,
           ...(status === "needs_attention"
             ? { result_ref: null, summary: "线程需要用户处理" }
@@ -11378,6 +11837,7 @@ function supervisorRecordCommand(
     const [taskId, attemptArgument, executorId] = args;
     const binding = withStateLock(statePath, () => {
       const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+      void goal;
       const task = plan.tasks.find((candidate) => candidate.id === taskId);
       if (task === undefined) fail(`unknown task: ${taskId}`);
       const taskState = state.tasks[taskId];
@@ -11388,16 +11848,23 @@ function supervisorRecordCommand(
       if (taskState.executor_id !== requireString(executorId, "thread_id")) {
         fail("task executor mismatch");
       }
-      const canonical = taskBinding(planPath, plan, goal, state, task);
-      writeJson(taskBindingSnapshotPath(goalDirectory, task, taskState), canonical);
-      return canonical;
+      return readTaskBindingSnapshot(
+        taskBindingSnapshotPath(goalDirectory, task, taskState),
+        planPath,
+        statePath,
+        task,
+        taskState,
+        executorId,
+      );
     });
     process.stdout.write(`${JSON.stringify(binding)}\n`);
     return;
   }
 
   const receipt = withStateLock(statePath, () => withStateLock(threadsPath, () => {
-    const { plan, goal, state } = loadPlanAndState(planPath, statePath);
+    const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
+      allowSourceDrift: true,
+    });
     const registry = readThreadRegistry(threadsPath, plan.goal_id);
     const threads = requireRecord(registry.threads, "thread registry.threads");
     const watches = registry.watches                             ;
@@ -11412,6 +11879,9 @@ function supervisorRecordCommand(
         fail("supervisor-record created requires <task> <attempt> <thread_id> <host_id>");
       }
       const [taskId, attemptArgument, executorId, hostId] = args;
+      if (!existsSync(goal.source.path) || digestFile(goal.source.path) !== goal.source.digest) {
+        fail("source changed; a reserved task cannot be bound to a new thread");
+      }
       const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
       const task = plan.tasks.find((candidate) => candidate.id === taskId);
       if (task === undefined) fail(`unknown task: ${taskId}`);
@@ -11423,8 +11893,14 @@ function supervisorRecordCommand(
       const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
       const actualExecutorId = requireString(executorId, "thread_id");
       const actualHostId = requireString(hostId, "host_id");
+      const existingRegistration = registeredThreadForExecutor(threads, actualExecutorId);
+      const previousCursor = existingRegistration === null
+        ? null
+        : requireNullableString(existingRegistration.thread.cursor, "thread cursor");
+      const bindingRef = taskBindingSnapshotPath(goalDirectory, task, taskState);
       let binding                         ;
       if (taskState.status === "reserved") {
+        if (existsSync(bindingRef)) fail(`reserved task already has a binding snapshot: ${taskId}`);
         binding = bindTaskState(
           planPath,
           plan,
@@ -11435,7 +11911,14 @@ function supervisorRecordCommand(
           actualExecutorId,
         ).binding                           ;
       } else if (taskState.status === "running" && taskState.executor_id === actualExecutorId) {
-        binding = taskBinding(planPath, plan, goal, state, task);
+        binding = readTaskBindingSnapshot(
+          bindingRef,
+          planPath,
+          statePath,
+          task,
+          taskState,
+          actualExecutorId,
+        );
       } else {
         fail(`task ${taskId} cannot record created from status ${taskState.status}`);
       }
@@ -11444,12 +11927,12 @@ function supervisorRecordCommand(
         host_id: actualHostId,
         role: task.role === "review" ? "review" : "owner",
         status: "running",
+        cursor: previousCursor,
       };
       const watch = {
         task_id: taskId,
         attempt,
         thread_key: key,
-        cursor: null,
         unchanged_waits: 0,
       };
       const watchIndex = watches.findIndex((candidate) =>
@@ -11458,29 +11941,28 @@ function supervisorRecordCommand(
       if (watchIndex < 0) watches.push(watch);
       else watches[watchIndex] = watch;
       validateThreadRegistry(registry);
-      const bindingRef = taskBindingSnapshotPath(goalDirectory, task, taskState);
       writeTransaction(statePath, [
-        [bindingRef, binding],
+        ...(existsSync(bindingRef) ? [] : [[bindingRef, binding]                     ]),
         [statePath, state],
         [threadsPath, registry],
       ]);
+      const runId = taskRunId(task.id, taskState);
       const dispatchCommand = [
         "node",
         fileURLToPath(import.meta.url),
-        "supervisor-record",
+        "worker",
+        "open",
         goalDirectory,
-        "binding",
-        taskId,
-        String(attempt),
-        actualExecutorId,
+        runId,
       ].map((value) => JSON.stringify(value)).join(" ");
       return {
         status: "created",
         task: taskId,
         attempt,
         thread: actualExecutorId,
+        run: runId,
         main: mainRoute,
-        dispatch: `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取 canonical TASK_BINDING_V6，再执行。`,
+        dispatch: `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取当前 Binding，再执行。`,
         binding_ref: bindingRef,
         binding_digest: digestFile(bindingRef),
       };
@@ -11503,8 +11985,8 @@ function supervisorRecordCommand(
       const threadKeyValue = requireString(watch.thread_key, "thread key");
       const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
       const nextCursor = cursorArgument === "-" ? null : requireString(cursorArgument, "cursor");
-      const previousCursor = requireNullableString(watch.cursor, "cursor");
-      watch.cursor = nextCursor;
+      const previousCursor = requireNullableString(thread.cursor, "cursor");
+      thread.cursor = nextCursor;
       watch.unchanged_waits = status === "running"
         ? previousCursor === nextCursor
           ? requireNonNegativeInteger(watch.unchanged_waits, "unchanged_waits") + 1
@@ -11583,6 +12065,14 @@ function supervisorRecordCommand(
         writeJson(threadsPath, registry);
         return { status: "attention_notified", task: taskId, attempt };
       }
+      const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
+        fail(`unknown watched task: ${taskId}`);
+      if (supervisorResultNotice(plan, task, state.tasks[taskId]).result_ref === null) {
+        thread.status = "attention_notified";
+        validateThreadRegistry(registry);
+        writeJson(threadsPath, registry);
+        return { status: "attention_notified", reason: "missing_result", task: taskId, attempt };
+      }
       registry.watches = watches.filter((_, candidateIndex) => candidateIndex !== index);
       thread.status = "idle";
       validateThreadRegistry(registry);
@@ -11592,6 +12082,57 @@ function supervisorRecordCommand(
 
     fail(`unknown supervisor record event: ${event}`);
   }));
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function supervisorAckCommand(
+  goalDirectoryArgument        ,
+  actionIdArgument        ,
+  args          ,
+)       {
+  const action = parseSupervisorActionId(actionIdArgument);
+  let receipt                         ;
+  if (action.kind === "create") {
+    if (args.length !== 2) fail("create acknowledgement requires <thread_id> <host_id>");
+    receipt = runSelfJson([
+      "supervisor-record",
+      resolve(goalDirectoryArgument),
+      "created",
+      action.task,
+      String(action.attempt),
+      args[0],
+      args[1],
+    ]);
+  } else if (action.kind === "wait") {
+    if (args.length !== 2) fail("wait acknowledgement requires <cursor|-> <status>");
+    receipt = runSelfJson([
+      "supervisor-record",
+      resolve(goalDirectoryArgument),
+      "observed",
+      action.task,
+      String(action.attempt),
+      args[0],
+      args[1],
+    ]);
+  } else if (action.kind === "stalled") {
+    if (args.length !== 0) fail("stalled acknowledgement takes no extra arguments");
+    receipt = runSelfJson([
+      "supervisor-record",
+      resolve(goalDirectoryArgument),
+      "stalled-notified",
+      action.task,
+      String(action.attempt),
+    ]);
+  } else {
+    if (args.length !== 0) fail("notify acknowledgement takes no extra arguments");
+    receipt = runSelfJson([
+      "supervisor-record",
+      resolve(goalDirectoryArgument),
+      "notified",
+      action.task,
+      String(action.attempt),
+    ]);
+  }
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
@@ -11687,40 +12228,6 @@ function supervisorRecoverCommand(
     attempt,
     executor: executorId,
     ...registryReceipt,
-  })}\n`);
-}
-
-function validateStructuredWrite(value                         , expectedContract        )       {
-  if (expectedContract === "THREAD_REGISTRY_V1") validateThreadRegistry(value);
-}
-
-function jsonWriteCommand(
-  targetArgument        ,
-  expectedContract        ,
-  replaceArgument         ,
-)       {
-  const target = resolve(targetArgument);
-  if (SCRIPT_MANAGED_JSON_BASENAMES.has(basename(target))) {
-    fail(`${basename(target)} is runtime-managed and cannot be written with json-write`);
-  }
-  if (replaceArgument !== undefined && replaceArgument !== "--replace") {
-    fail("json-write optional third argument must equal --replace");
-  }
-  const value = readStructuredInput(expectedContract);
-  validateStructuredWrite(value, expectedContract);
-  let mode                                     ;
-  if (replaceArgument === "--replace") {
-    writeJson(target, value);
-    mode = "replaced";
-  } else {
-    mode = writeImmutableJson(target, value);
-  }
-  process.stdout.write(`${JSON.stringify({
-    contract: "STRUCTURED_WRITE_RECEIPT_V1",
-    status: mode,
-    target,
-    data_contract: value.contract ?? null,
-    digest: digestFile(target),
   })}\n`);
 }
 
@@ -11907,10 +12414,8 @@ function resultSubmitCommand(
       isOwnerDefinition(owner)
         ? persistentOwnerInterfaceDirectoryFor(
           goal.workspace.root,
-          owner.id,
           goal.goal_id,
           task.id,
-          taskState.attempt,
         )
         : undefined,
     );
@@ -11946,6 +12451,2235 @@ function runSelfJson(args          , input                          )           
   } catch (error) {
     fail(`runtime script returned invalid JSON (${args[0]}): ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function taskRunId(taskId        , taskState           )         {
+  if (taskState.attempt < 1 || taskState.reservation_token === null) {
+    fail(`task ${taskId} has no active run identity`);
+  }
+  return `run-${digestJson({
+    task_id: taskId,
+    attempt: taskState.attempt,
+    token: taskState.reservation_token,
+    source_revision: taskState.source_revision,
+  }).slice(0, 16)}`;
+}
+
+function taskForRun(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+)
+
+
+
+
+
+
+
+
+  {
+  const { goalDirectory, planPath, statePath } = supervisorPaths(goalDirectoryArgument);
+  const { plan, goal, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+  const runId = requireString(runIdArgument, "run_id");
+  const matches = plan.tasks.filter((task) => {
+    const taskState = state.tasks[task.id];
+    return taskState.attempt > 0 && taskState.reservation_token !== null &&
+      taskRunId(task.id, taskState) === runId;
+  });
+  if (matches.length !== 1) fail(`run id is not current: ${runId}`);
+  const task = matches[0];
+  return {
+    goalDirectory,
+    planPath,
+    statePath,
+    plan,
+    goal,
+    state,
+    task,
+    taskState: state.tasks[task.id],
+  };
+}
+
+function readPlainSemanticInput(label        )         {
+  const raw = readFileSync(0, "utf8");
+  if (Buffer.byteLength(raw, "utf8") > 16 * 1024) fail(`${label} exceeds 16 KiB`);
+  return requireString(raw.trim(), label);
+}
+
+function workflowDefinitionPath(goalDirectory        )         {
+  return join(goalDirectory, "workflow.json");
+}
+
+function workflowStatePath(goalDirectory        )         {
+  return join(goalDirectory, "workflow-state.json");
+}
+
+function workflowRoutesPath(goalDirectory        )         {
+  return join(goalDirectory, "routes.json");
+}
+
+function workflowDashboardPath(goalDirectory        )         {
+  return join(goalDirectory, "dashboard.json");
+}
+
+function quickRuntimePath(goalDirectory        , name        )         {
+  return join(goalDirectory, "quick", name);
+}
+
+function parseWorkflowRoutes(value         )                   {
+  const source = requireRecord(value, "workflow routes");
+  requireExactKeys(source, ["contract", "main", "planner", "planner_reviewer"], "workflow routes");
+  if (source.contract !== "WORKFLOW_ROUTES_V1") fail("workflow routes contract is invalid");
+  const endpoint = (input         , label        )                                          => {
+    if (input === null) return null;
+    const item = requireRecord(input, label);
+    requireExactKeys(item, ["thread", "host"], label);
+    return {
+      thread: requireString(item.thread, `${label}.thread`),
+      host: requireString(item.host, `${label}.host`),
+    };
+  };
+  return {
+    contract: "WORKFLOW_ROUTES_V1",
+    main: endpoint(source.main, "workflow routes.main"),
+    planner: endpoint(source.planner, "workflow routes.planner"),
+    planner_reviewer: endpoint(source.planner_reviewer, "workflow routes.planner_reviewer"),
+  };
+}
+
+function readWorkflowRoutes(goalDirectory        )                   {
+  const path = workflowRoutesPath(goalDirectory);
+  if (!existsSync(path)) fail(`workflow routes are missing: ${path}`);
+  return parseWorkflowRoutes(readJson(path));
+}
+
+function workflowRouteReceipt(goalDirectory        , role                    )                                 {
+  return readWorkflowRoutes(goalDirectory)[role];
+}
+
+function preferredWorkflowThread(
+  goalDirectory        ,
+  role                    ,
+)                                 {
+  if (!existsSync(workflowRoutesPath(goalDirectory))) return null;
+  const route = workflowRouteReceipt(goalDirectory, role);
+  return route === null
+    ? null
+    : {
+      thread_id: requireString(route.thread, `${role} route thread`),
+      host_id: requireString(route.host, `${role} route host`),
+    };
+}
+
+function activeWorkflowDirectories(workspaceRoot        )           {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow", "runtime", "goals");
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return [];
+    const directory = join(root, entry.name);
+    const workflowState = workflowStatePath(directory);
+    const goalState = join(directory, "goal-state.json");
+    try {
+      if (existsSync(workflowState)) {
+        const state = parseWorkflowState(readJson(workflowState));
+        return state.status === "active" ? [directory] : [];
+      }
+      if (existsSync(goalState)) {
+        const state = requireRecord(readJson(goalState), `goal state ${goalState}`);
+        return state.status === "active" ? [directory] : [];
+      }
+    } catch (error) {
+      fail(`cannot inspect workflow ${directory}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return [];
+  }).sort(compareStableStrings);
+}
+
+function parseWorkflowDefinition(value         , path        )                       {
+  const source = requireRecord(value, "workflow");
+  requireExactKeys(
+    source,
+    ["contract", "id", "mode", "workspace", "objective", "created_at"],
+    "workflow",
+  );
+  if (source.contract !== "WORKFLOW_V1") fail("workflow contract must equal WORKFLOW_V1");
+  if (source.mode !== "quick" && source.mode !== "dag") fail("workflow mode is invalid");
+  const workspace = resolve(requireString(source.workspace, "workflow.workspace"));
+  const runtimeRoot = join(workspace, ".ghost-agent-workflow", "runtime", "goals");
+  const directory = dirname(resolve(path));
+  if (directory !== runtimeRoot && !directory.startsWith(`${runtimeRoot}/`)) {
+    fail("workflow must be stored below .ghost-agent-workflow/runtime/goals");
+  }
+  return {
+    contract: "WORKFLOW_V1",
+    id: requireIdentifier(source.id, "workflow.id"),
+    mode: source.mode,
+    workspace,
+    objective: requireChineseText(source.objective, "workflow.objective"),
+    created_at: requireString(source.created_at, "workflow.created_at"),
+  };
+}
+
+function parseQuickRun(value         )             {
+  const source = requireRecord(value, "workflow state.run");
+  requireExactKeys(
+    source,
+    [
+      "id", "kind", "owner", "generation", "work", "title", "token", "executor",
+      "host", "cursor", "status", "request_dag",
+    ],
+    "workflow state.run",
+  );
+  if (source.kind !== "work" && source.kind !== "review") fail("workflow run kind is invalid");
+  if (source.status !== "reserved" && source.status !== "running") {
+    fail("workflow run status is invalid");
+  }
+  const owner = requireNullableString(source.owner, "workflow state.run.owner");
+  if (source.kind === "work" && owner === null) fail("quick work run requires owner");
+  if (source.kind === "review" && owner === null) fail("quick review run requires reviewed owner");
+  return {
+    id: requireString(source.id, "workflow state.run.id"),
+    kind: source.kind,
+    owner,
+    generation: requirePositiveInteger(source.generation, "workflow state.run.generation"),
+    work: requireString(source.work, "workflow state.run.work"),
+    title: requireChineseText(source.title, "workflow state.run.title"),
+    token: requireString(source.token, "workflow state.run.token"),
+    executor: requireNullableString(source.executor, "workflow state.run.executor"),
+    host: requireNullableString(source.host, "workflow state.run.host"),
+    cursor: requireNullableString(source.cursor, "workflow state.run.cursor"),
+    status: source.status,
+    request_dag: requireBoolean(source.request_dag, "workflow state.run.request_dag"),
+  };
+}
+
+function parseQuickAccepted(value         )                  {
+  const source = requireRecord(value, "workflow state.accepted");
+  requireExactKeys(source, ["owner", "executor", "summary", "files", "review"], "workflow state.accepted");
+  return {
+    owner: requireIdentifier(source.owner, "workflow state.accepted.owner"),
+    executor: requireString(source.executor, "workflow state.accepted.executor"),
+    summary: requireString(source.summary, "workflow state.accepted.summary"),
+    files: requireStringArray(source.files, "workflow state.accepted.files").map(normalizePathPattern),
+    review: requireNullableString(source.review, "workflow state.accepted.review"),
+  };
+}
+
+function parseWorkflowState(value         )                  {
+  const source = requireRecord(value, "workflow state");
+  requireExactKeys(
+    source,
+    ["contract", "status", "revision", "next", "registry", "run", "accepted", "attention", "result_ref"],
+    "workflow state",
+  );
+  if (source.contract !== "WORKFLOW_STATE_V1") {
+    fail("workflow state contract must equal WORKFLOW_STATE_V1");
+  }
+  if (source.status !== "active" && source.status !== "completed") fail("workflow state.status is invalid");
+  const nextValues = new Set(["owner", "decision", "upgrade", "dag", "blocked", "completed"]);
+  if (!nextValues.has(String(source.next))) fail("workflow state.next is invalid");
+  const registry = requireRecord(source.registry, "workflow state.registry");
+  requireExactKeys(registry, ["revision", "digest"], "workflow state.registry");
+  const result                  = {
+    contract: "WORKFLOW_STATE_V1",
+    status: source.status,
+    revision: requirePositiveInteger(source.revision, "workflow state.revision"),
+    next: source.next                           ,
+    registry: {
+      revision: requirePositiveInteger(registry.revision, "workflow state.registry.revision"),
+      digest: requireString(registry.digest, "workflow state.registry.digest"),
+    },
+    run: source.run === null ? null : parseQuickRun(source.run),
+    accepted: source.accepted === null ? null : parseQuickAccepted(source.accepted),
+    attention: requireNullableString(source.attention, "workflow state.attention"),
+    result_ref: requireNullableString(source.result_ref, "workflow state.result_ref"),
+  };
+  if (result.status === "completed" && (result.next !== "completed" || result.result_ref === null)) {
+    fail("completed workflow state requires next=completed and result_ref");
+  }
+  if (result.status === "active" && result.result_ref !== null) {
+    fail("active workflow state cannot contain result_ref");
+  }
+  if (result.run !== null && result.next === "completed") fail("completed workflow cannot have a run");
+  return result;
+}
+
+function loadWorkflow(goalDirectoryArgument        )
+
+
+
+
+
+  {
+  const directory = resolve(goalDirectoryArgument);
+  const definitionPath = workflowDefinitionPath(directory);
+  const statePath = workflowStatePath(directory);
+  if (!existsSync(definitionPath) || !existsSync(statePath)) {
+    fail(`workflow runtime is missing: ${directory}`);
+  }
+  return {
+    directory,
+    definitionPath,
+    statePath,
+    workflow: parseWorkflowDefinition(readJson(definitionPath), definitionPath),
+    state: parseWorkflowState(readJson(statePath)),
+  };
+}
+
+function syntheticQuickGoal(workflow                      , definitionPath        )               {
+  return {
+    contract: "GOAL_CONTRACT_V1",
+    goal_id: workflow.id,
+    execution_platform: EXPECTED_PLATFORM,
+    workspace: { root: workflow.workspace },
+    source: {
+      path: definitionPath,
+      digest: existsSync(definitionPath) ? digestFile(definitionPath) : digestJson(workflow),
+      revision: 1,
+    },
+    objective: workflow.objective,
+    scope: ["**/*"],
+    non_goals: [],
+    constraints: [],
+    lifecycle: { controller: "standalone_thread", native_goal: null },
+    execution: { mode: "thread", max_concurrency: 1, reuse_policy: "owner_affinity" },
+    verification_gates: fixedGoalGates(),
+    side_effects: { deploy: "forbidden", external_write: "forbidden" },
+    completion: {
+      all_tasks_completed: true,
+      plan_coverage_100: true,
+      required_gates_passed: true,
+      blocking_findings_zero: true,
+      diff_in_scope: true,
+    },
+  };
+}
+
+function currentOwnerThreadPath(workspaceRoot        , ownerId        )         {
+  return join(workspaceRoot, ".ghost-agent-workflow", "runtime", "owners", ownerId, "thread.json");
+}
+
+function currentOwnerThreadIds(workspaceRoot        )              {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow", "runtime", "owners");
+  if (!existsSync(root)) return new Set();
+  return new Set(readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return [];
+    const path = join(root, entry.name, "thread.json");
+    if (!existsSync(path)) return [];
+    try {
+      const value = requireRecord(readJson(path), `current Owner thread ${entry.name}`);
+      return value.contract === "OWNER_THREAD_V1" && typeof value.thread_id === "string"
+        ? [value.thread_id]
+        : [];
+    } catch {
+      return [];
+    }
+  }));
+}
+
+function hasCurrentOwnerChange(workspaceRoot        )          {
+  return existsSync(currentOwnerChangePath(workspaceRoot, "request.json"));
+}
+
+function currentOwnerChangeDirectory(workspaceRoot        )         {
+  return join(
+    resolve(workspaceRoot),
+    ".ghost-agent-workflow",
+    "runtime",
+    "owner-change",
+    "current",
+  );
+}
+
+function currentOwnerChangePath(workspaceRoot        , name        )         {
+  return join(currentOwnerChangeDirectory(workspaceRoot), name);
+}
+
+function currentOwnerChangeApplied(workspaceRoot        )          {
+  const validationPath = currentOwnerChangePath(workspaceRoot, "validation.json");
+  const registryPath = join(
+    resolve(workspaceRoot),
+    ".ghost-agent-workflow",
+    "owners",
+    "registry.json",
+  );
+  if (!existsSync(validationPath) || !existsSync(registryPath)) return false;
+  const validation = requireRecord(readJson(validationPath), "current Owner validation");
+  return validation.contract === "OWNER_CHANGE_VALIDATION_V2" &&
+    validation.status === "passed" &&
+    validation.next_registry_digest === digestFile(registryPath);
+}
+
+function preferredOwnerThread(workspaceRoot        , ownerId        , generation        )                                 {
+  const path = currentOwnerThreadPath(workspaceRoot, ownerId);
+  if (!existsSync(path)) return null;
+  try {
+    const source = requireRecord(readJson(path), "current owner thread");
+    if (
+      source.contract !== "OWNER_THREAD_V1" || source.owner !== ownerId ||
+      source.generation !== generation
+    ) return null;
+    return {
+      thread_id: requireString(source.thread_id, "current owner thread.thread_id"),
+      host_id: requireString(source.host_id, "current owner thread.host_id"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function quickOwner(
+  workflow                      ,
+  definitionPath        ,
+  ownerId        ,
+)                                                                                                     {
+  const goal = syntheticQuickGoal(workflow, definitionPath);
+  const registry = approvedOwnerRegistry(goal);
+  const approved = registry.owners.find((candidate) => candidate.id === ownerId);
+  if (approved === undefined) fail(`unknown active Owner: ${ownerId}`);
+  return { goal, owner: ownerDefinitionFromApproved(approved), registry };
+}
+
+function quickTask(run            , owner                 )                 {
+  const review = run.kind === "review";
+  return {
+    id: review ? "QUICK-REVIEW" : "QUICK-WORK",
+    logical_id: review ? "quick.review" : "quick.work",
+    title: run.title,
+    role: review ? "review" : "work",
+    owner_id: owner.id,
+    runtime_actor_id: null,
+    task: run.work,
+    depends_on: [],
+    writable_paths: review ? [] : owner.writable_paths,
+    resource_locks: review ? [] : owner.writable_paths,
+    done_when: [review ? "明确给出审查结论" : "完成绑定工作并通过脚本机械验收"],
+    verification_ids: review ? [] : ["quick-check"],
+    satisfies_goal_gates: [],
+    plan_item_ids: [],
+    coverage_effect: review ? "audit" : "implementation",
+    priority: 0,
+    estimated_cost: 1,
+    risk_level: "medium",
+    review_policy: "none",
+    review_batch_key: null,
+    review_blocks_dependents: false,
+    review_reasons: [],
+    reviews_task_ids: [],
+    node_type: "leaf",
+    parent_task_id: null,
+    subgraph: null,
+  };
+}
+
+function quickTaskState(goalDirectory        , state                 , run            )            {
+  const baselinePath = quickRuntimePath(goalDirectory, "baseline.json");
+  return {
+    status: run.status,
+    attempt: state.revision,
+    reservation_token: run.token,
+    owner_generation: run.generation,
+    executor_id: run.executor,
+    source_revision: 1,
+    validated_source_revision: 1,
+    reserved_at: null,
+    result_path: quickRuntimePath(goalDirectory, "candidate.json"),
+    result_ref: null,
+    result_digest: null,
+    replacement_task_id: null,
+    last_reclaimed_token: null,
+    task_baseline_ref: run.status === "running" ? baselinePath : null,
+    task_baseline_digest: run.status === "running" && existsSync(baselinePath)
+      ? digestFile(baselinePath)
+      : null,
+    expanded_writable_paths: [],
+    accepted_change_seq: null,
+  };
+}
+
+function quickThreadTitle(run            )         {
+  return run.kind === "review"
+    ? `[GA][任务][实现审查] ${run.title}`
+    : `[GA][任务][责任域] ${run.title}`;
+}
+
+function quickBinding(
+  goalDirectory        ,
+  workflow                      ,
+  definitionPath        ,
+  state                 ,
+  run            ,
+  owner                 ,
+  registry                                          ,
+)                          {
+  if (run.executor === null) fail("quick run is not attached");
+  const config = loadThreadWorkflowConfig(workflow.workspace);
+  const review = run.kind === "review";
+  const handoffPath = quickRuntimePath(goalDirectory, "handoff.json");
+  const dependencies = state.accepted !== null && existsSync(handoffPath)
+    ? [{ kind: "script_handoff", ref: handoffPath, digest: digestFile(handoffPath) }]
+    : [];
+  return {
+    contract: "TASK_BINDING_V6",
+    task: {
+      id: review ? "QUICK-REVIEW" : "QUICK-WORK",
+      title: run.title,
+      role: review ? "review" : "work",
+      work: run.work,
+      done: [review ? "输出明确的 blocking 或 pass 结论" : "完成工作并通过脚本机械验收"],
+      verify: [],
+      items: [],
+      risk: "medium",
+      dependencies,
+    },
+    run: {
+      attempt: state.revision,
+      token: run.token,
+      source_revision: 1,
+      generation: run.generation,
+      executor: run.executor,
+      workspace_change_seq: 0,
+    },
+    thread: {
+      key: review ? `${workflow.id}:quick-review` : `owner:${owner.id}`,
+      title: quickThreadTitle(run),
+      profile: review ? config.profiles.review : config.profiles.owner,
+    },
+    subject: {
+      id: review ? `review-${workflow.id}` : owner.id,
+      kind: review ? "review" : "owner",
+      responsibility: review ? "独立审查快速模式已验收结果" : owner.responsibility,
+      context: review ? "只读取脚本交接和当前工作树，不读取实施线程聊天" : owner.worker_context,
+    },
+    scope: {
+      read: review ? ["**/*"] : owner.writable_paths,
+      exclude: review ? [] : owner.excluded_paths,
+      write: review ? [] : owner.writable_paths,
+    },
+    refs: {
+      plan: definitionPath,
+      state: workflowStatePath(goalDirectory),
+      coverage: null,
+      source_blocks: null,
+      registry: { ref: registry.ref, digest: registry.digest },
+      capsule: persistentOwnerCapsulePathFor(workflow.workspace, owner.id),
+      persistent_capsule: persistentOwnerCapsulePathFor(workflow.workspace, owner.id),
+      artifact_dir: null,
+      checkpoint: null,
+      result: quickRuntimePath(goalDirectory, "candidate.json"),
+      subgraph_request: null,
+    },
+  };
+}
+
+function quickRunReceipt(
+  workflow                      ,
+  definitionPath        ,
+  state                 ,
+)                          {
+  const run = state.run ?? fail("quick workflow has no current run");
+  const ownerId = run.owner ?? fail("quick run owner is missing");
+  const { owner } = quickOwner(workflow, definitionPath, ownerId);
+  const profile = loadThreadWorkflowConfig(workflow.workspace).profiles[
+    run.kind === "review" ? "review" : "owner"
+  ];
+  return {
+    run: run.id,
+    kind: run.kind,
+    title: quickThreadTitle(run),
+    model: profile.model,
+    effort: profile.reasoning_effort,
+    host: run.host,
+    cursor: run.cursor,
+    preferred_thread: run.kind === "work"
+      ? preferredOwnerThread(workflow.workspace, owner.id, run.generation)
+      : null,
+  };
+}
+
+function workflowDispatchCommand(goalDirectoryArgument        , ownerIdArgument        )       {
+  const instruction = requireChineseText(readPlainSemanticInput("quick work"), "quick work");
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  if (loaded.workflow.mode !== "quick") fail("workflow dispatch is only available in quick mode");
+  const payload = withStateLock(loaded.statePath, () => {
+    const state = parseWorkflowState(readJson(loaded.statePath));
+    if (state.status !== "active" || state.run !== null) fail("quick workflow cannot dispatch now");
+    if (hasCurrentOwnerChange(loaded.workflow.workspace)) fail("current Owner change requires user action");
+    if (!new Set(["owner", "decision", "blocked"]).has(state.next)) {
+      fail(`quick workflow cannot dispatch from ${state.next}`);
+    }
+    const ownerId = requireIdentifier(ownerIdArgument, "owner id");
+    const { owner, registry } = quickOwner(loaded.workflow, loaded.definitionPath, ownerId);
+    const token = randomUUID();
+    const revision = state.revision + 1;
+    state.revision = revision;
+    state.registry = { revision: registry.revision, digest: registry.digest };
+    state.run = {
+      id: `run-${digestJson({ workflow: loaded.workflow.id, revision, token }).slice(0, 16)}`,
+      kind: "work",
+      owner: owner.id,
+      generation: registry.owners.find((candidate) => candidate.id === owner.id)?.generation ?? 1,
+      work: instruction,
+      title: compactUserSummary(instruction),
+      token,
+      executor: null,
+      host: null,
+      cursor: null,
+      status: "reserved",
+      request_dag: false,
+    };
+    state.attention = null;
+    writeJson(loaded.statePath, state);
+    return { contract: "WORKFLOW_DISPATCH_V1", status: "reserved", ...quickRunReceipt(
+      loaded.workflow,
+      loaded.definitionPath,
+      state,
+    ) };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function workflowReviewCommand(goalDirectoryArgument        )       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  if (loaded.workflow.mode !== "quick") fail("workflow review is only available in quick mode");
+  const payload = withStateLock(loaded.statePath, () => {
+    const state = parseWorkflowState(readJson(loaded.statePath));
+    if (hasCurrentOwnerChange(loaded.workflow.workspace)) fail("current Owner change requires user action");
+    if (state.status !== "active" || state.next !== "decision" || state.run !== null || state.accepted === null) {
+      fail("quick workflow is not ready for Review");
+    }
+    const goal = syntheticQuickGoal(loaded.workflow, loaded.definitionPath);
+    const registry = approvedOwnerRegistry(goal);
+    const approved = registry.owners.find((candidate) => candidate.id === state.accepted?.owner) ??
+      registry.owners[0];
+    if (approved === undefined) fail("quick Review requires an active Owner Registry entry");
+    const token = randomUUID();
+    const revision = state.revision + 1;
+    state.revision = revision;
+    state.registry = { revision: registry.revision, digest: registry.digest };
+    state.run = {
+      id: `run-${digestJson({ workflow: loaded.workflow.id, revision, token }).slice(0, 16)}`,
+      kind: "review",
+      owner: approved.id,
+      generation: approved.generation,
+      work: `独立审查“${loaded.workflow.objective}”的当前已验收实现，只报告阻塞问题或通过`,
+      title: `审查${compactUserSummary(loaded.workflow.objective)}`,
+      token,
+      executor: null,
+      host: null,
+      cursor: null,
+      status: "reserved",
+      request_dag: false,
+    };
+    writeJson(loaded.statePath, state);
+    return { contract: "WORKFLOW_REVIEW_V1", status: "reserved", ...quickRunReceipt(
+      loaded.workflow,
+      loaded.definitionPath,
+      state,
+    ) };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function workflowAttachCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  executorArgument        ,
+  hostArgument        ,
+)       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  if (loaded.workflow.mode !== "quick") fail("workflow attach is only available in quick mode");
+  const executor = requireString(executorArgument, "executor id");
+  const host = requireString(hostArgument, "host id");
+  const payload = withStateLock(loaded.statePath, () => {
+    const state = parseWorkflowState(readJson(loaded.statePath));
+    const run = state.run ?? fail("quick workflow has no current run");
+    if (run.id !== requireString(runIdArgument, "run id") || run.status !== "reserved") {
+      fail("quick run is not reserved");
+    }
+    if (run.kind === "review" && (
+      state.accepted?.executor === executor ||
+      currentOwnerThreadIds(loaded.workflow.workspace).has(executor)
+    )) {
+      fail("quick Review requires a clean thread distinct from every current Owner thread");
+    }
+    const ownerId = run.owner ?? fail("quick run owner is missing");
+    const { goal, owner, registry } = quickOwner(loaded.workflow, loaded.definitionPath, ownerId);
+    const approvedGeneration = registry.owners.find((candidate) => candidate.id === ownerId)?.generation;
+    if (
+      registry.digest !== state.registry.digest || approvedGeneration !== run.generation
+    ) fail("Owner Registry changed after quick dispatch; user action is required");
+    const task = quickTask(run, owner);
+    if (run.kind === "work") {
+      const lease = acquireOwnerLease(goal, loaded.statePath, task, run.token);
+      if (!lease.acquired) fail(`Owner ${owner.id} is busy in another workflow`);
+    }
+    const baselinePath = quickRuntimePath(loaded.directory, "baseline.json");
+    const bindingPath = quickRuntimePath(loaded.directory, "binding.json");
+    run.executor = executor;
+    run.host = host;
+    run.cursor = null;
+    run.status = "running";
+    state.revision += 1;
+    const baseline = captureWorktreeSnapshot(loaded.workflow.workspace);
+    const binding = quickBinding(
+      loaded.directory,
+      loaded.workflow,
+      loaded.definitionPath,
+      state,
+      run,
+      owner,
+      registry,
+    );
+    try {
+      writeTransaction(loaded.statePath, [
+        [baselinePath, baseline],
+        [bindingPath, binding],
+        [loaded.statePath, state],
+      ]);
+    } catch (error) {
+      if (run.kind === "work") releaseOwnerLease(goal, task, run.token);
+      throw error;
+    }
+    if (run.kind === "work") {
+      updateOwnerLease(goal, task, run.token, { executor_id: executor, status: "running" });
+      writeJson(currentOwnerThreadPath(loaded.workflow.workspace, owner.id), {
+        contract: "OWNER_THREAD_V1",
+        owner: owner.id,
+        generation: run.generation,
+        thread_id: executor,
+        host_id: host,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    return {
+      contract: "WORKFLOW_ATTACH_V1",
+      status: "running",
+      run: run.id,
+      title: quickThreadTitle(run),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function workflowThreadCommand(
+  goalDirectoryArgument        ,
+  roleArgument        ,
+  threadArgument        ,
+  hostArgument        ,
+)       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  const role = requireString(roleArgument, "workflow thread role")                      ;
+  if (!new Set                    (["main", "planner", "planner_reviewer"]).has(role)) {
+    fail("workflow thread role must be main, planner, or planner_reviewer");
+  }
+  const path = workflowRoutesPath(loaded.directory);
+  const endpoint = {
+    thread: requireString(threadArgument, "thread id"),
+    host: requireString(hostArgument, "host id"),
+  };
+  const routes = withStateLock(path, () => {
+    const current = parseWorkflowRoutes(readJson(path));
+    current[role] = endpoint;
+    writeJson(path, current);
+    return current;
+  });
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_THREAD_RECEIPT_V1",
+    status: "recorded",
+    role,
+    route: routes[role],
+  })}\n`);
+}
+
+function workflowObserveCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  cursorArgument        ,
+)       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  if (loaded.workflow.mode !== "quick") fail("workflow observe is only available in quick mode");
+  const payload = withStateLock(loaded.statePath, () => {
+    const state = parseWorkflowState(readJson(loaded.statePath));
+    const run = state.run ?? fail("quick workflow has no current run");
+    if (run.id !== requireString(runIdArgument, "run id") || run.status !== "running") {
+      fail("quick run is not running");
+    }
+    run.cursor = cursorArgument === "-" ? null : requireString(cursorArgument, "cursor");
+    state.revision += 1;
+    writeJson(loaded.statePath, state);
+    return { contract: "WORKFLOW_OBSERVE_RECEIPT_V1", status: "recorded", run: run.id, cursor: run.cursor };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function workflowDashboardAckCommand(goalDirectoryArgument        , statusArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const definitionPath = workflowDefinitionPath(goalDirectory);
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflow.mode !== "dag") fail("workflow dashboard acknowledgement requires DAG mode");
+  } else {
+    const planPath = join(goalDirectory, "plan.json");
+    const statePath = join(goalDirectory, "state.json");
+    if (!existsSync(planPath) || !existsSync(statePath)) {
+      fail("workflow dashboard acknowledgement requires an active DAG");
+    }
+    loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+  }
+  const status = requireString(statusArgument, "dashboard status");
+  if (status !== "started" && status !== "failed") fail("dashboard status must be started or failed");
+  const path = workflowDashboardPath(goalDirectory);
+  if (!existsSync(path)) fail("dashboard start has not been requested");
+  const current = requireRecord(readJson(path), "workflow dashboard state");
+  if (current.contract !== "WORKFLOW_DASHBOARD_V1") {
+    fail("workflow dashboard state is invalid");
+  }
+  if (current.status === status) {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_DASHBOARD_RECEIPT_V1",
+      status,
+      idempotent: true,
+    })}\n`);
+    return;
+  }
+  if (current.status !== "pending") {
+    fail("workflow dashboard acknowledgement conflicts with the recorded status");
+  }
+  writeJson(path, {
+    contract: "WORKFLOW_DASHBOARD_V1",
+    status,
+    updated_at: new Date().toISOString(),
+  });
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_DASHBOARD_RECEIPT_V1",
+    status,
+    idempotent: false,
+  })}\n`);
+}
+
+function workflowSupervisorInitCommand(goalDirectoryArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const main = workflowRouteReceipt(goalDirectory, "main");
+  if (main === null) fail("record the Main route before initializing Supervisor");
+  supervisorInitCommand(
+    goalDirectory,
+    requireString(main.thread, "main thread"),
+    requireString(main.host, "main host"),
+  );
+}
+
+function workflowNativeConfirmCommand(goalDirectoryArgument        , tokenArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const receipt = runSelfJson([
+    "native-confirm",
+    join(goalDirectory, "goal.json"),
+    join(goalDirectory, "goal-state.json"),
+    requireString(tokenArgument, "completion token"),
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function quickWorkerOpenCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  const run = loaded.state.run ?? fail("quick workflow has no current run");
+  if (run.id !== requireString(runIdArgument, "run id") || run.status !== "running") {
+    fail("quick run is not running");
+  }
+  const path = quickRuntimePath(loaded.directory, "binding.json");
+  if (!existsSync(path)) fail("quick binding is missing");
+  const binding = requireRecord(readJson(path), "quick binding");
+  if (binding.contract !== "TASK_BINDING_V6") fail("quick binding contract is invalid");
+  const bindingRun = requireRecord(binding.run, "quick binding.run");
+  if (bindingRun.token !== run.token || bindingRun.executor !== run.executor) {
+    fail("quick binding identity mismatch");
+  }
+  process.stdout.write(`${JSON.stringify(binding)}\n`);
+}
+
+function quickWorkerOutcomeCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  status                                    ,
+  requestDag = false,
+)       {
+  const summary = compactUserSummary(
+    readPlainSemanticInput(requestDag ? "DAG upgrade summary" : "worker summary"),
+  );
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  const payload = withStateLock(loaded.statePath, () => {
+    const state = parseWorkflowState(readJson(loaded.statePath));
+    const run = state.run ?? fail("quick workflow has no current run");
+    if (run.id !== requireString(runIdArgument, "run id") || run.status !== "running" || run.executor === null) {
+      fail("quick run is not running");
+    }
+    const ownerId = run.owner ?? fail("quick run owner is missing");
+    const { owner, registry } = quickOwner(loaded.workflow, loaded.definitionPath, ownerId);
+    const approvedGeneration = registry.owners.find((candidate) => candidate.id === ownerId)?.generation;
+    if (
+      registry.digest !== state.registry.digest || approvedGeneration !== run.generation
+    ) fail("Owner Registry changed during quick run; user action is required");
+    const task = quickTask(run, owner);
+    const taskState = quickTaskState(loaded.directory, state, run);
+    const baselinePath = quickRuntimePath(loaded.directory, "baseline.json");
+    if (!existsSync(baselinePath)) fail("quick run baseline is missing");
+    const baseline = parseWorktreeBaseline(readJson(baselinePath), loaded.workflow.workspace);
+    const current = captureWorktreeSnapshot(loaded.workflow.workspace);
+    if (current.tree_oid !== baseline.tree_oid) fail("quick run observed a Git tree content change");
+    const changed = changedWorktreePaths(baseline, current);
+    if (run.kind === "review" && changed.length > 0) {
+      fail(`quick Review cannot modify files: ${changed.join(", ")}`);
+    }
+    if (run.kind === "work") {
+      const outside = changed.filter((path) => !ownerAllowsPath(owner, path));
+      if (outside.length > 0) fail(`quick run changed files outside Owner scope: ${outside.join(", ")}`);
+    }
+    if (status !== "completed" && changed.length > 0) {
+      fail("blocked or failed quick run must stop without unaccepted file changes");
+    }
+    const evidence = status === "completed" && run.kind === "work"
+      ? [readWorkerVerification(
+        workerVerificationPath(loaded.directory, task.id, "quick-check", true),
+        run.id,
+        "quick-check",
+      )]
+      : [];
+    const subject                   = run.kind === "review"
+      ? {
+        id: `review-${loaded.workflow.id}`,
+        role: "review",
+        responsibility: "独立审查快速模式结果",
+        worker_context: "只读取脚本交接和当前工作树",
+      }
+      : owner;
+    const result                 = {
+      contract: "WORKER_RESULT_V5",
+      status,
+      task_id: task.id,
+      logical_id: task.logical_id,
+      role: task.role,
+      owner_id: task.owner_id,
+      runtime_actor_id: null,
+      owner_generation: run.generation,
+      executor_id: run.executor,
+      reservation_token: run.token,
+      attempt: state.revision,
+      source_revision: 1,
+      changed_files: changed,
+      evidence,
+      diff_self_check: status === "completed" ? "pass" : "fail",
+      blocking_findings: status === "blocked" ? [summary] : [],
+      non_blocking_findings: [],
+      follow_up_suggestions: [],
+      reviewed_results: [],
+      review_plan_digest: null,
+      review_workspace_digest: null,
+      scope_request: null,
+      summary,
+      owner_updates: { decisions: [], invariants: [], risks: [] },
+      published_artifacts: [],
+    };
+    parseWorkerResult(result, task, subject, taskState);
+    run.request_dag = requestDag;
+    writeJson(loaded.statePath, state);
+    const candidatePath = quickRuntimePath(loaded.directory, "candidate.json");
+    writeImmutableJson(candidatePath, result);
+    return {
+      contract: "THREAD_TASK_RECEIPT_V1",
+      status,
+      run: run.id,
+      blocking_count: result.blocking_findings.length,
+    };
+  });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+function acceptQuickCandidate(
+  loaded                                 ,
+  state                 ,
+)                                                                 {
+  const run = state.run ?? fail("quick workflow has no current run");
+  const candidatePath = quickRuntimePath(loaded.directory, "candidate.json");
+  if (!existsSync(candidatePath)) fail("quick candidate is missing");
+  const ownerId = run.owner ?? fail("quick run owner is missing");
+  const { goal, owner, registry } = quickOwner(loaded.workflow, loaded.definitionPath, ownerId);
+  const approvedGeneration = registry.owners.find((candidate) => candidate.id === ownerId)?.generation;
+  if (
+    registry.digest !== state.registry.digest || approvedGeneration !== run.generation
+  ) fail("Owner Registry changed before quick acceptance; user action is required");
+  const task = quickTask(run, owner);
+  const taskState = quickTaskState(loaded.directory, state, run);
+  const subject                   = run.kind === "review"
+    ? {
+      id: `review-${loaded.workflow.id}`,
+      role: "review",
+      responsibility: "独立审查快速模式结果",
+      worker_context: "只读取脚本交接和当前工作树",
+    }
+    : owner;
+  const result = parseWorkerResult(readJson(candidatePath), task, subject, taskState);
+  const baseline = parseWorktreeBaseline(
+    readJson(quickRuntimePath(loaded.directory, "baseline.json")),
+    loaded.workflow.workspace,
+  );
+  const current = captureWorktreeSnapshot(loaded.workflow.workspace);
+  if (serializedJson(result.changed_files) !== serializedJson(changedWorktreePaths(baseline, current))) {
+    fail("quick candidate no longer matches the current worktree");
+  }
+  const completed = {
+    title: quickThreadTitle(run),
+    status: result.status,
+    summary: compactUserSummary(result.summary),
+  };
+  const writes                           = [];
+  let updatePersistentOwner = false;
+  if (result.status === "completed" && run.kind === "work") {
+    const priorSummary = state.accepted?.summary ?? "";
+    const accepted                  = {
+      owner: owner.id,
+      executor: run.executor          ,
+      summary: compactUserSummary(
+        priorSummary === "" || priorSummary === result.summary
+          ? result.summary
+          : `${priorSummary}；${result.summary}`,
+      ),
+      files: uniqueStrings([...(state.accepted?.files ?? []), ...result.changed_files]).sort(compareStableStrings),
+      review: null,
+    };
+    state.accepted = accepted;
+    state.next = run.request_dag ? "upgrade" : "decision";
+    state.attention = null;
+    writes.push([quickRuntimePath(loaded.directory, "accepted.json"), {
+      contract: "QUICK_ACCEPTED_V1",
+      objective: loaded.workflow.objective,
+      ...accepted,
+    }]);
+    writes.push([quickRuntimePath(loaded.directory, "handoff.json"), {
+      contract: "QUICK_HANDOFF_V1",
+      objective: loaded.workflow.objective,
+      summary: accepted.summary,
+      files: accepted.files,
+    }]);
+    updatePersistentOwner = true;
+  } else if (result.status === "completed") {
+    if (state.accepted === null) fail("quick Review has no accepted implementation");
+    state.accepted.review = compactUserSummary(result.summary);
+    state.next = "decision";
+    state.attention = null;
+  } else {
+    state.next = "blocked";
+    state.attention = result.summary;
+  }
+  state.run = null;
+  state.revision += 1;
+  writes.push([loaded.statePath, state]);
+  writeTransaction(loaded.statePath, writes);
+  if (updatePersistentOwner) {
+    updatePersistentOwnerCapsule(goal, owner, result, digestJson(result));
+  }
+  if (run.kind === "work") releaseOwnerLease(goal, task, run.token);
+  for (const name of ["candidate.json", "baseline.json", "binding.json"]) {
+    rmSync(quickRuntimePath(loaded.directory, name), { force: true });
+  }
+  rmSync(quickRuntimePath(loaded.directory, "verification"), { recursive: true, force: true });
+  return { state, completed };
+}
+
+function finalizeQuickWorkflow(loaded                                 , state                 )                          {
+  const accepted = state.accepted ?? fail("quick workflow has no accepted result");
+  if (accepted.review === null) fail("quick workflow requires explicit Review before completion");
+  const resultPath = join(loaded.directory, "result.json");
+  const result = {
+    contract: "WORKFLOW_RESULT_V1",
+    mode: "quick",
+    objective: loaded.workflow.objective,
+    summary: accepted.summary,
+    changed_files: accepted.files,
+    review: accepted.review,
+    completed_at: new Date().toISOString(),
+  };
+  writeJson(resultPath, result);
+  state.status = "completed";
+  state.next = "completed";
+  state.run = null;
+  state.accepted = null;
+  state.attention = null;
+  state.result_ref = resultPath;
+  state.revision += 1;
+  writeJson(loaded.statePath, state);
+  rmSync(quickRuntimePath(loaded.directory, "."), { recursive: true, force: true });
+  return {
+    contract: "WORKFLOW_STEP_V1",
+    action: "completed",
+    completed_tasks: [],
+    result_ref: resultPath,
+  };
+}
+
+function upgradeQuickWorkflowToDag(loaded                                 , state                 )       {
+  const accepted = state.accepted ?? fail("quick workflow upgrade requires accepted work");
+  const sourcePath = join(loaded.directory, "source.md");
+  writeTextAtomic(
+    sourcePath,
+    `# 剩余工作\n\n${loaded.workflow.objective}\n\n## 已验收输入\n\n${accepted.summary}\n\n` +
+      `已修改文件：${accepted.files.length === 0 ? "无" : accepted.files.join("、")}\n`,
+  );
+  const goalPath = join(loaded.directory, "goal.json");
+  runSelfJson(["goal-create", goalPath, loaded.workflow.workspace], {
+    contract: "GOAL_INPUT_V1",
+    id: loaded.workflow.id,
+    objective: `继续完成：${loaded.workflow.objective}`,
+    source: sourcePath,
+    scope: ["**/*"],
+  });
+  runSelfJson(["goal-validate", goalPath]);
+  loaded.workflow.mode = "dag";
+  state.next = "dag";
+  state.attention = null;
+  state.revision += 1;
+  writeTransaction(loaded.statePath, [
+    [loaded.definitionPath, loaded.workflow],
+    [loaded.statePath, state],
+  ]);
+}
+
+function completeWorkflowWrapper(goalDirectory        , resultRef        )       {
+  const definitionPath = workflowDefinitionPath(goalDirectory);
+  const statePath = workflowStatePath(goalDirectory);
+  if (!existsSync(definitionPath) || !existsSync(statePath)) return;
+  withStateLock(statePath, () => {
+    const state = parseWorkflowState(readJson(statePath));
+    if (state.status === "completed") return;
+    if (state.accepted !== null && existsSync(resultRef)) {
+      const result = requireRecord(readJson(resultRef), "DAG workflow result");
+      writeJson(resultRef, {
+        ...result,
+        accepted_input: {
+          summary: state.accepted.summary,
+          changed_files: state.accepted.files,
+          owner: state.accepted.owner,
+        },
+      });
+    }
+    state.status = "completed";
+    state.next = "completed";
+    state.run = null;
+    state.accepted = null;
+    state.attention = null;
+    state.result_ref = resultRef;
+    state.revision += 1;
+    writeJson(statePath, state);
+    rmSync(quickRuntimePath(goalDirectory, "."), { recursive: true, force: true });
+  });
+}
+
+function quickWorkflowStepCommand(goalDirectoryArgument        )       {
+  const loaded = loadWorkflow(goalDirectoryArgument);
+  let completed                                 = null;
+  let state = withStateLock(loaded.statePath, () => {
+    const current = parseWorkflowState(readJson(loaded.statePath));
+    if (current.run !== null && existsSync(quickRuntimePath(loaded.directory, "candidate.json"))) {
+      const accepted = acceptQuickCandidate(loaded, current);
+      completed = accepted.completed;
+      return accepted.state;
+    }
+    return current;
+  });
+  if (state.status === "completed") {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: "completed",
+      completed_tasks: [],
+      result_ref: state.result_ref,
+    })}\n`);
+    return;
+  }
+  if (state.run !== null) {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: state.run.status === "reserved" ? "attach_required" : "wait_thread",
+      completed_tasks: completed === null ? [] : [completed],
+      ...quickRunReceipt(loaded.workflow, loaded.definitionPath, state),
+      executor: state.run.executor,
+    })}\n`);
+    return;
+  }
+  if (hasCurrentOwnerChange(loaded.workflow.workspace)) {
+    if (currentOwnerChangeApplied(loaded.workflow.workspace)) {
+      const registry = approvedOwnerRegistry(syntheticQuickGoal(
+        loaded.workflow,
+        loaded.definitionPath,
+      ));
+      state.registry = { revision: registry.revision, digest: registry.digest };
+      state.revision += 1;
+      writeJson(loaded.statePath, state);
+      rmSync(currentOwnerChangeDirectory(loaded.workflow.workspace), {
+        recursive: true,
+        force: true,
+      });
+    } else {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "owner_action_required",
+        completed_tasks: completed === null ? [] : [completed],
+        reason: "Owner 变化等待用户批准并通过脚本应用",
+      })}\n`);
+      return;
+    }
+  }
+  if (state.next === "upgrade") {
+    upgradeQuickWorkflowToDag(loaded, state);
+    workflowStepCommand(loaded.directory);
+    return;
+  }
+  if (state.next === "decision" && state.accepted?.review !== null) {
+    process.stdout.write(`${JSON.stringify(finalizeQuickWorkflow(loaded, state))}\n`);
+    return;
+  }
+  const goal = syntheticQuickGoal(loaded.workflow, loaded.definitionPath);
+  const registry = approvedOwnerRegistry(goal);
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_STEP_V1",
+    action: state.next === "owner"
+      ? "owner_required"
+      : state.next === "decision"
+        ? "next_owner_or_review"
+        : "user_blocked",
+    completed_tasks: completed === null ? [] : [completed],
+    attention: state.attention,
+    owners: registry.owners.map((owner) => ({ id: owner.id, responsibility: owner.responsibility })),
+  })}\n`);
+}
+
+function workerOpenCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const definitionPath = workflowDefinitionPath(resolve(goalDirectoryArgument));
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflow.mode === "quick") return quickWorkerOpenCommand(goalDirectoryArgument, runIdArgument);
+  }
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  if (run.taskState.status !== "running" || run.taskState.executor_id === null) {
+    fail(`run ${runIdArgument} is not bound to a running thread`);
+  }
+  const binding = readTaskBindingSnapshot(
+    taskBindingSnapshotPath(run.goalDirectory, run.task, run.taskState),
+    run.planPath,
+    run.statePath,
+    run.task,
+    run.taskState,
+    run.taskState.executor_id,
+  );
+  process.stdout.write(`${JSON.stringify(binding)}\n`);
+}
+
+function workerVerificationPath(
+  goalDirectory        ,
+  taskId        ,
+  verificationId        ,
+  quick         ,
+)         {
+  return quick
+    ? quickRuntimePath(goalDirectory, join("verification", `${verificationId}.json`))
+    : join(goalDirectory, "artifacts", "verification", taskId, `${verificationId}.json`);
+}
+
+function readWorkerVerification(
+  path        ,
+  runId        ,
+  verificationId        ,
+)           {
+  if (!existsSync(path)) fail(`verification has not been run: ${verificationId}`);
+  const value = requireRecord(readJson(path), `verification ${verificationId}`);
+  requireExactKeys(
+    value,
+    ["contract", "run", "verification_id", "argv", "cwd", "status", "exit_code", "stdout", "stderr", "finished_at"],
+    `verification ${verificationId}`,
+  );
+  if (value.contract !== "WORKER_VERIFICATION_V1") fail("worker verification contract is invalid");
+  if (value.run !== runId || value.verification_id !== verificationId) {
+    fail(`verification identity mismatch: ${verificationId}`);
+  }
+  if (value.status !== "passed") fail(`verification did not pass: ${verificationId}`);
+  return {
+    verification_id: verificationId,
+    outcome: "passed",
+    summary: `${verificationId} passed by runtime script`,
+    artifact_ref: path,
+    artifact_digest: digestFile(path),
+  };
+}
+
+function workerVerifyCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  verificationIdArgument        ,
+  command          ,
+)       {
+  if (command.length === 0) fail("worker verify requires a command argv");
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const runId = requireString(runIdArgument, "run id");
+  const verificationId = requireIdentifier(verificationIdArgument, "verification id");
+  const definitionPath = workflowDefinitionPath(goalDirectory);
+  let workspace        ;
+  let taskId        ;
+  let quick = false;
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflow.mode === "quick") {
+      const loaded = loadWorkflow(goalDirectory);
+      const run = loaded.state.run ?? fail("quick workflow has no current run");
+      if (run.id !== runId || run.status !== "running" || run.executor === null || run.kind !== "work") {
+        fail("quick verification requires the current running work run");
+      }
+      if (verificationId !== "quick-check") fail("quick verification id must equal quick-check");
+      workspace = workflow.workspace;
+      taskId = "QUICK-WORK";
+      quick = true;
+    } else {
+      const run = taskForRun(goalDirectory, runId);
+      if (run.taskState.status !== "running" || run.taskState.executor_id === null) {
+        fail("DAG verification requires a bound running task");
+      }
+      if (!run.task.verification_ids.includes(verificationId)) {
+        fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
+      }
+      workspace = run.goal.workspace.root;
+      taskId = run.task.id;
+    }
+  } else {
+    const run = taskForRun(goalDirectory, runId);
+    if (run.taskState.status !== "running" || run.taskState.executor_id === null) {
+      fail("DAG verification requires a bound running task");
+    }
+    if (!run.task.verification_ids.includes(verificationId)) {
+      fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
+    }
+    workspace = run.goal.workspace.root;
+    taskId = run.task.id;
+  }
+  const execution = spawnSync(command[0], command.slice(1), {
+    cwd: workspace,
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+    timeout: 10 * 60 * 1000,
+    maxBuffer: 1024 * 1024,
+  });
+  const status = execution.error === undefined && execution.status === 0 ? "passed" : "failed";
+  const compactOutput = (value                           )         => {
+    const output = value ?? "";
+    return [...output].length <= 32_000 ? output : `${[...output].slice(0, 31_999).join("")}…`;
+  };
+  const path = workerVerificationPath(goalDirectory, taskId, verificationId, quick);
+  writeJson(path, {
+    contract: "WORKER_VERIFICATION_V1",
+    run: runId,
+    verification_id: verificationId,
+    argv: command,
+    cwd: workspace,
+    status,
+    exit_code: execution.status,
+    stdout: compactOutput(execution.stdout),
+    stderr: compactOutput(execution.error?.message ?? execution.stderr),
+    finished_at: new Date().toISOString(),
+  });
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKER_VERIFICATION_RECEIPT_V1",
+    status,
+    verification_id: verificationId,
+    log_ref: path,
+  })}\n`);
+}
+
+function workerOutcomeCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  status                                    ,
+  reviewUpgradeReason         ,
+)       {
+  const definitionPath = workflowDefinitionPath(resolve(goalDirectoryArgument));
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflow.mode === "quick") {
+      return quickWorkerOutcomeCommand(goalDirectoryArgument, runIdArgument, status);
+    }
+  }
+  const summary = compactUserSummary(readPlainSemanticInput("worker summary"));
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const evidence = status === "completed"
+    ? run.task.verification_ids.map((id) => readWorkerVerification(
+      workerVerificationPath(run.goalDirectory, run.task.id, id, false),
+      requireString(runIdArgument, "run id"),
+      id,
+    ))
+    : run.task.verification_ids.map((id) => ({
+      verification_id: id,
+      outcome: "not_run"         ,
+      summary: `${id} not run`,
+      artifact_ref: null,
+      artifact_digest: null,
+    }));
+  const receipt = runSelfJson(
+    [
+      "result-submit",
+      run.planPath,
+      run.statePath,
+      run.task.id,
+      requireString(run.taskState.reservation_token, "reservation token"),
+    ],
+    {
+      contract: "TASK_RESULT_INPUT_V2",
+      status,
+      summary,
+      evidence: evidence.map((item) => ({
+        id: item.verification_id,
+        outcome: item.outcome,
+        summary: item.summary,
+        artifact: item.artifact_ref,
+      })),
+      ...(status === "blocked" ? { blocking: [summary] } : {}),
+      ...(reviewUpgradeReason === undefined ? {} : { review_upgrade: reviewUpgradeReason }),
+    },
+  );
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function workerRiskOutcomeCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  riskCodeArgument        ,
+)       {
+  const riskCode = requireString(riskCodeArgument, "risk code");
+  const reasons                         = {
+    "public-interface": "公共接口变化",
+    security: "安全风险",
+    concurrency: "并发风险",
+    permissions: "权限风险",
+    compatibility: "兼容性风险",
+    scope: "scope 扩张",
+    flaky: "测试不稳定",
+    "repeated-failure": "重复失败",
+  };
+  if (reasons[riskCode] === undefined) fail(`invalid risk code: ${riskCode}`);
+  workerOutcomeCommand(goalDirectoryArgument, runIdArgument, "completed", reasons[riskCode]);
+}
+
+function workerScopeRequestCommand(
+  goalDirectoryArgument        ,
+  runIdArgument        ,
+  paths          ,
+)       {
+  if (paths.length === 0) fail("worker-request-scope requires at least one repository path");
+  const reason = readPlainSemanticInput("scope request reason");
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const receipt = runSelfJson(
+    [
+      "result-submit",
+      run.planPath,
+      run.statePath,
+      run.task.id,
+      requireString(run.taskState.reservation_token, "reservation token"),
+    ],
+    {
+      contract: "TASK_RESULT_INPUT_V2",
+      status: "needs_repair",
+      summary: reason,
+      evidence: run.task.verification_ids.map((id) => ({
+        id,
+        outcome: "not_run",
+        summary: `${id} not run`,
+      })),
+      scope: { paths, reason },
+    },
+  );
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function workerSubgraphCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const reason = readPlainSemanticInput("subgraph reason");
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const receipt = runSelfJson([
+    "subgraph-request",
+    run.planPath,
+    run.statePath,
+    run.task.id,
+    requireString(run.taskState.reservation_token, "reservation token"),
+    reason,
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function workerRequestDagCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const definitionPath = workflowDefinitionPath(resolve(goalDirectoryArgument));
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflow.mode === "quick") {
+      return quickWorkerOutcomeCommand(goalDirectoryArgument, runIdArgument, "completed", true);
+    }
+  }
+  workerSubgraphCommand(goalDirectoryArgument, runIdArgument);
+}
+
+function plannerReviewDecisionCommand(goalDirectoryArgument        , args          )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const planPath = join(goalDirectory, "plan.json");
+  if (!existsSync(planPath)) fail(`plan.json is missing: ${planPath}`);
+  const decision = requireString(args[0], "planner review decision");
+  if (decision === "pass") {
+    if (args.length !== 1) fail("planner-review pass takes no issue codes");
+    const receipt = runSelfJson(["planner-review-submit", planPath], {
+      parallelism: "pass",
+      too_complex: false,
+      too_simple: false,
+      changes: [],
+    });
+    process.stdout.write(`${JSON.stringify(receipt)}\n`);
+    return;
+  }
+  if (decision !== "revise" || args.length < 2) {
+    fail("planner-review requires pass or revise <parallelism|too-complex|too-simple>...");
+  }
+  const issues = uniqueStrings(args.slice(1));
+  const allowed = new Set(["parallelism", "too-complex", "too-simple"]);
+  for (const issue of issues) if (!allowed.has(issue)) fail(`invalid planner review issue: ${issue}`);
+  const changeText                         = {
+    parallelism: "提高无依赖分支的可执行宽度",
+    "too-complex": "合并过细节点并使用 Composite 子图",
+    "too-simple": "拆分范围过大的任务并明确依赖",
+  };
+  const receipt = runSelfJson(["planner-review-submit", planPath], {
+    parallelism: issues.includes("parallelism") ? "revise" : "pass",
+    too_complex: issues.includes("too-complex"),
+    too_simple: issues.includes("too-simple"),
+    changes: issues.map((issue) => changeText[issue]),
+  });
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function plannerOpenCommand(goalDirectoryArgument        , cursorArgument         )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goalPath = join(goalDirectory, "goal.json");
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const goal = parseGoal(readJson(goalPath));
+  const registry = approvedOwnerRegistry(goal);
+  const cursor = cursorArgument === undefined
+    ? 0
+    : requireNonNegativeInteger(Number(cursorArgument), "planner cursor");
+  let action = "initial_plan";
+  let revision                = null;
+  let tasks                                 = [];
+  let reviewUpgrades                                 = [];
+  let subgraphRequests                                 = [];
+  let problems                                 = [];
+  if (existsSync(planPath)) {
+    const rawState = existsSync(statePath)
+      ? requireRecord(readJson(statePath), "planner state")
+      : null;
+    const ownerTransitionPending = rawState?.owner_change !== null &&
+      rawState?.owner_change !== undefined;
+    const loaded = existsSync(statePath)
+      ? loadPlanAndState(planPath, statePath, {
+        allowSourceDrift: true,
+        allowOwnerRegistryDrift: ownerTransitionPending,
+      })
+      : null;
+    const parsed = loaded?.plan ?? parsePlan(readJson(planPath), planPath).plan;
+    revision = parsed.revision;
+    const state = loaded?.state ?? null;
+    if (state === null) {
+      action = "review_draft";
+    } else {
+      const goalState = goalStateForPlan(planPath, parsed, goal).state;
+      reviewUpgrades = pendingReviewUpgrades(state);
+      subgraphRequests = pendingSubgraphRequests(parsed, state).map((request) => {
+        const task = parsed.tasks.find((candidate) => candidate.id === request.task_id)                  ;
+        const taskState = state.tasks[request.task_id];
+        const semantic = validateTaskSubgraphRequest(
+          readJson(request.request_ref),
+          task,
+          taskState,
+        );
+        return {
+          task_id: request.task_id,
+          run: taskRunId(request.task_id, taskState),
+          reason: semantic.reason,
+        };
+      });
+      action = ownerTransitionPending && registry.digest !== state.owner_registry.digest
+        ? "owner_transition"
+        : reviewUpgrades.length > 0
+          ? "upgrade_review"
+          : subgraphRequests.length > 0
+            ? "expand_subgraph"
+            : coordinatedNextAction(
+              planPath,
+              parsed,
+              goal,
+              loaded?.coverage                ,
+              state,
+              goalState,
+            );
+      problems = parsed.tasks.flatMap((task) => {
+        const taskState = state.tasks[task.id];
+        if (!new Set(["blocked", "failed", "needs_repair"]).has(taskState.status) ||
+          taskState.result_ref === null || !existsSync(taskState.result_ref)) return [];
+        const result = parseWorkerResult(
+          readJson(taskState.result_ref),
+          task,
+          subjectForTask(parsed, task),
+          taskState,
+        );
+        return [{
+          task_id: task.id,
+          status: taskState.status,
+          summary: compactUserSummary(result.summary),
+          blocking: result.blocking_findings.map(compactUserSummary).slice(0, 8),
+        }];
+      }).slice(0, 50);
+    }
+    tasks = parsed.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      owner: task.owner_id ?? task.runtime_actor_id,
+      role: task.role,
+      status: state === null ? "draft" : state.tasks[task.id].status,
+      after: task.depends_on,
+      parent: task.parent_task_id,
+    }));
+  }
+  const pageSize = 50;
+  const page = tasks.slice(cursor, cursor + pageSize);
+  process.stdout.write(`${JSON.stringify({
+    contract: "PLANNER_OPEN_V1",
+    action,
+    goal: {
+      id: goal.goal_id,
+      objective: goal.objective,
+      source: goal.source.path,
+    },
+    revision,
+    owners: registry.owners.map((owner) => ({
+      id: owner.id,
+      responsibility: owner.responsibility,
+      scope: owner.scope_patterns,
+    })),
+    tasks: page,
+    review_upgrades: reviewUpgrades,
+    subgraph_requests: subgraphRequests,
+    problems,
+    next_cursor: cursor + page.length < tasks.length ? cursor + page.length : null,
+  })}\n`);
+}
+
+function plannerSubmitCommand(goalDirectoryArgument        , modeArgument        , runId         )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goalPath = join(goalDirectory, "goal.json");
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const mode = requireString(modeArgument, "planner submit mode");
+  const input = readStructuredInput("-");
+  let receipt                         ;
+  if (mode === "initial") {
+    if (runId !== undefined) fail("planner-submit initial does not accept run id");
+    receipt = runSelfJson(["plan-create", goalPath, planPath], input);
+  } else if (mode === "revise") {
+    if (runId !== undefined) fail("planner-submit revise does not accept run id");
+    receipt = runSelfJson(["plan-revise", goalPath, planPath], input);
+  } else if (mode === "delta") {
+    if (runId !== undefined) fail("planner-submit delta does not accept run id");
+    receipt = runSelfJson(["apply-delta", planPath, statePath, "-"], input);
+  } else if (mode === "subgraph") {
+    if (runId === undefined) fail("planner-submit subgraph requires run id");
+    const run = taskForRun(goalDirectory, runId);
+    receipt = runSelfJson([
+      "expand-subgraph",
+      run.planPath,
+      run.statePath,
+      run.task.id,
+      requireString(run.taskState.reservation_token, "reservation token"),
+      "-",
+    ], input);
+  } else {
+    fail("planner-submit mode must be initial, revise, delta, or subgraph");
+  }
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function workflowCreateCommand(
+  workspaceArgument        ,
+  goalIdArgument        ,
+  sourceArgument        ,
+)       {
+  const workspaceRoot = resolve(workspaceArgument);
+  const goalId = requireIdentifier(goalIdArgument, "goal id");
+  const sourcePath = isAbsolute(sourceArgument)
+    ? resolve(sourceArgument)
+    : resolve(workspaceRoot, sourceArgument);
+  const objective = readPlainSemanticInput("goal objective");
+  const goalDirectory = join(
+    workspaceRoot,
+    ".ghost-agent-workflow",
+    "runtime",
+    "goals",
+    goalId,
+  );
+  mkdirSync(goalDirectory, { recursive: true });
+  const goalPath = join(goalDirectory, "goal.json");
+  const created = runSelfJson(
+    ["goal-create", goalPath, workspaceRoot],
+    {
+      contract: "GOAL_INPUT_V1",
+      id: goalId,
+      objective,
+      source: sourcePath,
+      scope: ["**/*"],
+    },
+  );
+  const validated = runSelfJson(["goal-validate", goalPath]);
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_CREATE_RECEIPT_V1",
+    status: validated.status,
+    goal_dir: goalDirectory,
+    goal_ref: created.goal_ref,
+    thread_titles: validated.thread_titles,
+  })}\n`);
+}
+
+function workflowStartCommand(workspaceArgument        , modeArgument        )       {
+  const workspace = resolve(workspaceArgument);
+  if (!existsSync(workspace)) fail(`workspace root does not exist: ${workspace}`);
+  const mode = requireString(modeArgument, "workflow mode")                ;
+  if (mode !== "quick" && mode !== "dag") fail("workflow mode must equal quick or dag");
+  const objective = requireChineseText(readPlainSemanticInput("workflow objective"), "workflow objective");
+  loadThreadWorkflowConfig(workspace);
+  const active = activeWorkflowDirectories(workspace);
+  if (active.length > 0) {
+    fail(`workspace already has an active workflow: ${active.join(", ")}`);
+  }
+  const id = `wf-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+  const directory = join(workspace, ".ghost-agent-workflow", "runtime", "goals", id);
+  const definitionPath = workflowDefinitionPath(directory);
+  const statePath = workflowStatePath(directory);
+  const workflow                       = {
+    contract: "WORKFLOW_V1",
+    id,
+    mode,
+    workspace,
+    objective,
+    created_at: new Date().toISOString(),
+  };
+  const registryGoal = syntheticQuickGoal(workflow, definitionPath);
+  const registry = approvedOwnerRegistry(registryGoal);
+  if (registry.owners.length === 0) fail("workflow requires at least one approved Owner");
+  const state                  = {
+    contract: "WORKFLOW_STATE_V1",
+    status: "active",
+    revision: 1,
+    next: mode === "quick" ? "owner" : "dag",
+    registry: { revision: registry.revision, digest: registry.digest },
+    run: null,
+    accepted: null,
+    attention: null,
+    result_ref: null,
+  };
+  const routes                   = {
+    contract: "WORKFLOW_ROUTES_V1",
+    main: null,
+    planner: null,
+    planner_reviewer: null,
+  };
+  mkdirSync(directory, { recursive: true });
+  try {
+    if (mode === "quick") {
+      writeTransaction(statePath, [
+        [definitionPath, workflow],
+        [workflowRoutesPath(directory), routes],
+        [statePath, state],
+      ]);
+    } else {
+      const sourcePath = join(directory, "source.md");
+      writeTextAtomic(sourcePath, `# 工作目标\n\n${objective}\n`);
+      runSelfJson(["goal-create", join(directory, "goal.json"), workspace], {
+        contract: "GOAL_INPUT_V1",
+        id,
+        objective,
+        source: sourcePath,
+        scope: ["**/*"],
+      });
+      runSelfJson(["goal-validate", join(directory, "goal.json")]);
+      writeTransaction(statePath, [
+        [definitionPath, workflow],
+        [workflowRoutesPath(directory), routes],
+        [statePath, state],
+      ]);
+    }
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_START_V1",
+    status: "created",
+    mode,
+    workflow_dir: directory,
+    thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
+    action: mode === "quick" ? "owner_required" : "planner_required",
+  })}\n`);
+}
+
+function ownerPauseCurrentCommand(goalDirectoryArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goalPath = join(goalDirectory, "goal.json");
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const goal = parseGoal(readJson(goalPath));
+  const requestPath = join(
+    goal.workspace.root,
+    ".ghost-agent-workflow",
+    "runtime",
+    "owner-change",
+    "current",
+    "request.json",
+  );
+  if (!existsSync(requestPath)) fail("current Owner change request is missing");
+  const receipt = runSelfJson(["owner-change-pause", planPath, statePath, requestPath]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function supervisorResumeCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  const receipt = runSelfJson([
+    "supervisor-record",
+    resolve(goalDirectoryArgument),
+    "resumed",
+    run.task.id,
+    String(run.taskState.attempt),
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function supervisorInitCommand(
+  goalDirectoryArgument        ,
+  mainThreadIdArgument        ,
+  mainHostIdArgument        ,
+)       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  const threadsPath = join(goalDirectory, "threads.json");
+  const registry = runSelfJson([
+    "thread-registry",
+    "init",
+    threadsPath,
+    goal.goal_id,
+    requireString(mainThreadIdArgument, "main thread id"),
+    requireString(mainHostIdArgument, "main host id"),
+  ]);
+  const profile = loadThreadWorkflowConfig(goal.workspace.root).profiles.supervisor;
+  process.stdout.write(`${JSON.stringify({
+    contract: "SUPERVISOR_INIT_V1",
+    status: registry.status,
+    thread_title: goalThreadTitles(goal).supervisor,
+    model: profile.model,
+    effort: profile.reasoning_effort,
+  })}\n`);
+}
+
+function supervisorRecoverRunCommand(goalDirectoryArgument        , runIdArgument        )       {
+  const reason = readPlainSemanticInput("recovery reason");
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  const receipt = runSelfJson([
+    "supervisor-recover",
+    resolve(goalDirectoryArgument),
+    run.task.id,
+    String(run.taskState.attempt),
+    reason,
+  ]);
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function workflowStepCommand(goalDirectoryArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const definitionPath = workflowDefinitionPath(goalDirectory);
+  if (existsSync(definitionPath)) {
+    const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
+    if (workflowRouteReceipt(goalDirectory, "main") === null) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "main_route_required",
+        thread_title: `[GA][任务][主控] ${compactUserSummary(workflow.objective)}`,
+      })}\n`);
+      return;
+    }
+    if (workflow.mode === "quick") return quickWorkflowStepCommand(goalDirectory);
+  }
+  const goalPath = join(goalDirectory, "goal.json");
+  const goalStatePath = join(goalDirectory, "goal-state.json");
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  if (!existsSync(goalPath)) fail(`goal.json is missing: ${goalPath}`);
+  if (!existsSync(goalStatePath)) runSelfJson(["goal-validate", goalPath]);
+  const goal = parseGoal(readJson(goalPath));
+  const currentGoalState = requireRecord(readJson(goalStatePath), "workflow goal state");
+  if (currentGoalState.status === "completed") {
+    const completedResultRef = requireString(currentGoalState.result_ref, "workflow goal result_ref");
+    const nativeSync = requireRecord(currentGoalState.native_sync, "workflow native sync");
+    if (nativeSync.status === "pending") {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "native_completion_required",
+        completed_tasks: [],
+        result_ref: completedResultRef,
+        native_action: {
+          action: "update_goal",
+          status: "complete",
+          completion_token: requireString(nativeSync.completion_token, "native completion token"),
+          objective_digest: requireString(nativeSync.objective_digest, "native objective digest"),
+          native_goal: goal.lifecycle.native_goal,
+        },
+      })}\n`);
+      return;
+    }
+    completeWorkflowWrapper(goalDirectory, completedResultRef);
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: "completed",
+      completed_tasks: [],
+      result_ref: completedResultRef,
+      native_sync: nativeSync.status,
+    })}\n`);
+    return;
+  }
+
+  if (hasCurrentOwnerChange(goal.workspace.root) && !existsSync(statePath)) {
+    if (!currentOwnerChangeApplied(goal.workspace.root)) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "owner_action_required",
+        completed_tasks: [],
+        reason: "Owner 变化等待用户批准并通过脚本应用",
+      })}\n`);
+      return;
+    }
+    if (existsSync(planPath)) {
+      rmSync(planPath, { force: true });
+      rmSync(join(goalDirectory, "coverage.json"), { force: true });
+      rmSync(plannerReviewDirectory(planPath), { recursive: true, force: true });
+    }
+    rmSync(currentOwnerChangeDirectory(goal.workspace.root), { recursive: true, force: true });
+  }
+  if (!existsSync(planPath)) {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: "planner_required",
+      planner_action: "initial_plan",
+      goal_dir: goalDirectory,
+      thread_title: goalThreadTitles(goal).planner,
+      preferred_thread: preferredWorkflowThread(goalDirectory, "planner"),
+      ...threadProfileReceipt(goal.workspace.root, "planner"),
+    })}\n`);
+    return;
+  }
+  if (!existsSync(statePath)) {
+    const { plan } = parsePlan(readJson(planPath), planPath);
+    const contextPath = plannerReviewContextPath(planPath, plan.revision);
+    if (!existsSync(contextPath)) runSelfJson(["planner-review-context", planPath, "--compact"]);
+    const reviewPath = plannerReviewPath(planPath, plan.revision);
+    if (!existsSync(reviewPath)) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "planner_review_required",
+        context_ref: contextPath,
+        thread_title: goalThreadTitles(parseGoal(readJson(goalPath))).planner_reviewer,
+        preferred_thread: preferredWorkflowThread(goalDirectory, "planner_reviewer"),
+        ...threadProfileReceipt(goal.workspace.root, "review"),
+      })}\n`);
+      return;
+    }
+    const review = parsePlannerReview(readJson(reviewPath), planPath, plan);
+    if (review.decision === "revise") {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: plan.revision >= 2 ? "main_attention_required" : "planner_revision_required",
+        reasons: review.changes,
+        thread_title: goalThreadTitles(parseGoal(readJson(goalPath))).planner,
+        preferred_thread: preferredWorkflowThread(goalDirectory, "planner"),
+        ...threadProfileReceipt(goal.workspace.root, "planner"),
+      })}\n`);
+      return;
+    }
+    runSelfJson(["activate", planPath]);
+  }
+
+  let ownerActionPending = false;
+  if (hasCurrentOwnerChange(goal.workspace.root)) {
+    let rawState = requireRecord(readJson(statePath), "workflow DAG state");
+    if (rawState.owner_change === null) {
+      runSelfJson([
+        "owner-change-pause",
+        planPath,
+        statePath,
+        currentOwnerChangePath(goal.workspace.root, "request.json"),
+      ]);
+      rawState = requireRecord(readJson(statePath), "paused workflow DAG state");
+    }
+    const pausedState = loadPlanAndState(planPath, statePath, {
+      allowSourceDrift: true,
+      allowOwnerRegistryDrift: true,
+    }).state;
+    const currentRegistry = approvedOwnerRegistry(goal);
+    if (pausedState.owner_registry.digest !== currentRegistry.digest) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "planner_required",
+        planner_action: "owner_transition",
+        completed_tasks: [],
+        thread_title: goalThreadTitles(goal).planner,
+        preferred_thread: preferredWorkflowThread(goalDirectory, "planner"),
+        ...threadProfileReceipt(goal.workspace.root, "planner"),
+      })}\n`);
+      return;
+    }
+    ownerActionPending = true;
+  }
+
+  const dashboardPath = workflowDashboardPath(goalDirectory);
+  if (!existsSync(dashboardPath)) {
+    writeJson(dashboardPath, {
+      contract: "WORKFLOW_DASHBOARD_V1",
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    });
+  }
+  const dashboard = requireRecord(readJson(dashboardPath), "workflow dashboard state");
+  if (dashboard.contract !== "WORKFLOW_DASHBOARD_V1" ||
+    !new Set(["pending", "started", "failed"]).has(String(dashboard.status))) {
+    fail("workflow dashboard state is invalid");
+  }
+  if (dashboard.status === "pending") {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: "dashboard_start_required",
+      goal_id: goal.goal_id,
+      goal_dir: goalDirectory,
+    })}\n`);
+    return;
+  }
+
+  const completedTasks                            = [];
+  for (let cycle = 0; cycle < 32; cycle += 1) {
+    const loaded = loadPlanAndState(planPath, statePath, {
+      allowSourceDrift: true,
+      allowOwnerRegistryDrift: ownerActionPending,
+    });
+    for (const task of loaded.plan.tasks) {
+      const taskState = loaded.state.tasks[task.id];
+      if (
+        taskState.status === "running" && taskState.result_path !== null &&
+        existsSync(taskState.result_path)
+      ) {
+        const receipt = runSelfJson([
+          "finish",
+          planPath,
+          statePath,
+          task.id,
+          requireString(taskState.reservation_token, "reservation token"),
+          taskState.result_path,
+          "--compact",
+        ]);
+        completedTasks.push({
+          task_id: receipt.task_id,
+          status: receipt.status,
+          user_message: receipt.user_message,
+        });
+      }
+    }
+
+    if (ownerActionPending) {
+      let current = loadPlanAndState(planPath, statePath, {
+        allowSourceDrift: true,
+        allowOwnerRegistryDrift: true,
+      }).state;
+      const reserved = Object.entries(current.tasks)
+        .filter(([, task]) => task.status === "reserved");
+      for (const [taskId, taskState] of reserved) {
+        runSelfJson([
+          "abandon",
+          planPath,
+          statePath,
+          taskId,
+          requireString(taskState.reservation_token, "reservation token"),
+          "Owner change reached before thread bind",
+        ]);
+      }
+      if (reserved.length > 0) {
+        current = loadPlanAndState(planPath, statePath, {
+          allowSourceDrift: true,
+          allowOwnerRegistryDrift: true,
+        }).state;
+      }
+      const active = Object.entries(current.tasks)
+        .filter(([, task]) => task.status === "reserved" || task.status === "running")
+        .map(([taskId]) => taskId);
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "owner_action_required",
+        completed_tasks: completedTasks,
+        reason: active.length === 0
+          ? "Owner 变化等待用户批准并通过脚本应用"
+          : "Owner 变化已暂停新任务；等待当前任务到达安全边界",
+        active_tasks: active,
+      })}\n`);
+      return;
+    }
+
+    const reconciled = runSelfJson(["reconcile", planPath, statePath, "--compact"]);
+    const nextAction = requireString(reconciled.next_action, "workflow next action");
+    if (nextAction === "execute") {
+      const active = Array.isArray(reconciled.active_reservations)
+        ? reconciled.active_reservations.map((value, index) =>
+          requireRecord(value, `active reservation ${index}`)
+        )
+        : [];
+      let ranScript = false;
+      for (const reservation of active.filter((item) => item.action === "run_script")) {
+        runSelfJson([
+          "runtime-execute",
+          planPath,
+          statePath,
+          requireIdentifier(reservation.task_id, "runtime task id"),
+          requireString(reservation.reservation_token, "runtime reservation token"),
+        ]);
+        ranScript = true;
+      }
+      if (ranScript) continue;
+      const reserved = runSelfJson(["reserve", planPath, statePath, "--compact"]);
+      const actions = Array.isArray(reserved.actions)
+        ? reserved.actions.map((value, index) => requireRecord(value, `reserve action ${index}`))
+        : [];
+      for (const action of actions.filter((item) => item.action === "run_script")) {
+        runSelfJson([
+          "runtime-execute",
+          planPath,
+          statePath,
+          requireIdentifier(action.task_id, "runtime task id"),
+          requireString(action.reservation_token, "runtime reservation token"),
+        ]);
+        ranScript = true;
+      }
+      if (ranScript) continue;
+      const threadsPath = join(goalDirectory, "threads.json");
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: existsSync(threadsPath) ? "supervisor_required" : "supervisor_init_required",
+        completed_tasks: completedTasks,
+        thread_title: goalThreadTitles(parseGoal(readJson(goalPath))).supervisor,
+      })}\n`);
+      return;
+    }
+    if (nextAction === "finalize") {
+      const finalized = runSelfJson([
+        "finalize",
+        goalPath,
+        goalStatePath,
+        planPath,
+        statePath,
+        "--compact",
+      ]);
+      completeWorkflowWrapper(goalDirectory, requireString(finalized.result_ref, "finalized result_ref"));
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "completed",
+        completed_tasks: completedTasks,
+        result_ref: finalized.result_ref,
+        native_sync: finalized.native_sync,
+        ...(finalized.native_action === undefined ? {} : { native_action: finalized.native_action }),
+      })}\n`);
+      return;
+    }
+    if (nextAction === "source_refresh") {
+      runSelfJson(["goal-refresh", goalPath, goalStatePath, planPath, statePath]);
+      continue;
+    }
+    if (["upgrade_review", "expand_subgraph", "needs_delta", "repair"].includes(nextAction)) {
+      const subgraph = nextAction === "expand_subgraph"
+        ? pendingSubgraphRequests(loaded.plan, loaded.state)[0]
+        : null;
+      const subgraphTask = subgraph === null || subgraph === undefined
+        ? null
+        : loaded.plan.tasks.find((task) => task.id === subgraph.task_id) ?? null;
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "planner_required",
+        planner_action: nextAction,
+        completed_tasks: completedTasks,
+        thread_title: subgraphTask === null
+          ? goalThreadTitles(goal).planner
+          : compositePlannerThreadTitle(subgraphTask),
+        preferred_thread: preferredWorkflowThread(goalDirectory, "planner"),
+        ...threadProfileReceipt(goal.workspace.root, "planner"),
+      })}\n`);
+      return;
+    }
+    if (nextAction === "awaiting_owner_action") {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "owner_action_required",
+        completed_tasks: completedTasks,
+        reason: "Owner 变化等待用户处理",
+      })}\n`);
+      return;
+    }
+    if (nextAction === "source_drift_drain") {
+      const reserved = loaded.plan.tasks.filter((task) =>
+        loaded.state.tasks[task.id].status === "reserved"
+      );
+      if (reserved.length > 0) {
+        for (const task of reserved) {
+          runSelfJson([
+            "abandon",
+            planPath,
+            statePath,
+            task.id,
+            requireString(loaded.state.tasks[task.id].reservation_token, "reservation token"),
+            "source changed before thread bind",
+          ]);
+        }
+        continue;
+      }
+      const threadsPath = join(goalDirectory, "threads.json");
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: existsSync(threadsPath) ? "supervisor_required" : "supervisor_init_required",
+        completed_tasks: completedTasks,
+        reason: "源文件变化；等待当前执行线程结束后由脚本刷新",
+        thread_title: goalThreadTitles(goal).supervisor,
+      })}\n`);
+      return;
+    }
+    if (["confirm_stale_executors", "user_blocked"].includes(nextAction)) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "user_action_required",
+        reason: nextAction,
+        completed_tasks: completedTasks,
+        stale_runs: nextAction === "confirm_stale_executors"
+          ? loaded.state.stale_executors.map((item) => ({
+            executor: item.executor_id,
+            task: item.task_id,
+            attempt: item.attempt,
+          }))
+          : [],
+      })}\n`);
+      return;
+    }
+    if (nextAction === "native_completion_pending" || nextAction === "completed") continue;
+    fail(`workflow step cannot route action: ${nextAction}`);
+  }
+  fail("workflow step exceeded its deterministic transition limit");
 }
 
 function runtimeExecuteCommand(
@@ -12038,6 +14772,63 @@ function runtimeExecuteCommand(
 
 function main(argv          )       {
   const [command, ...args] = argv;
+  if (command === "workflow" && args[0] === "start" && args.length === 3) {
+    return workflowStartCommand(args[1], args[2]);
+  }
+  if (command === "workflow" && args[0] === "step" && args.length === 2) {
+    return workflowStepCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "dispatch" && args.length === 3) {
+    return workflowDispatchCommand(args[1], args[2]);
+  }
+  if (command === "workflow" && args[0] === "review" && args.length === 2) {
+    return workflowReviewCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "attach" && args.length === 5) {
+    return workflowAttachCommand(args[1], args[2], args[3], args[4]);
+  }
+  if (command === "workflow" && args[0] === "thread" && args.length === 5) {
+    return workflowThreadCommand(args[1], args[2], args[3], args[4]);
+  }
+  if (command === "workflow" && args[0] === "observe" && args.length === 4) {
+    return workflowObserveCommand(args[1], args[2], args[3]);
+  }
+  if (command === "workflow" && args[0] === "dashboard" && args.length === 3) {
+    return workflowDashboardAckCommand(args[1], args[2]);
+  }
+  if (command === "workflow" && args[0] === "supervisor-init" && args.length === 2) {
+    return workflowSupervisorInitCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "native-confirm" && args.length === 3) {
+    return workflowNativeConfirmCommand(args[1], args[2]);
+  }
+  if (command === "worker" && args[0] === "open" && args.length === 3) {
+    return workerOpenCommand(args[1], args[2]);
+  }
+  if (command === "worker" && args[0] === "verify" && args.length >= 5) {
+    return workerVerifyCommand(args[1], args[2], args[3], args.slice(4));
+  }
+  if (command === "worker" && args[0] === "complete" && args.length === 3) {
+    return workerOutcomeCommand(args[1], args[2], "completed");
+  }
+  if (command === "worker" && args[0] === "block" && args.length === 3) {
+    return workerOutcomeCommand(args[1], args[2], "blocked");
+  }
+  if (command === "worker" && args[0] === "fail" && args.length === 3) {
+    return workerOutcomeCommand(args[1], args[2], "failed");
+  }
+  if (command === "worker" && args[0] === "request-dag" && args.length === 3) {
+    return workerRequestDagCommand(args[1], args[2]);
+  }
+  if (command === "worker" && args[0] === "complete-risk" && args.length === 4) {
+    return workerRiskOutcomeCommand(args[1], args[2], args[3]);
+  }
+  if (command === "worker" && args[0] === "request-scope" && args.length >= 4) {
+    return workerScopeRequestCommand(args[1], args[2], args.slice(3));
+  }
+  if (command === "workflow-create" && args.length === 3) {
+    return workflowCreateCommand(args[0], args[1], args[2]);
+  }
   if (command === "goal-create" && args.length === 2) return goalCreateCommand(args[0], args[1]);
   if (command === "goal-validate" && args.length === 1) return goalValidateCommand(args[0]);
   if (command === "goal-refresh" && args.length === 4) {
@@ -12052,6 +14843,15 @@ function main(argv          )       {
   }
   if (command === "planner-review-submit" && args.length === 1) {
     return plannerReviewSubmitCommand(args[0]);
+  }
+  if (command === "planner-review" && args.length >= 2) {
+    return plannerReviewDecisionCommand(args[0], args.slice(1));
+  }
+  if (command === "planner-open" && (args.length === 1 || args.length === 2)) {
+    return plannerOpenCommand(args[0], args[1]);
+  }
+  if (command === "planner-submit" && (args.length === 2 || args.length === 3)) {
+    return plannerSubmitCommand(args[0], args[1], args[2]);
   }
   if ((command === "activate" || command === "validate") && args.length === 1) {
     return validateCommand(args[0]);
@@ -12086,8 +14886,10 @@ function main(argv          )       {
   if (command === "abandon" && args.length === 5) {
     return abandonCommand(args[0], args[1], args[2], args[3], args[4]);
   }
-  if (command === "finish" && args.length === 5) {
-    return finishCommand(args[0], args[1], args[2], args[3], args[4]);
+  if (command === "finish" && (
+    args.length === 5 || (args.length === 6 && args[5] === "--compact")
+  )) {
+    return finishCommand(args[0], args[1], args[2], args[3], args[4], args[5] === "--compact");
   }
   if (command === "checkpoint" && args.length === 5) {
     return checkpointCommand(args[0], args[1], args[2], args[3], args[4]);
@@ -12125,8 +14927,10 @@ function main(argv          )       {
     return progressDocumentCommand(args[0], args[1]);
   }
   if (command === "dashboard" && args.length >= 1) return dashboardCommand(args);
-  if (command === "finalize" && args.length === 4) {
-    return finalizeCommand(args[0], args[1], args[2], args[3]);
+  if (command === "finalize" && (
+    args.length === 4 || (args.length === 5 && args[4] === "--compact")
+  )) {
+    return finalizeCommand(args[0], args[1], args[2], args[3], args[4] === "--compact");
   }
   if (command === "native-confirm" && args.length === 3) {
     return nativeConfirmCommand(args[0], args[1], args[2]);
@@ -12157,23 +14961,62 @@ function main(argv          )       {
   )) {
     return supervisorNextCommand(args[0], args[2]);
   }
+  if (command === "supervisor-init" && args.length === 3) {
+    return supervisorInitCommand(args[0], args[1], args[2]);
+  }
   if (command === "supervisor-record" && args.length >= 2) {
     return supervisorRecordCommand(args[0], args[1], args.slice(2));
+  }
+  if (command === "supervisor-ack" && args.length >= 2) {
+    return supervisorAckCommand(args[0], args[1], args.slice(2));
+  }
+  if (command === "supervisor-resume" && args.length === 2) {
+    return supervisorResumeCommand(args[0], args[1]);
+  }
+  if (command === "supervisor-recover-run" && args.length === 2) {
+    return supervisorRecoverRunCommand(args[0], args[1]);
   }
   if (command === "supervisor-recover" && args.length === 4) {
     return supervisorRecoverCommand(args[0], args[1], args[2], args[3]);
   }
-  if (command === "json-write" && (args.length === 2 || args.length === 3)) {
-    return jsonWriteCommand(args[0], args[1], args[2]);
-  }
   if (command === "result-submit" && args.length === 4) {
     return resultSubmitCommand(args[0], args[1], args[2], args[3]);
+  }
+  if (command === "worker-open" && args.length === 2) {
+    return workerOpenCommand(args[0], args[1]);
+  }
+  if (command === "worker-complete" && args.length === 2) {
+    return workerOutcomeCommand(args[0], args[1], "completed");
+  }
+  if (command === "worker-complete-risk" && args.length === 3) {
+    return workerRiskOutcomeCommand(args[0], args[1], args[2]);
+  }
+  if (command === "worker-block" && args.length === 2) {
+    return workerOutcomeCommand(args[0], args[1], "blocked");
+  }
+  if (command === "worker-fail" && args.length === 2) {
+    return workerOutcomeCommand(args[0], args[1], "failed");
+  }
+  if (command === "worker-request-subgraph" && args.length === 2) {
+    return workerSubgraphCommand(args[0], args[1]);
+  }
+  if (command === "worker-request-dag" && args.length === 2) {
+    return workerRequestDagCommand(args[0], args[1]);
+  }
+  if (command === "worker-request-scope" && args.length >= 3) {
+    return workerScopeRequestCommand(args[0], args[1], args.slice(2));
+  }
+  if (command === "workflow-step" && args.length === 1) {
+    return workflowStepCommand(args[0]);
+  }
+  if (command === "owner-pause-current" && args.length === 1) {
+    return ownerPauseCurrentCommand(args[0]);
   }
   if (command === "runtime-execute" && args.length === 4) {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs goal-create <goal.json> <workspace_root> | goal-validate <goal.json> | goal-refresh <goal.json> <goal-state.json> <plan.json> <state.json> | plan-create <goal.json> <plan.json> | plan-revise <goal.json> <plan.json> | planner-review-context <plan.json> [--compact] | planner-review-submit <plan.json> | activate <plan.json> | validate <plan.json> | render <plan.json> | dashboard <plan.json> [state.json] [--host <host>] [--port <port>] [--allow-remote] | dashboard-snapshot <plan.json> <state.json> | progress-document <plan.json> <state.json> | reserve <plan.json> <state.json> [capacity] [--compact] | runtime-execute <plan.json> <state.json> <task_id> <reservation_token> | bind <plan.json> <state.json> <task_id> <reservation_token> <thread_id> | result-submit <plan.json> <state.json> <task_id> <reservation_token> | json-write <target.json> <expected_contract|-> [--replace] | thread-registry <init|put-thread|set-status|put-watch|remove-watch|show> <threads.json> ... | supervisor-next <goal-dir> [--limit <1-8>] | supervisor-record <goal-dir> <created|binding|observed|resumed|stalled-notified|notified> ... | supervisor-recover <goal-dir> <task_id> <attempt> <reason> | diff-audit <plan.json> <state.json> <task_id> <reservation_token> | source-audit-auto <plan.json> <state.json> <task_id> <reservation_token> | source-audit <plan.json> <state.json> <task_id> <reservation_token> <classification_path> | commit-readiness <plan.json> <state.json> <task_id> <reservation_token> | delivery-validate <delivery-manifest.json> | abandon <plan.json> <state.json> <task_id> <reservation_token> <reason> | checkpoint-save <plan.json> <state.json> <task_id> <reservation_token> | checkpoint <plan.json> <state.json> <task_id> <reservation_token> <checkpoint_path> | finish <plan.json> <state.json> <task_id> <reservation_token> <result_path> | rotate-owner <plan.json> <state.json> <owner_id> <expected_generation> <reason> | owner-change-pause <plan.json> <state.json> <request.json> | apply-delta <plan.json> <state.json> <delta.json|-> | reconcile <plan.json> <state.json> [--compact] | reclaim <plan.json> <state.json> <task_id> <reservation_token> <reason> | confirm-stale-executor <plan.json> <state.json> <thread_id> | status <plan.json> <state.json> [--compact] | finalize <goal.json> <goal-state.json> <plan.json> <state.json> | native-confirm <goal.json> <goal-state.json> <completion_token> | owner-lease-inspect <workspace_root> <owner_id> | owner-lease-heartbeat <workspace_root> <owner_id> <reservation_token> | owner-lease-recover <workspace_root> <owner_id> <reservation_token> <reason> | expand-task-scope <plan.json> <state.json> <task_id> <reservation_token> <repo_path>... | subgraph-request <plan.json> <state.json> <task_id> <reservation_token> <reason> [suggested_subtask]... | expand-subgraph <plan.json> <state.json> <parent_task_id> <reservation_token> <expansion.json|->",
+    "usage: goal-dag.mjs workflow start|step|dispatch|review|attach|thread|observe|dashboard|supervisor-init|native-confirm ... | worker open|verify|complete|block|fail|request-dag|complete-risk|request-scope ... | planner-open|planner-submit|planner-review ... | supervisor-next|supervisor-ack ... | internal runtime commands",
   );
 }
 

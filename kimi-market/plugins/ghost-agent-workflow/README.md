@@ -5,10 +5,10 @@
 Kimi 推荐入口只有这一行：
 
 ```text
-/skill:sub-thread-coordination 执行 `./plan.md`
+/skill:sub-thread-coordination 执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式
 ```
 
-Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行；标准 Agent 禁止作为回退，缺少能力时 fail closed。`gpt-5.6-luna/medium` Supervisor 只通过脚本创建、等待和通知最多 8 个执行子线程；配置包含四组 profile，机械 gate 由脚本执行。
+Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。启动前必须由用户明确选择模式；Quick 由 Main 串行执行；DAG 才启动 Planner、Dashboard 和 `gpt-5.6-luna/medium` Supervisor，最多并发 8 个 ready 线程。配置包含四组 profile，机械 gate 与定向验证由脚本执行。
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 
@@ -18,13 +18,13 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 
 首次 `goal-validate` 保存轻量 `WORKSPACE_FENCE_V1`：Git tree/index digest 与当时的非 clean 项，不复制全部受管理文件。active leaf 可在任何可归因修改前扩展为 T2-1、T2-2…递归子 DAG，父 task 保持外层依赖边界。
 
-Review 是显式 DAG 节点，而不是隐形默认步骤。每个 task 声明 risk、policy、batch 和阻塞范围；机械验收由 runtime 执行，verify 证据由脚本登记且默认不跨 task 复用。
+Review 是显式 DAG 节点，而不是隐形默认步骤。每个 task 声明 risk、policy、batch 和阻塞范围；机械验收由 runtime 执行，验证只保留当前运行日志，不保存 evidence history。
 
 工作流自有的 JSON、JSONL、配置、Plan、State、Result、Progress 与 Review 状态只通过脚本写入；业务项目的 YAML/TOML 仍使用对应领域工具修改。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回紧凑 `THREAD_TASK_RECEIPT_V1`。
 
 Owner 是仓库级永久代码模块主体。新增、分裂或 scope 变化必须由脚本验证并等待用户对精确 digest 的批准；等待用户操作时不启动空模型回合累计 blocked 次数。
 
-持久化并提交 `.ghost-agent-workflow/config.json` 与 `.ghost-agent-workflow/owners/**`；`.ghost-agent-workflow/runtime/**` 下的 Goal、Plan、coverage、delta、reservation、result、artifact 和 session Capsule 都是临时状态，不应提交。Owner 新增或分裂必须先由脚本验证 scope 冲突，再取得用户对精确 digest 的明确批准。
+初始化脚本自动生成 `.ghost-agent-workflow/.gitignore`，只跟踪自身、`config.json` 与 `owners/**`，并忽略 runtime 和临时 Owner interface；已有文件不覆盖。Owner 新增或分裂必须先由脚本验证 scope 冲突，再取得用户对精确 digest 的明确批准。
 
 ## 安装
 

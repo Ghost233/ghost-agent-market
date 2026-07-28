@@ -166,6 +166,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             initialized = self.run_json("init", root)
             self.assertEqual(initialized["status"], "pending_owner_approval")
             registry_path = Path(initialized["registry_ref"])
+            self.assertTrue((registry_path.parents[1] / ".gitignore").is_file())
             repeated_init = self.run_json("init", root)
             self.assertEqual(repeated_init["status"], "pending_owner_approval")
             self.assertEqual(repeated_init["registry_digest"], initialized["registry_digest"])
@@ -260,12 +261,14 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.assertEqual(digest_json(json.loads(registry_path.read_text(encoding="utf-8"))),
                              validation["next_registry_digest"])
 
-    def test_apply_change_rejects_multiple_active_goals(self) -> None:
+    def test_apply_change_rejects_multiple_active_goal_or_quick_workflows(self) -> None:
         with self.workspace() as (root, registry_path, registry):
-            for goal_id in ("one", "two"):
-                state_path = root / ".ghost-agent-workflow/runtime" / goal_id / "goal-state.json"
-                state_path.parent.mkdir(parents=True, exist_ok=True)
-                state_path.write_text(serialized({"status": "active"}), encoding="utf-8")
+            goal_state = root / ".ghost-agent-workflow/runtime/one/goal-state.json"
+            goal_state.parent.mkdir(parents=True, exist_ok=True)
+            goal_state.write_text(serialized({"status": "active"}), encoding="utf-8")
+            quick_state = root / ".ghost-agent-workflow/runtime/two/workflow-state.json"
+            quick_state.parent.mkdir(parents=True, exist_ok=True)
+            quick_state.write_text(serialized({"status": "active"}), encoding="utf-8")
             request_path = registry_path.parent / "request.json"
             validation_path = registry_path.parent / "validation.json"
             approval_path = registry_path.parent / "approval.json"
@@ -277,7 +280,41 @@ class OwnerRegistryCliTests(unittest.TestCase):
                 "apply-change", registry_path, request_path, validation_path, approval_path
             )
             self.assertNotEqual(rejected.returncode, 0)
-            self.assertIn("only one active Goal", rejected.stderr)
+            self.assertIn("only one active workflow", rejected.stderr)
+
+    def test_apply_change_waits_for_the_single_workflow_safe_boundary(self) -> None:
+        with self.workspace() as (root, registry_path, registry):
+            goal_directory = root / ".ghost-agent-workflow/runtime/goals/one"
+            goal_directory.mkdir(parents=True, exist_ok=True)
+            (goal_directory / "goal-state.json").write_text(
+                serialized({"status": "active"}), encoding="utf-8"
+            )
+            (goal_directory / "state.json").write_text(
+                serialized({"tasks": {"T1": {"status": "running"}}}),
+                encoding="utf-8",
+            )
+            request_path = registry_path.parent / "request.json"
+            validation_path = registry_path.parent / "validation.json"
+            approval_path = registry_path.parent / "approval.json"
+            request = self.write_request(request_path, registry)
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+            self.approve(request, validation_path, validation, approval_path)
+            rejected = self.run_cli(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("safe boundary", rejected.stderr)
+            (goal_directory / "state.json").write_text(
+                serialized({"tasks": {"T1": {"status": "completed"}}}),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                self.run_json(
+                    "apply-change", registry_path, request_path, validation_path, approval_path
+                )["status"],
+                "applied",
+            )
 
     def test_request_and_approval_are_generated_by_domain_commands(self) -> None:
         with self.workspace() as (_, registry_path, _):
@@ -470,6 +507,37 @@ class OwnerRegistryCliTests(unittest.TestCase):
             result = self.run_cli("validate", registry_path)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unowned", result.stderr)
+
+    def test_current_change_facade_owns_paths_and_compacts_capsules(self) -> None:
+        with self.workspace() as (root, registry_path, _):
+            proposed = self.run_json(
+                "propose",
+                root,
+                "create",
+                "新增报表模块",
+                "--owner",
+                "report-module",
+                "负责报表模块",
+                "保持报表合同稳定",
+                "--scope",
+                "report-module",
+                "src/report/**",
+            )
+            self.assertEqual(proposed["status"], "awaiting_user_approval")
+            current = self.run_json("current", root)
+            self.assertEqual(current["status"], "awaiting_user_approval")
+            self.assertEqual(current["owner_ids"], ["report-module"])
+            self.run_json("approve-current", root)
+            applied = self.run_json("apply-current", root)
+            self.assertEqual(applied["status"], "applied")
+            self.run_json("validate", registry_path)
+            for capsule_path in registry_path.parent.glob("*/capsule.json"):
+                capsule = json.loads(capsule_path.read_text(encoding="utf-8"))
+                self.assertNotIn("history", capsule)
+                self.assertIn("current_change_digest", capsule)
+            cleared = self.run_json("clear-current", root)
+            self.assertTrue(cleared["existed"])
+            self.assertEqual(self.run_json("current", root)["status"], "none")
 
     def test_published_drivers_exactly_match_built_typescript_source(self) -> None:
         source_path = ROOT / "tooling/owner-registry/owner-registry.ts"

@@ -24,12 +24,10 @@ const synchronizedFiles = [
 const targets = [
   {
     platform: "Claude Code",
-    executionPlatform: "claude_code",
     root: join(repositoryRoot, "claude-code-market/skills"),
   },
   {
     platform: "Kimi Code",
-    executionPlatform: "kimi",
     root: join(repositoryRoot, "kimi-market/plugins/ghost-agent-workflow/skills"),
   },
 ];
@@ -56,37 +54,16 @@ for (const target of targets) {
     `> 平台差异：${target.platform} 只有在宿主提供可创建、发送和等待的长期子线程 API 时才能执行本工作流。标准 Agent 不具备用户长期持有上下文与完成约束，禁止作为回退；缺少子线程 API 时必须在规划后 fail closed。本平台固定使用 \`standalone_thread\`，不包含原生 Goal 桥接。`,
     "",
   ].join("\n");
-  const platformCoordinator = coordinatorSource
-    .replace(
-      "默认 `standalone_thread`，不调用原生 Goal。只有用户已经启动或明确要求 Goal 时使用 `codex_native`。Owner 变化等待用户时不要把 Goal 标为 blocked；应用成功后提示用户可以继续 Goal。",
-      `本平台固定使用 \`standalone_thread\`，不调用 Codex 原生 Goal。Owner 变化等待用户时保持本地工作流暂停；应用成功后提示用户可以继续执行。`,
-    )
-    .replace(
-      "所有执行单元必须是可长期持有上下文的 Codex 子线程。",
-      "所有执行单元必须是宿主提供的、可长期持有上下文的子线程。",
-    )
-    .replace(
-      "standalone 模式直接等待用户回答。codex_native 模式提示用户先暂停 Goal，在主线程处理/批准 Owner 变化；只有 Registry 与 DAG transition 都成功后才明确提示“Owner 变化已应用，可以继续 Goal”。",
-      "等待用户在主线程明确回答；只有 Registry 与 DAG transition 都成功后才提示“Owner 变化已应用，可以继续执行”。",
-    )
-    .replace(
-      "2. 创建 `GOAL_CONTRACT_V1`，`execution.mode` 固定为 `thread`。standalone 使用 `lifecycle.controller: standalone_thread` 与 `native_goal: null`；原生 Goal 才使用 `codex_native`。",
-      "2. 创建 `GOAL_CONTRACT_V1`，`execution.mode` 固定为 `thread`，并固定使用 `lifecycle.controller: standalone_thread` 与 `native_goal: null`。",
-    )
-    .replace(
-      "创建成功后立即调用宿主 `set_thread_title` 设置 canonical `thread_title`",
-      "创建成功后立即调用宿主 set-title API 设置 canonical `thread_title`",
-    )
-    .replace(
-      "只有 coverage 100%、所有 required Review/verify 节点 accepted、blocking finding 为 0、scope 与 delivery gate 通过时运行 `finalize`。standalone 到此完成；codex_native 再执行原生完成桥接。任何模式都保留 compact final task receipts 与完整落盘结果。",
-      "只有 coverage 100%、所有 required Review/verify 节点 accepted、blocking finding 为 0、scope 与 delivery gate 通过时运行 `finalize`。本平台到此完成，并保留 compact final task receipts 与完整落盘结果。",
-    );
   write(
     join(target.root, "sub-thread-coordination/SKILL.md"),
-    platformCoordinator
+    coordinatorSource
       .replace(
-        "# 子线程 DAG 协调器\n",
-        `# 子线程 DAG 协调器\n${platformBoundary}`,
+        "Codex 默认使用 `standalone_thread`；只有用户明确使用原生 Goal 时，DAG 才绑定 `codex_native`，并在本地结果完成后桥接。",
+        "本平台固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。",
+      )
+      .replace(
+        "# 子线程工作流协调器\n",
+        `# 子线程工作流协调器\n${platformBoundary}`,
       ),
   );
 
@@ -96,35 +73,20 @@ for (const target of targets) {
   );
   write(
     join(target.root, "sub-thread-coordination/references/goal-contract.md"),
-    goalContractSource
-      .replace('"execution_platform": "codex"', `"execution_platform": "${target.executionPlatform}"`)
-      .replace(
-        /## 原生 Goal 差异\n[\s\S]*?(?=## Gate 与 Review)/u,
-        `## 生命周期限制\n\n${target.platform} 固定使用 \`standalone_thread + native_goal: null\`，不得调用 Codex Goal 工具。\n\n`,
-      )
-      .replace(
-        "在 codex_native 下等待批准时保留 Goal active，状态记为 `awaiting_owner_action`，通知用户暂停并处理；Registry 和 DAG transition 都完成后才明确提示可继续 Goal，不用空回合累计 blocked。",
-        "等待批准时本地状态记为 `awaiting_owner_action`；Registry 和 DAG transition 都完成后才明确提示可继续执行，不用空回合累计 blocked。",
-      ),
-  );
-
-  const ownerGovernanceSource = readFileSync(
-    join(codexRoot, "sub-thread-coordination/references/owner-governance.md"),
-    "utf8",
-  );
-  write(
-    join(target.root, "sub-thread-coordination/references/owner-governance.md"),
-    ownerGovernanceSource.replace(
-      "standalone 直接等待用户回答；codex_native 友好提示用户暂停 Goal 并在主线程处理。",
-      "直接等待用户在主线程回答；本平台不包含原生 Goal 桥接。",
+    goalContractSource.replace(
+      "Codex Quick 不创建原生 Goal。DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。等待 Owner 或 Review 不映射为原生 blocked。",
+      `${target.platform} 固定使用 \`standalone_thread\`，不包含 Codex 原生 Goal 桥接。`,
     ),
   );
 }
 
 for (const relativePath of [
+  "parallel-task-planner/agents/openai.yaml",
   "planner-reviewer/agents/openai.yaml",
   "setup-sub-thread-workflow/agents/openai.yaml",
   "start-dag-dashboard/agents/openai.yaml",
+  "sub-thread-coordination/agents/openai.yaml",
+  "sub-thread-goal-worker/agents/openai.yaml",
   "sub-thread-task-supervisor/agents/openai.yaml",
 ]) {
   write(

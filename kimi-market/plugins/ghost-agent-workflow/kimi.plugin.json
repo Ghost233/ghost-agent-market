@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.3.1",
-  "description": "脚本化 Supervisor 静默管理最多八个中文命名长期子线程的 Owner DAG、Planner Reviewer、显式 Review 和递归子图；缺少持久子线程 API 时 fail closed。",
+  "version": "0.3.6",
+  "description": "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -28,8 +28,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "脚本化 Supervisor 静默管理八个中文命名子线程。",
-    "longDescription": "默认 standalone_thread，不强制 Goal。Main 直接启动后台 Dashboard；gpt-5.6-luna/medium Supervisor 只消费机器收据，静默创建、中文命名、等待和通知最多八个执行子线程。Planner Reviewer 在激活前检查 DAG 结构，机械 gate 不创建模型线程。",
+    "shortDescription": "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。",
+    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG 的 Supervisor 最多调度八个真实 ready 线程。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

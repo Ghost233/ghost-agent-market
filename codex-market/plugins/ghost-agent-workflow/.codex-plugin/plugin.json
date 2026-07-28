@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.1.4+codex.20260728093155",
-  "description": "以最多八个长期 Codex 子线程执行 Owner DAG、Planner Reviewer、显式 Review 和递归子图；脚本化 Supervisor 静默创建、中文命名、等待和通知。",
+  "version": "1.1.9+codex.20260728142936",
+  "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -28,15 +28,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Workflow",
-    "shortDescription": "脚本化 Supervisor 静默管理八个中文命名子线程。",
-    "longDescription": "默认 standalone_thread，不强制 /goal。Main 直接启动后台 Dashboard；gpt-5.6-luna/medium Supervisor 只消费机器收据，静默创建、中文命名、等待和通知最多八个执行子线程。Planner Reviewer 在激活前检查 DAG 结构，机械 gate 不创建模型线程。",
+    "shortDescription": "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。",
+    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG 的 Supervisor 最多调度八个真实 ready 线程。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "使用 $sub-thread-coordination，以长期子线程完整执行 `./plan.md`；默认不创建 Goal。",
+      "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。",
       "使用 $git-commit 检查当前改动，并按职责创建清晰的 Git 提交。",
       "使用 $git-commit-direct-model-test 按固定顺序运行全部四项直接模型测试并汇总结果。",
       "使用 $start-dag-dashboard 在后台启动当前 Goal 的只读 DAG 进度网页。",

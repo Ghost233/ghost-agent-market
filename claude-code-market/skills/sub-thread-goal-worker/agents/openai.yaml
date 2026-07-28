@@ -1,6 +1,7 @@
 interface:
-  display_name: "子线程 Goal Worker"
-  short_description: "在已绑定的持久子线程内执行一个 fenced task attempt。"
+  display_name: "Owner 工作线程"
+  short_description: "执行一个脚本绑定的 Quick、DAG 或独立 Review run。"
+  default_prompt: "使用 $sub-thread-goal-worker，读取当前 run Binding 并通过固定动作提交结果。"
 
 policy:
   allow_implicit_invocation: false

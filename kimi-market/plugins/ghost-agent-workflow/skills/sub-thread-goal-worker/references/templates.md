@@ -1,55 +1,22 @@
-# 最小 Worker 输入
+# Worker 动作表
 
-## TASK_BINDING_V6
+Worker 只接收 `<workflow-dir> + <run-id>`，先调用 `worker open`。不得读取原始 Plan、State、Registry 或构造 Binding/Result。
 
-binding 由 runtime 生成，Worker 不复制或补字段。重点核对：
+| 意图 | 公共命令 | stdin |
+|---|---|---|
+| 执行绑定验证 | `worker verify <dir> <run> <verification-id> <command> [arg...]` | 无 |
+| 完成 | `worker complete` | 百字内摘要 |
+| 真实阻塞 | `worker block` | blocker |
+| 执行失败 | `worker fail` | 失败原因 |
+| Quick 升级或 DAG 拆父节点 | `worker request-dag` | 已完成部分与拆解原因 |
 
-- `task`：id/title/role/work/done/verify/items/risk/dependencies；
-- `run`：attempt/token/source revision/generation/executor；
-- `thread` 与 `subject`：路由、模型和 Owner/runtime 上下文；
-- `scope`：统一的 read/exclude/write，不再重复 readable/searchable 字段；
-- `refs`：plan/state/coverage/source blocks/Registry/Capsule/result 等路径；
-- `review/policy/audit/output`：Review、Goal 边界、机械审计路径与 `TASK_RESULT_INPUT_V2`。
-
-## TASK_RESULT_INPUT_V2
-
-最小完成输入：
-
-```json
-{
-  "contract": "TASK_RESULT_INPUT_V2",
-  "status": "completed",
-  "summary": "完成实现并通过定向验证",
-  "evidence": [{"id":"state-unit"}]
-}
-```
-
-只在需要时增加：
-
-- `blocking`、`notes`、`follow_ups`；
-- `scope: {paths, reason}`（仅 `needs_repair`）；
-- `owner: {decisions, invariants, risks}`；
-- `publish: [{type, path, audience}]`；
-- `review_upgrade`（仅 completed work）。
-
-Evidence 默认 passed，通常只写 `id`；按需增加 `outcome/summary/artifact`。runtime 计算 artifact digest。
-
-不要填写 task identity、generation、thread id、token、attempt、revision、Review digests、changed files、默认空数组、路径、timestamp 或 digest；runtime 从 Plan/State/Workspace 自动生成。
-
-Review 线程也使用同一最小输入，只写结论与 evidence。runtime 从 binding 自动绑定 reviewed results、plan digest 和 workspace digest，避免复用旧 Review。
-
-## 子图请求
-
-不写 `TASK_SUBGRAPH_REQUEST_V1`，只调用：
+DAG 风险升级和同 Owner scope 修复仍使用脚本固定动作：
 
 ```text
-goal-dag.mjs subgraph-request <plan> <state> <task_id> <token> <reason> [建议子任务]...
+worker complete-risk <goal-dir> <run-id> <risk-code>
+worker request-scope <goal-dir> <run-id> <path>...
 ```
 
-runtime 自动补 attempt、source revision、Owner generation、executor id、path 和 digest。
+Quick 不使用 scope 动作；Owner 边界变化必须停下交给用户。Quick 的 `block/fail` 不能留下未验收文件变化。
 
-## Checkpoint 与 source audit
-
-只有确需跨回合恢复长任务时，向 `checkpoint-save` stdin 提交 `CHECKPOINT_INPUT_V1`：`progress` 必填，`decisions/invariants/risks/symbols/next` 按需填写。不得手写 Owner identity、generation、token 或 checkpoint 文件。
-
-source audit 向 `source-audit-auto` stdin 提交 `SOURCE_AUDIT_INPUT_V1`，只在 `non_requirements` 中填写未映射 source block 的理由；mapped 分类和完整证据由 runtime 生成。
+脚本从 run id 解析身份、scope、结果路径和验证项。验证命令按 argv 传入，不使用 shell 字符串；完成动作只接受脚本实际执行且通过的当前验证。stdout 只作机器收据。禁止调用低层 `bind/result-submit/finish/checkpoint`。

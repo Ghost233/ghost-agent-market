@@ -1,6 +1,7 @@
 interface:
-  display_name: "并行任务规划器"
-  short_description: "供子线程控制器生成 coverage、Owner/task DAG 与局部修订。"
+  display_name: "最小 DAG 规划器"
+  short_description: "生成最小顶层 DAG、显式 Review 和按需内部子图。"
+  default_prompt: "使用 $parallel-task-planner，为剩余工作生成最小顶层 DAG。"
 
 policy:
   allow_implicit_invocation: false

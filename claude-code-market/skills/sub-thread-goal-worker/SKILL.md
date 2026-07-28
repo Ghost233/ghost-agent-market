@@ -1,49 +1,41 @@
 ---
 name: sub-thread-goal-worker
-description: 仅供 sub-thread-coordination 向已登记的长期 Owner Worker 或独立 Implementation Review 子线程投递 canonical TASK_BINDING_V6 或脚本化 binding 获取指令时使用。执行一个 fenced attempt，通过脚本生成完整结果并只返回紧凑 receipt。
+description: 仅供 sub-thread-coordination 向已绑定的 Quick Owner、DAG Owner 或独立 Implementation Review 线程投递当前 run id 时使用。读取脚本 Binding，执行一个 fenced run，并通过固定动作提交结果或请求 DAG。
 ---
 
 # 子线程 Worker
 
-只执行当前 binding；不得使用 subagent 或继续委派。首次接收 binding 时完整读取 [最小输入模板](references/templates.md)，模板 digest 未变时不重复读取。
-
-创建新线程前必须重新读取仓库配置：work 使用 `profiles.owner`，Implementation Review 使用 `profiles.review`；默认均为 `gpt-5.6-sol/high`。Worker 不自行选择或修改模型。Runtime gate 由脚本执行，不投递给本 Skill。
-
-## 绑定门禁
-
-- 如果收到 Supervisor 的 `dispatch`，先原样运行其中的 `supervisor-record ... binding` 命令取得完整 binding；不得直接读取 Plan、State 或 Registry。
-- binding 同时由脚本保存到 receipt 的 `binding_ref`；不得在聊天中复述 binding 或脚本 JSON。
-- 必须是完整 `TASK_BINDING_V6`，且 `run.executor` 等于当前真实 thread id。
-- 核对 `task/run/thread/subject/scope/refs/review/policy/audit/output`；同一信息只出现一次，不接受旧平铺别名。
-- 同一 attempt/token 的重投是幂等恢复；不重置进度，不覆盖 canonical result。
-- 任一身份或 digest 不符时停止，不修改业务文件。
-
-## 执行
-
-- 只做 binding 的 task/done_when/定向 verification。
-- work 只能修改 task 与 Owner scope 的交集；Review 不改业务文件。
-- 只读取 binding 明确给出的依赖产物；不读取其他任务聊天。
-- 不自行运行全仓测试、完整 Review 或重复 dry-run。
-- JSON、状态和配置变更优先调用项目 domain command；没有 validator 时停止，不手写文件。
-
-## 变化请求
-
-- 需要拆成内部 DAG：不写 request JSON；在任何可归因修改前调用 `subgraph-request`，返回 receipt 后停止当前 attempt，等待 Composite Planner。
-- scope 漏项：返回 `needs_repair + scope`，只写 `paths + reason`，不得先越界修改。
-- 完成后发现公共接口、安全、并发、权限、兼容性、scope 扩张、测试不稳定或重复失败风险：在最小结果输入中填写一句 `review_upgrade`。不要创建或重连 Review 节点。
-
-## 结果
-
-不要构造 `WORKER_RESULT_V5`。只把 `TASK_RESULT_INPUT_V2` 的少量语义字段送入：
+只执行当前 run；禁止 subagent。先调用：
 
 ```text
-goal-dag.mjs result-submit <plan> <state> <task_id> <token>
+goal-dag.mjs worker open <workflow-dir> <run-id>
 ```
 
-runtime 自动补齐 identity、Review binding、默认空字段、result path、digest 和 stored `WORKER_RESULT_V5`。stdout 的 `THREAD_TASK_RECEIPT_V1` 只作机器收据，不得复制到 commentary、final 或普通聊天。完整结果只落盘；线程结束由 Supervisor 根据脚本状态通知 Main。
+不得读取原始 Plan、State、Registry 或猜测 task、attempt、token、路径和字段。核对 Binding 的 task、done、dependencies 与 scope；身份不符立即停止。
 
-Evidence 只写 `id`，需要时再加 `outcome/summary/artifact`；artifact digest 由脚本计算。发布物只写 `type/path/audience`。长任务 checkpoint 使用 `checkpoint-save`；source/diff/commit readiness 不由模型执行。
+Work 只修改 writable scope。Review 使用干净上下文、不得读取实施聊天、不得修改文件。只运行 Binding `task.verify` 中的定向验证；机械验收由脚本完成，不属于模型 Review。
 
-协调线程随后调用 `finish` 做 changed-file 归因、scope/identity 校验、evidence 登记和 Review 升级状态迁移。
+每个绑定验证必须通过脚本实际执行一次：
 
-线程之间只传必要标量、文件引用和不超过 100 字的脚本摘要。禁止粘贴完整 JSON、stdout、DAG、diff、日志或结果正文；错误只报告一句原因与脚本给出的日志路径。
+```text
+goal-dag.mjs worker verify <workflow-dir> <run-id> <verification-id> <command> [arg...]
+```
+
+命令使用 argv，不使用 shell 字符串。一个 verification id 只保存当前一次日志；重跑会覆盖旧结果。`worker complete`、`complete-risk` 和 `request-dag` 会拒绝缺失或失败的验证，Worker 不得伪造 pass/evidence。
+
+## 动作
+
+摘要通过 stdin，控制在 100 字内：
+
+```text
+goal-dag.mjs worker complete <workflow-dir> <run-id>
+goal-dag.mjs worker block <workflow-dir> <run-id>
+goal-dag.mjs worker fail <workflow-dir> <run-id>
+goal-dag.mjs worker request-dag <workflow-dir> <run-id>
+```
+
+`request-dag` 在 Quick 中验收安全边界并单向升级，只规划剩余工作；在 DAG 父节点中请求 Composite Planner 展开内部子图。
+
+Quick 的 `block/fail` 前必须恢复未验收文件修改；需要保留已完成部分时使用 `request-dag`。DAG 的固定风险与 scope 动作见 [动作表](references/templates.md)。
+
+命令生成 changed files、identity、结果候选和 digest。禁止调用 `result-submit`、手写 Result/JSON、保存 evidence/history 或自行启动 Review。stdout 只作机器收据；线程结束后由 Main 或 Supervisor 调用 `workflow step` 机械验收。

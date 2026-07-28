@@ -43,7 +43,7 @@ const codexManifestPath = "codex-market/plugins/ghost-agent-workflow/.codex-plug
 const codexManifest = readJson(codexManifestPath);
 const codexBase = bumpRequested ? bumpBase(codexManifest.version) : baseVersion(codexManifest.version);
 codexManifest.version = `${codexBase}+codex.${timestamp}`;
-codexManifest.description = "以最多八个长期 Codex 子线程执行 Owner DAG、Planner Reviewer、显式 Review 和递归子图；脚本化 Supervisor 静默创建、中文命名、等待和通知。";
+codexManifest.description = "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。";
 codexManifest.keywords = [...new Set([
   ...codexManifest.keywords,
   "sub-thread-coordination",
@@ -53,9 +53,9 @@ codexManifest.keywords = [...new Set([
   "planner-reviewer",
   "task-supervisor",
 ])];
-codexManifest.interface.shortDescription = "脚本化 Supervisor 静默管理八个中文命名子线程。";
-codexManifest.interface.longDescription = "默认 standalone_thread，不强制 /goal。Main 直接启动后台 Dashboard；gpt-5.6-luna/medium Supervisor 只消费机器收据，静默创建、中文命名、等待和通知最多八个执行子线程。Planner Reviewer 在激活前检查 DAG 结构，机械 gate 不创建模型线程。";
-codexManifest.interface.defaultPrompt[0] = "使用 $sub-thread-coordination，以长期子线程完整执行 `./plan.md`；默认不创建 Goal。";
+codexManifest.interface.shortDescription = "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。";
+codexManifest.interface.longDescription = "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG 的 Supervisor 最多调度八个真实 ready 线程。";
+codexManifest.interface.defaultPrompt[0] = "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。";
 if (!codexManifest.interface.defaultPrompt.some((prompt) => prompt.includes("$setup-sub-thread-workflow"))) {
   codexManifest.interface.defaultPrompt.push("使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与八路并行配置。");
 }
@@ -65,7 +65,7 @@ const claudePluginPath = "claude-code-market/.claude-plugin/plugin.json";
 const claudePlugin = readJson(claudePluginPath);
 const claudeVersion = bumpRequested ? bumpBase(claudePlugin.version) : baseVersion(claudePlugin.version);
 claudePlugin.version = claudeVersion;
-claudePlugin.description = "脚本化 Supervisor 静默管理最多八个中文命名长期子线程的 Owner DAG、Planner Reviewer、显式 Review 和递归子图；缺少持久子线程 API 时 fail closed。";
+claudePlugin.description = "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。";
 claudePlugin.keywords.push("sub-thread-coordination", "thread-coordination", "explicit-review-dag");
 claudePlugin.keywords = [...new Set([
   ...claudePlugin.keywords,
@@ -79,7 +79,7 @@ const claudeMarketplacePath = "claude-code-market/.claude-plugin/marketplace.jso
 const claudeMarketplace = readJson(claudeMarketplacePath);
 const claudeEntry = claudeMarketplace.plugins.find((item) => item.name === "ghost-agent-workflow");
 claudeEntry.version = claudeVersion;
-claudeEntry.description = "A script-driven Supervisor manages up to eight persistent sub-threads with a pre-activation Planner Reviewer and explicit Review nodes.";
+claudeEntry.description = "A script-driven Owner workflow that requires choosing serial Quick or a minimal DAG with up to eight persistent sub-threads.";
 claudeEntry.keywords.push("sub-thread-coordination", "thread-coordination", "explicit-review-dag");
 claudeEntry.keywords = [...new Set([
   ...claudeEntry.keywords,
@@ -92,7 +92,7 @@ writeJson(claudeMarketplacePath, claudeMarketplace);
 const kimiManifestPath = "kimi-market/plugins/ghost-agent-workflow/kimi.plugin.json";
 const kimiManifest = readJson(kimiManifestPath);
 kimiManifest.version = bumpRequested ? bumpBase(kimiManifest.version) : baseVersion(kimiManifest.version);
-kimiManifest.description = "脚本化 Supervisor 静默管理最多八个中文命名长期子线程的 Owner DAG、Planner Reviewer、显式 Review 和递归子图；缺少持久子线程 API 时 fail closed。";
+kimiManifest.description = "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。";
 kimiManifest.keywords.push("sub-thread-coordination", "thread-coordination", "explicit-review-dag");
 kimiManifest.keywords = [...new Set([
   ...kimiManifest.keywords,
@@ -100,29 +100,29 @@ kimiManifest.keywords = [...new Set([
   "planner-reviewer",
   "task-supervisor",
 ])];
-kimiManifest.interface.shortDescription = "脚本化 Supervisor 静默管理八个中文命名子线程。";
-kimiManifest.interface.longDescription = "默认 standalone_thread，不强制 Goal。Main 直接启动后台 Dashboard；gpt-5.6-luna/medium Supervisor 只消费机器收据，静默创建、中文命名、等待和通知最多八个执行子线程。Planner Reviewer 在激活前检查 DAG 结构，机械 gate 不创建模型线程。";
+kimiManifest.interface.shortDescription = "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。";
+kimiManifest.interface.longDescription = "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG 的 Supervisor 最多调度八个真实 ready 线程。";
 writeJson(kimiManifestPath, kimiManifest);
 
-const openaiYaml = `interface:\n  display_name: "子线程 DAG 控制器"\n  short_description: "最多八个长期子线程、显式 Review、递归子图和进度页。"\n  default_prompt: "使用 $sub-thread-coordination，以长期子线程完整执行 ./plan.md；默认不创建 Goal。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const openaiYaml = `interface:\n  display_name: "Owner 工作流协调器"\n  short_description: "要求用户选择 Quick 或 DAG，再协调长期 Owner 线程。"\n  default_prompt: "使用 $sub-thread-coordination；如果我没有明确指定 Quick 或 DAG，先要求我选择运行模式，确认后再启动。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-coordination/agents/openai.yaml",
   "claude-code-market/skills/sub-thread-coordination/agents/openai.yaml",
 ]) writeFileSync(join(root, relativePath), openaiYaml, "utf8");
 
-const plannerYaml = `interface:\n  display_name: "并行任务规划器"\n  short_description: "供子线程控制器生成 coverage、Owner/task DAG 与局部修订。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const plannerYaml = `interface:\n  display_name: "最小 DAG 规划器"\n  short_description: "生成最小顶层 DAG、显式 Review 和按需内部子图。"\n  default_prompt: "使用 $parallel-task-planner，为剩余工作生成最小顶层 DAG。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/parallel-task-planner/agents/openai.yaml",
   "claude-code-market/skills/parallel-task-planner/agents/openai.yaml",
 ]) writeFileSync(join(root, relativePath), plannerYaml, "utf8");
 
-const workerYaml = `interface:\n  display_name: "子线程 Goal Worker"\n  short_description: "在已绑定的持久子线程内执行一个 fenced task attempt。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const workerYaml = `interface:\n  display_name: "Owner 工作线程"\n  short_description: "执行一个脚本绑定的 Quick、DAG 或独立 Review run。"\n  default_prompt: "使用 $sub-thread-goal-worker，读取当前 run Binding 并通过固定动作提交结果。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-goal-worker/agents/openai.yaml",
   "claude-code-market/skills/sub-thread-goal-worker/agents/openai.yaml",
 ]) writeFileSync(join(root, relativePath), workerYaml, "utf8");
 
-const reviewerYaml = `interface:\n  display_name: "Planner Reviewer"\n  short_description: "在 Plan 激活前审查 DAG 的并行度与结构复杂度。"\n  default_prompt: "使用 $planner-reviewer 审查当前 DAG draft 的并行度与结构复杂度。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const reviewerYaml = `interface:\n  display_name: "DAG 规划审查"\n  short_description: "在 Plan 激活前审查最小 DAG 的真实并行度与结构复杂度。"\n  default_prompt: "使用 $planner-reviewer，审查当前最小 DAG 的并行度和结构复杂度。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/planner-reviewer/agents/openai.yaml",
   "claude-code-market/skills/planner-reviewer/agents/openai.yaml",
@@ -138,7 +138,7 @@ for (const relativePath of [
   writeFileSync(absolutePath, setupYaml, "utf8");
 }
 
-const supervisorYaml = `interface:\n  display_name: "任务监督子线程"\n  short_description: "静默创建、中文命名并等待最多八个执行线程。"\n  default_prompt: "使用 $sub-thread-task-supervisor，通过机器收据静默监督当前 Goal 的执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const supervisorYaml = `interface:\n  display_name: "DAG 任务监督"\n  short_description: "仅在 DAG 模式通过脚本静默管理最多八个 ready 执行线程。"\n  default_prompt: "使用 $sub-thread-task-supervisor，按脚本 action 静默监督当前 DAG 执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-task-supervisor/agents/openai.yaml",
   "claude-code-market/skills/sub-thread-task-supervisor/agents/openai.yaml",

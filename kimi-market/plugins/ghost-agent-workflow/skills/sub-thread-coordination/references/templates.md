@@ -1,41 +1,45 @@
-# 线程恢复与收据
+# 恢复与动作
 
-聊天不是事实源。Main 恢复时通过 runtime 命令读取 State，并把 result_ref 交给 `finish`，不得直接读取 canonical result；Supervisor 恢复时只调用 `supervisor-next`，不得直接读取任何原始文件。
-
-## THREAD_REGISTRY_V1
-
-Registry 只保留五项：`contract`、`goal_id`、`main`、`threads`、`watches`。模型不得创建或替换它。
+聊天不是状态源。Main 丢失上下文后只运行：
 
 ```text
-thread-registry init <path> <goal_id> <main_id> <main_host>
-thread-registry put-thread <path> <key> <thread_id> <host> <role> <status>
-thread-registry set-status <path> <key> <status>
-thread-registry put-watch <path> <task_id> <attempt> <key> [cursor|-]
-thread-registry remove-watch <path> <task_id> <attempt> <key>
-thread-registry show <path>
+goal-dag.mjs workflow step <workflow-dir>
 ```
 
-每个 thread 只保存 `thread_id`、`host_id`、`role`、`status`；每个 watch 只保存 `task_id`、`attempt`、`thread_key`、`cursor`、`unchanged_waits`。标题、模型配置、generation 和 receipt digest 可由 Plan/binding/宿主查询得到，不重复写入 Registry。
+脚本会返回 Quick 或 DAG 当前唯一动作；不得扫描或拼接原始状态文件。
 
-## 恢复动作
+如果返回 `main_route_required`，先用当前 Main 的正式 threadId/hostId 调用 `workflow thread ... main ...`，再重新 step。
 
-| 状态 | 动作 |
-|---|---|
-| `reserved` 且未 bind | 创建/找到登记线程，bind 后投递 canonical binding |
-| `reserved` 且 action 为 `run_script` | Main 直接调用 `runtime-execute`，不创建线程 |
-| `running` 且无结果 | wait；投递不确定时只重发同一 binding |
-| canonical result 已存在 | 直接 `finish` |
-| Supervisor 上下文恢复 | 重新调用 `supervisor-next <goal-dir> --limit 8` |
-| 三次 wait 无 cursor 变化 | Supervisor 通知 Main 并记录 `stalled-notified` |
-| 用户确认线程丢失且 Main 已关闭线程 | `supervisor-recover <goal-dir> <task> <attempt> <reason>` |
-| 用户让 attention/stalled 线程继续 | `supervisor-record <goal-dir> resumed <task> <attempt>` |
-| source 变化 | drain active，`goal-refresh`，应用局部 delta |
-| Owner 变化 | 暂停当前 DAG，等待用户批准并完成 transition |
+## Quick
 
-任何恢复都先运行 `status -> reconcile`。不得从聊天推算 attempt、token、路径或 scope。
+- `owner_required`：`workflow dispatch`。
+- `attach_required`：取得正式 threadId 后 `workflow attach`。
+- `wait_thread`：Main 直接等待收据中的线程。
+- 等待返回新 cursor：`workflow observe <dir> <run-id> <cursor>`。
+- `next_owner_or_review`：再次 dispatch，或 `workflow review`。
+- `owner_action_required` / `user_blocked`：通知用户并等待决定。
+- `completed`：读取最终结果引用。
 
-## 收据
+Owner 线程可按脚本 `preferred_thread` 复用；Review 不复用实施线程。Quick 没有 Supervisor。
 
-`result-submit` 返回 `THREAD_TASK_RECEIPT_V1`，只含：`status`、`task_id`、`attempt`、`result_ref`、`result_digest`、`blocking_count`。完整 `WORKER_RESULT_V5` 只保存在 `result_ref`；Binding 同样由脚本保存到 `bindings/`。
+## DAG Supervisor
 
-所有脚本 JSON 都是机器收据，不复制到聊天。Main 最终只使用 `finish.user_message` 报告已接受的 task 结果；Dashboard URL 只报告一次，不复制 Mermaid 或完整 DAG。
+Supervisor 丢失上下文后只运行：
+
+```text
+goal-dag.mjs supervisor-next <goal-dir> --limit 8
+```
+
+`create/wait/notify/stalled` 都只用不透明 action id 调用 `supervisor-ack`。不得解析 task、attempt 或 token。三次无 cursor 变化只报告疑似挂死；恢复或重建必须由用户决定。
+
+## DAG 控制动作
+
+- `planner_required` / `planner_review_required`：使用收据中的 action、`model`、`effort`、标题和 preferred thread，不猜测配置或低层状态。
+- `dashboard_start_required`：启动 Dashboard 后调用 `workflow dashboard ... started|failed`。
+- `supervisor_init_required`：调用 `workflow supervisor-init`。
+- `owner_action_required` / `user_action_required`：等待用户决定。
+- `native_completion_required`：完成原生 Goal 后调用 `workflow native-confirm`。
+
+## 清理
+
+运行中的 Binding、candidate、fence、artifact、checkpoint 和 watch 由脚本管理。成功验收后立即删除当前临时文件；工作流完成后只保留各模式规定的当前状态、DAG 日志和最终结果。

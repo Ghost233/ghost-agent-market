@@ -46,34 +46,30 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "skills/git-commit-direct-model-test/agents/openai.yaml"
         )
 
-    def test_codex_workflow_uses_persistent_threads_and_scripted_supervisor(self) -> None:
+    def test_codex_workflow_uses_quick_owner_and_dag_supervisor(self) -> None:
         combined = (
             f"{self.coordinator}\n{self.coordinator_metadata}\n"
             f"{self.supervisor}\n{self.supervisor_metadata}"
         )
         for requirement in (
-            "长期子线程",
+            "长期 Owner 线程",
             "supervisor-next",
-            "supervisor-record",
+            "supervisor-ack",
             "gpt-5.6-luna/medium",
             "gpt-5.6-sol/high",
-            "runtime-execute",
+            "workflow step",
+            "必须由用户明确选择",
         ):
             self.assertIn(requirement, combined)
         self.assertIn("禁止 subagent", self.coordinator)
-        self.assertIn("系统 key", self.coordinator)
-        self.assertIn("[GA][任务][责任域]", self.coordinator)
-        self.assertIn("[GA][任务][规划审查]", self.coordinator)
-        self.assertIn("[GA][任务][主控]", self.coordinator)
-        self.assertIn("必须恰好一个", self.coordinator)
-        self.assertIn("TASK_BINDING_V6", self.coordinator)
+        self.assertIn("同时只能有一个 Main", self.coordinator)
         self.assertIn("$sub-thread-goal-worker", self.coordinator)
         self.assertIn("$parallel-task-planner", self.coordinator)
         self.assertIn("$sub-thread-task-supervisor", self.coordinator)
-        self.assertIn("禁止 `cat/read/open`", self.supervisor)
-        self.assertIn("脚本 stdout JSON 仅是机器收据", self.supervisor)
-        self.assertIn("不超过 100 字", combined)
-        self.assertIn("用户可见消息不含 `result_ref`", self.supervisor)
+        self.assertIn("禁止读取 `plan.json`", self.supervisor)
+        self.assertIn("脚本 stdout 不进入聊天", self.supervisor)
+        self.assertIn("100 字内", self.worker)
+        self.assertIn("用户可见文本不含 result_ref", self.supervisor)
         self.assertIn("default_prompt:", self.coordinator_metadata)
         self.assertIn("allow_implicit_invocation: false", self.coordinator_metadata)
         self.assertIn("standalone_thread", combined)
@@ -81,7 +77,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
     def test_setup_skill_manages_profiles_and_parallel_by_script(self) -> None:
         combined = f"{self.setup}\n{self.setup_metadata}"
         for requirement in (
-            "workflow-config.mjs init",
+            "workflow-config.mjs ensure",
             "set-parallel",
             "set-profile",
             "gpt-5.6-sol/high",
@@ -91,7 +87,8 @@ class CodexWorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(requirement, combined)
         self.assertIn("不得手写", self.setup)
-        self.assertIn("最多 8 个", self.coordinator)
+        self.assertIn("DAG 模式的 1–8 并发上限", self.setup)
+        self.assertIn(".ghost-agent-workflow/.gitignore", self.setup)
 
     def test_owner_affinity_is_permanent_and_fenced(self) -> None:
         combined = "\n".join(
@@ -104,57 +101,50 @@ class CodexWorkflowContractTests(unittest.TestCase):
             )
         )
         for invariant in (
-            "Owner Capsule",
-            "generation",
-            "approved Owner Registry",
-            "继续 Goal",
-            "reclaim",
+            "当前 Owner 上下文",
+            "approved Owner",
+            "preferred_thread",
+            "run-id",
         ):
             self.assertIn(invariant, combined)
 
-    def test_worker_submits_minimal_result_and_runtime_builds_v5(self) -> None:
+    def test_worker_uses_action_commands_instead_of_result_json(self) -> None:
         combined = f"{self.worker}\n{self.worker_reference}"
-        for contract in (
-            "TASK_BINDING_V6",
-            "TASK_RESULT_INPUT_V2",
-            "WORKER_RESULT_V5",
-            "THREAD_TASK_RECEIPT_V1",
+        for command in (
+            "worker open",
+            "worker verify",
+            "worker complete",
+            "worker block",
+            "worker fail",
+            "worker request-dag",
+            "worker request-scope",
         ):
-            self.assertIn(contract, combined)
-        self.assertIn("result-submit", combined)
-        self.assertIn("subgraph-request", combined)
-        self.assertIn("不要构造 `WORKER_RESULT_V5`", combined)
-        self.assertIn("runtime 自动补齐 identity", combined)
-        self.assertIn("不要填写 task identity", combined)
-        self.assertIn("checkpoint-save", combined)
-        self.assertIn("source/diff/commit readiness 不由模型执行", combined)
+            self.assertIn(command, combined)
+        self.assertIn("禁止调用 `result-submit`", combined)
+        self.assertIn("构造 Binding/Result", combined)
 
     def test_planner_reviewer_is_a_pre_activation_two_round_gate(self) -> None:
         combined = f"{self.coordinator}\n{self.planner_reviewer}"
         for requirement in (
-            "PLANNER_REVIEW_CONTEXT_V1",
-            "planner-review-submit",
-            "profiles.review",
-            "第二轮",
-            "不是 DAG 节点",
+            "planner-review <goal-dir> pass",
+            "parallelism|too-complex|too-simple",
+            "不构造 Review JSON",
+            "最多修订一次",
         ):
             self.assertIn(requirement, combined)
 
     def test_goal_is_optional_and_native_bridge_follows_local_finalize(self) -> None:
         combined = f"{self.coordinator}\n{self.goal_contract}"
-        self.assertIn("standalone_thread", combined)
         self.assertIn("codex_native", combined)
-        self.assertIn("默认 `standalone_thread`", self.goal_contract)
-        self.assertIn("本地 finalize 后才完成原生 Goal", self.goal_contract)
+        self.assertIn("Quick 不创建原生 Goal", self.goal_contract)
+        self.assertIn("不映射为原生 blocked", self.goal_contract)
 
-    def test_recovery_uses_canonical_binding_and_fences_stale_threads(self) -> None:
+    def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
-        self.assertIn("`reserved` 且未 bind", combined)
-        self.assertIn("`running` 且无结果", combined)
-        self.assertIn("reclaim", self.coordinator)
-        self.assertIn("status -> reconcile", self.coordinator_reference)
-        self.assertIn("TASK_BINDING_V6", self.coordinator)
+        self.assertIn("聊天不是状态源", combined)
+        self.assertIn("workflow step <workflow-dir>", combined)
         self.assertIn("supervisor-next <goal-dir> --limit 8", combined)
+        self.assertIn("成功验收后立即删除当前临时文件", combined)
 
     def test_expected_skill_directories_are_present(self) -> None:
         actual_skills = {
@@ -272,13 +262,13 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.1\.4\+codex\.")
-        self.assertIn("长期 Codex 子线程", manifest["description"])
+        self.assertRegex(manifest["version"], r"^1\.1\.9\+codex\.")
+        self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
         self.assertEqual(
             prompt,
-            "使用 $sub-thread-coordination，以长期子线程完整执行 `./plan.md`；默认不创建 Goal。",
+            "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。",
         )
         self.assertNotIn("首次建图", prompt)
         self.assertTrue(
@@ -290,6 +280,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)
+        self.assertIn(
+            "!.ghost-agent-workflow/config.json",
+            (ROOT / ".gitignore").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "!.ghost-agent-workflow/.gitignore",
+            (ROOT / ".gitignore").read_text(encoding="utf-8"),
+        )
 
         updater = WORKFLOW_CONFIG_UPDATER.read_text(encoding="utf-8")
         self.assertIn("function bumpBase", updater)
