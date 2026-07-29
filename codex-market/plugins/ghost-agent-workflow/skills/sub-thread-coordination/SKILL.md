@@ -76,7 +76,7 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 - `dashboard_start_required`：Plan 激活后由新 Main 启动 Dashboard，回执失败不阻断业务。
 - `supervisor_required`：Main 先调用 `supervisor-next`。有 create/main_action 时由 Main 处理；只有 wait/notify/stalled 时才把监督 dispatch 发送给已登记 Supervisor并结束。Main 不等待。
 - `owner_sync_required`：只执行收据指定的 `workflow owner-sync`。成功后重新唤醒 Supervisor；该 Git 写操作不得藏在 `supervisor-next` 或 `supervisor-ack` 中。
-- 旧活动 Goal 若包含命令字符串 verification id，`start-dag` 会自动调用一次脚本迁移；也可显式执行 `workflow migrate-verifications <goal-dir>`。迁移必须保留原 task attempt、run、线程、Owner worktree 和未提交修改，并复用原线程只继续验证。
+- Runtime 只接受当前 Plan 与 verification 契约；旧契约直接拒绝，不得猜测字段、命令或手写 JSON。
 - 新 Owner 的 create action 若为 `sync_status: worktree_required`：Main 用 `create_thread` 启动 action prompt，取得正式 threadId 后立即调用 `supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap` 登记 bootstrap watch，再唤醒 Supervisor；Main 不等待。bootstrap 结束后 Main 重新调用 `supervisor-next`，复用同一线程执行普通 create ack 并发送正式 Worker dispatch。
 - Planner、Planner Reviewer 或普通任务疑似挂死、异常结束或未生成有效结果时，Main 先报告并等待用户决定。用户确认关闭旧线程后，Main 调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`；脚本清除旧 watch，控制线程同时清除旧 route，随后重新唤醒 Supervisor。不得手写 route、watch 或状态。
 - `owner_action_required`：报告 Owner 变化并等待用户决定。

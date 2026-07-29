@@ -3531,7 +3531,7 @@ function parsePlan(
     fail("runtime_actors must be a non-empty array");
   }
   if (!Array.isArray(source.verifications)) {
-    fail("plan.verifications must be an array; run workflow migrate-verifications for a legacy Goal");
+    fail("plan.verifications must be an array");
   }
   if (!Array.isArray(source.tasks) || source.tasks.length === 0) {
     fail("tasks must be a non-empty array");
@@ -13096,10 +13096,8 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
         task,
         taskState,
       );
-      const verificationResume = taskState.status === "running" &&
-        existsSync(verificationMigrationResumePath(goalDirectory, task.id));
       if (
-        (!isClaimedTask(taskState) && !integrationRepair && !verificationResume) ||
+        (!isClaimedTask(taskState) && !integrationRepair) ||
         task.owner_id === null
       ) continue;
       if (!sourceCurrent) continue;
@@ -13112,7 +13110,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       const reusableThread = subjectState.bound_executor_id === null
         ? null
         : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
-      const reusableStatuses = integrationRepair || verificationResume
+      const reusableStatuses = integrationRepair
         ? new Set(["idle", "running", "completed", "failed", "cancelled", "archived", "attention_notified"])
         : new Set(["idle", "running"]);
       const registered = canonicalThread !== null && reusableStatuses.has(String(canonicalThread.status))
@@ -13137,9 +13135,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
         title,
         model: profile.model,
         thinking: profile.reasoning_effort,
-        prompt: verificationResume
-          ? "验证契约已由脚本迁移；复用当前 run、线程和 Owner worktree，重新读取 Binding 后只执行验证，不得重新实施任务。"
-          : integrationRepair
+        prompt: integrationRepair
           ? `继续使用现有 Owner worktree 修复集成失败；不得重新创建线程或 worktree。`
           : ownerSync === null ? [
           `请先把当前线程标题逐字设置为：${title}`,
@@ -13347,9 +13343,6 @@ function supervisorRecordCommand(
       }
       const taskState = state.tasks[taskId];
       if (taskState.attempt !== attempt) fail("task attempt mismatch");
-      const verificationResume = existsSync(
-        verificationMigrationResumePath(goalDirectory, taskId),
-      );
       const subject = subjectForTask(plan, task);
       const subjectState = subjectStateForTask(state, task);
       const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
@@ -13418,9 +13411,6 @@ function supervisorRecordCommand(
         [statePath, state],
         [threadsPath, registry],
       ]);
-      if (verificationResume) {
-        rmSync(verificationMigrationResumePath(goalDirectory, taskId), { force: true });
-      }
       const runId = taskRunId(task.id, taskState);
       const dispatchCommand = [
         "node",
@@ -13440,9 +13430,7 @@ function supervisorRecordCommand(
         thread: actualExecutorId,
         run: runId,
         main: mainRoute,
-        dispatch: verificationResume
-          ? `使用 $sub-thread-goal-worker；验证契约已迁移。先运行 ${dispatchCommand} 获取更新后的 Binding，复用当前 run 和 Owner worktree，只继续验证与结果提交，不得重新实施任务。`
-          : repairReason === null
+        dispatch: repairReason === null
           ? `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取当前 Binding，再执行。`
           : `使用 $sub-thread-goal-worker；上次集成失败：${repairReason}。先运行 ${dispatchCommand} 获取当前 Binding，在同一 Owner worktree 修复后重新验证并提交。`,
         binding_ref: bindingRef,
@@ -15501,218 +15489,6 @@ function workerVerificationPath(
     : join(goalDirectory, "artifacts", "verification", taskId, `${verificationId}.json`);
 }
 
-function verificationMigrationResumePath(goalDirectory        , taskId        )         {
-  return join(goalDirectory, "bindings", `${taskId}-verification-migration.json`);
-}
-
-function splitLegacyVerificationCommand(command        )           {
-  const argv           = [];
-  let current = "";
-  let quote                   = null;
-  let escaped = false;
-  const push = ()       => {
-    if (current !== "") argv.push(current);
-    current = "";
-  };
-  for (const character of command) {
-    if (escaped) {
-      current += character;
-      escaped = false;
-      continue;
-    }
-    if (character === "\\" && quote !== "'") {
-      escaped = true;
-      continue;
-    }
-    if (quote !== null) {
-      if (character === quote) quote = null;
-      else current += character;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      continue;
-    }
-    if (/\s/u.test(character)) {
-      push();
-      continue;
-    }
-    if (/[|&;<>`]/u.test(character)) {
-      fail(`legacy verification command uses unsupported shell syntax: ${command}`);
-    }
-    current += character;
-  }
-  if (escaped || quote !== null) fail(`legacy verification command has incomplete quoting: ${command}`);
-  push();
-  if (argv.length === 0) fail("legacy verification command is empty");
-  return argv;
-}
-
-function workflowMigrateVerificationsCommand(goalDirectoryArgument        )       {
-  const goalDirectory = resolve(goalDirectoryArgument);
-  const planPath = join(goalDirectory, "plan.json");
-  const statePath = join(goalDirectory, "state.json");
-  const coveragePath = join(goalDirectory, "coverage.json");
-  for (const path of [planPath, statePath, coveragePath]) {
-    if (!existsSync(path)) fail(`verification migration requires an active Goal: ${path}`);
-  }
-  const receipt = withStateLock(statePath, () => {
-    const planSource = requireRecord(readJson(planPath), "legacy plan");
-    const taskSources = Array.isArray(planSource.tasks)
-      ? planSource.tasks.map((task, index) => requireRecord(task, `legacy tasks[${index}]`))
-      : fail("legacy plan.tasks must be an array");
-    const existingDefinitions = planSource.verifications === undefined
-      ? []
-      : Array.isArray(planSource.verifications)
-        ? planSource.verifications.map(parseVerificationDefinition)
-        : fail("legacy plan.verifications must be an array");
-    const definitions = new Map(
-      existingDefinitions.map((verification) => [verification.id, verification]),
-    );
-    const commandIds = new Map                ();
-    const mappings                                      = [];
-    const affectedTasks = new Set        ();
-    for (const taskSource of taskSources) {
-      const taskId = requireIdentifier(taskSource.id, "legacy task id");
-      const legacyIds = requireStringArray(
-        taskSource.verification_ids,
-        `legacy task ${taskId} verification_ids`,
-        false,
-      );
-      taskSource.verification_ids = legacyIds.map((legacyId) => {
-        if (SCRIPT_VERIFICATION_IDS.has(legacyId)) return legacyId;
-        if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u.test(legacyId)) {
-          if (!definitions.has(legacyId)) {
-            fail(`cannot infer argv for legacy verification id: ${legacyId}`);
-          }
-          return legacyId;
-        }
-        const argv = splitLegacyVerificationCommand(legacyId);
-        let id = commandIds.get(legacyId);
-        if (id === undefined) {
-          id = `verify-${digestJson(argv).slice(0, 16)}`;
-          const existing = definitions.get(id);
-          if (existing !== undefined && serializedJson(existing.run) !== serializedJson(argv)) {
-            fail(`verification migration id collision: ${id}`);
-          }
-          definitions.set(id, { id, run: argv });
-          commandIds.set(legacyId, id);
-          mappings.push({ from: legacyId, to: id });
-        }
-        affectedTasks.add(taskId);
-        return id;
-      });
-    }
-    if (mappings.length === 0) {
-      const parsed = parsePlan(planSource, planPath);
-      return {
-        status: "current",
-        plan_digest: digestFile(planPath),
-        verification_count: parsed.plan.verifications.length,
-        mappings: [],
-        resumed_tasks: [],
-      };
-    }
-    planSource.verifications = [...definitions.values()].sort((left, right) =>
-      compareStableStrings(left.id, right.id)
-    );
-    planSource.revision = requirePositiveInteger(planSource.revision, "plan.revision") + 1;
-    const nextPlanDigest = digestJson(planSource);
-    const coverageSource = requireRecord(readJson(coveragePath), "legacy coverage");
-    coverageSource.plan_revision = planSource.revision;
-    coverageSource.plan_digest = nextPlanDigest;
-    const stateSource = requireRecord(readJson(statePath), "legacy state");
-    stateSource.plan_digest = nextPlanDigest;
-    stateSource.revision = planSource.revision;
-    const parsed = parsePlan(planSource, planPath, {
-      coverageValue: coverageSource,
-      expectedPlanDigest: nextPlanDigest,
-    });
-    const parsedState = parseState(stateSource, parsed.plan, planPath, {
-      verifyExecutionArtifacts: false,
-    });
-    const writes                           = [
-      [planPath, planSource],
-      [coveragePath, coverageSource],
-      [statePath, stateSource],
-    ];
-    const resumedTasks           = [];
-    for (const task of parsed.plan.tasks) {
-      if (!affectedTasks.has(task.id)) continue;
-      const taskState = parsedState.tasks[task.id];
-      if (taskState.status !== "running" || taskState.executor_id === null) continue;
-      const bindingPath = taskBindingSnapshotPath(goalDirectory, task, taskState);
-      if (!existsSync(bindingPath)) fail(`active task binding is missing: ${task.id}`);
-      const binding = requireRecord(readJson(bindingPath), `binding ${task.id}`);
-      const bindingTask = requireRecord(binding.task, `binding ${task.id}.task`);
-      bindingTask.verify = taskVerificationDefinitions(parsed.plan, task);
-      writes.push([bindingPath, binding]);
-      writes.push([verificationMigrationResumePath(goalDirectory, task.id), {
-        contract: "VERIFICATION_MIGRATION_RESUME_V1",
-        task: task.id,
-        attempt: taskState.attempt,
-        run: taskRunId(task.id, taskState),
-      }]);
-      resumedTasks.push(task.id);
-    }
-    writeTransaction(statePath, writes);
-    return {
-      status: "migrated",
-      plan_digest: nextPlanDigest,
-      verification_count: definitions.size,
-      mappings,
-      resumed_tasks: resumedTasks,
-    };
-  });
-  process.stdout.write(`${JSON.stringify({
-    contract: "VERIFICATION_MIGRATION_RECEIPT_V1",
-    ...receipt,
-  })}\n`);
-}
-
-function workflowMigrateLifecycleCommand(goalDirectoryArgument        )       {
-  const goalDirectory = resolve(goalDirectoryArgument);
-  const planPath = join(goalDirectory, "plan.json");
-  const statePath = join(goalDirectory, "state.json");
-  for (const path of [planPath, statePath]) {
-    if (!existsSync(path)) fail(`lifecycle migration requires an active Goal: ${path}`);
-  }
-  const receipt = withStateLock(statePath, () => {
-    const rawState = readJson(statePath);
-    const { plan } = parsePlan(readJson(planPath), planPath, {
-      liveTaskIds: liveTaskIdsFromRawState(rawState),
-      ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(rawState),
-    });
-    const state = parseState(rawState, plan, planPath, { verifyExecutionArtifacts: false });
-    const current = serializedJson(rawState) === serializedJson(state);
-    if (!current) writeJson(statePath, state);
-    return {
-      contract: "LIFECYCLE_MIGRATION_RECEIPT_V1",
-      status: current ? "current" : "migrated",
-      workflow_status: state.status,
-      reason: state.reason,
-      action: state.action,
-      summary: summarizeState(state),
-    };
-  });
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
-}
-
-function planNeedsVerificationMigration(value         )          {
-  const plan = requireRecord(value, "plan verification migration check");
-  if (!Array.isArray(plan.verifications)) return true;
-  if (!Array.isArray(plan.tasks)) return false;
-  return plan.tasks.some((taskValue) => {
-    const task = requireRecord(taskValue, "plan migration task");
-    if (!Array.isArray(task.verification_ids)) return false;
-    return task.verification_ids.some((verificationId) =>
-      typeof verificationId === "string" &&
-      !SCRIPT_VERIFICATION_IDS.has(verificationId) &&
-      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u.test(verificationId)
-    );
-  });
-}
-
 function readWorkerVerification(
   path        ,
   runId        ,
@@ -17370,9 +17146,6 @@ function workflowStepCommand(goalDirectoryArgument        , deferDelivery = fals
     })}\n`);
     return;
   }
-  if (existsSync(statePath) && planNeedsVerificationMigration(readJson(planPath))) {
-    runSelfJson(["workflow", "migrate-verifications", goalDirectory]);
-  }
   if (!existsSync(statePath)) {
     const { plan } = parsePlan(readJson(planPath), planPath);
     const contextPath = plannerReviewContextPath(planPath, plan.revision);
@@ -17846,12 +17619,6 @@ function main(argv          )       {
   if (command === "workflow" && args[0] === "owner-finish" && args.length === 3) {
     return workflowOwnerFinishCommand(args[1], args[2]);
   }
-  if (command === "workflow" && args[0] === "migrate-verifications" && args.length === 2) {
-    return workflowMigrateVerificationsCommand(args[1]);
-  }
-  if (command === "workflow" && args[0] === "migrate-lifecycle" && args.length === 2) {
-    return workflowMigrateLifecycleCommand(args[1]);
-  }
   if (command === "workflow" && args[0] === "lifecycle-contract" && args.length === 1) {
     return lifecycleContractCommand();
   }
@@ -18099,7 +17866,7 @@ function main(argv          )       {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow migrate-verifications <goal-dir> | workflow migrate-lifecycle <goal-dir> | workflow lifecycle-contract | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow lifecycle-contract | internal runtime commands",
   );
 }
 

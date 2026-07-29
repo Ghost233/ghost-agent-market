@@ -39,7 +39,7 @@ DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga
 
 工作流自有的 JSON、JSONL、配置、Plan、State、Result、Progress 与 Review 状态都通过项目脚本或 runtime 命令写入；业务项目的 YAML/TOML 使用对应领域工具修改。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回紧凑 `THREAD_TASK_RECEIPT_V1`。
 
-生命周期保持有限：Workflow 只有 `active/completed/stopped/cancelled`，Task 只有 `pending/running/completed/stopped`。停止态必须使用固定的 `reason/action` 矩阵，未知值直接拒绝；reservation、Owner phase、线程状态、Worker 结果和调度命令只属于执行元数据。可用 `workflow lifecycle-contract` 查看权威契约，旧状态只允许通过 `workflow migrate-lifecycle <goal-dir>` 脚本迁移。
+生命周期保持有限：Workflow 只有 `active/completed/stopped/cancelled`，Task 只有 `pending/running/completed/stopped`。停止态必须使用固定的 `reason/action` 矩阵，未知值直接拒绝；reservation、Owner phase、线程状态、Worker 结果和调度命令只属于执行元数据。可用 `workflow lifecycle-contract` 查看权威契约；不提供迁移命令，不符合当前 Plan 契约的 Goal 由 runtime 拒绝。
 
 原生 Goal 是可选桥接：默认使用 `standalone_thread`，用户可以直接回答 Owner 变化。只有用户已启动或明确要求 Goal 时才使用 `codex_native`。Goal 模式遇到 Owner 变化时返回 `owner_action_required`，通知用户暂停 Goal 并处理精确变更；应用后提示“可以继续 Goal”，不通过空模型回合累计 blocked 次数。
 

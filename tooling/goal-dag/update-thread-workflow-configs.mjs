@@ -138,7 +138,7 @@ for (const relativePath of [
   writeFileSync(absolutePath, setupYaml, "utf8");
 }
 
-const supervisorYaml = `interface:\n  display_name: "DAG 任务监督"\n  short_description: "仅在 DAG 模式通过脚本静默管理最多八个 ready 执行线程。"\n  default_prompt: "使用 $sub-thread-task-supervisor，按脚本 action 静默监督当前 DAG 执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const supervisorYaml = `interface:\n  display_name: "DAG 任务监督"\n  short_description: "仅在 DAG 模式静默等待 Main 已登记的最多八个执行线程。"\n  default_prompt: "使用 $sub-thread-task-supervisor，按脚本 action 静默等待并通知当前 DAG 执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-task-supervisor/agents/openai.yaml",
   "claude-code-market/skills/sub-thread-task-supervisor/agents/openai.yaml",

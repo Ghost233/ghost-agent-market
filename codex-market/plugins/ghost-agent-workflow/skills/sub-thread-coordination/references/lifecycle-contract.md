@@ -32,13 +32,12 @@ Worker 结果固定映射：
 | `blocked` | `stopped` | `input_missing/provide_input` |
 | `failed`、`needs_repair` | `stopped` | `task_failed/repair_task` |
 
-Review 必须是显式 DAG 节点，不使用隐藏 Review 生命周期。reservation、notification、migration、reclaim、Owner phase、线程 `running/stalled`、Dashboard 事件和 `next_action` 都是执行元数据，不得扩展 Workflow/Task 状态集合。
+Review 必须是显式 DAG 节点，不使用隐藏 Review 生命周期。reservation、notification、reclaim、Owner phase、线程 `running/stalled`、Dashboard 事件和 `next_action` 都是执行元数据，不得扩展 Workflow/Task 状态集合。
 
 ## 脚本入口
 
 ```text
 goal-dag.mjs workflow lifecycle-contract
-goal-dag.mjs workflow migrate-lifecycle <goal-dir>
 ```
 
-`lifecycle-contract` 输出 runtime 当前有限集，供测试和工具读取。`migrate-lifecycle` 原子把旧 `reserved/blocked/failed/needs_repair/superseded` 状态规范化；模型不得自行迁移 JSON。
+`lifecycle-contract` 输出 runtime 当前有限集，供测试和工具读取。不提供迁移命令；已知旧状态只在 runtime 内部归一化，未知值直接拒绝，模型不得猜测字段或手写 JSON。

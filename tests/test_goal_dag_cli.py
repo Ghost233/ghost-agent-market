@@ -198,35 +198,28 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertIn(f"`{item['reason']}`", contents[0])
             self.assertIn(f"`{item['action']}`", contents[0])
 
-    def test_lifecycle_migration_normalizes_legacy_state_and_rejects_unknown_pairs(self) -> None:
+    def test_lifecycle_has_no_migration_command_and_rejects_unknown_pairs(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
             state_path = self.initialize(goal_path, plan_path)
             action = self.reserve_one(plan_path, state_path)
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            state.pop("status")
-            state.pop("reason")
-            state.pop("action")
-            task = state["tasks"][action["task_id"]]
-            task["status"] = "reserved"
-            task.pop("reason")
-            task.pop("action")
+            state["tasks"][action["task_id"]]["status"] = "reserved"
             state_path.write_text(
                 json.dumps(state, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-            migrated = self.run_json("workflow", "migrate-lifecycle", root)
-            self.assertEqual(migrated["status"], "migrated")
-            normalized = json.loads(state_path.read_text(encoding="utf-8"))
-            self.assertEqual(normalized["status"], "active")
-            self.assertIsNone(normalized["reason"])
-            self.assertIsNone(normalized["action"])
-            self.assertEqual(normalized["tasks"][action["task_id"]]["status"], "running")
+            removed = self.run_cli("workflow", "migrate-lifecycle", root)
+            self.assertNotEqual(removed.returncode, 0)
+            self.assertIn("usage:", removed.stderr)
+            removed = self.run_cli("workflow", "migrate-verifications", root)
+            self.assertNotEqual(removed.returncode, 0)
+            self.assertIn("usage:", removed.stderr)
 
-            normalized["status"] = "stopped"
-            normalized["reason"] = "not_defined"
-            normalized["action"] = "await_user"
+            state["status"] = "stopped"
+            state["reason"] = "not_defined"
+            state["action"] = "await_user"
             state_path.write_text(
-                json.dumps(normalized, indent=2, ensure_ascii=False) + "\n",
+                json.dumps(state, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
             rejected = self.run_cli("status", plan_path, state_path)
@@ -1795,69 +1788,10 @@ class GoalDagCliTests(unittest.TestCase):
                 changed.write_text("export const integrated = true;\n", encoding="utf-8")
                 nested_change.write_text("export const nested = true;\n", encoding="utf-8")
 
-                self.run_json(
-                    "supervisor-record", goal_dir, "observed", "T1", "1",
-                    "legacy-verification-cursor", "completed",
-                )
-                missing_result = self.run_json("supervisor-next", goal_dir)["notify"][0]
-                self.run_json("supervisor-ack", goal_dir, missing_result["action_id"])
-
-                legacy_plan = json.loads(plan_path.read_text(encoding="utf-8"))
-                legacy_commands = [
-                    'node -e "process.exit(0)"',
-                    "node --version",
-                ]
-                next(task for task in legacy_plan["tasks"] if task["id"] == "T1")[
-                    "verification_ids"
-                ] = ["state-unit", *legacy_commands]
-                plan_path.write_text(
-                    json.dumps(legacy_plan, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                legacy_digest = hashlib.sha256(plan_path.read_bytes()).hexdigest()
-                legacy_coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
-                legacy_coverage["plan_digest"] = legacy_digest
-                coverage_path.write_text(
-                    json.dumps(legacy_coverage, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                legacy_state = json.loads(state_path.read_text(encoding="utf-8"))
-                legacy_state["plan_digest"] = legacy_digest
-                state_path.write_text(
-                    json.dumps(legacy_state, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                binding_path = Path(bound["binding_ref"])
-                legacy_binding = json.loads(binding_path.read_text(encoding="utf-8"))
-                legacy_binding["task"]["verify"] = ["state-unit", *legacy_commands]
-                binding_path.write_text(
-                    json.dumps(legacy_binding, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                migration = self.run_json(
-                    "workflow", "migrate-verifications", goal_dir,
-                )
-                self.assertEqual(migration["status"], "migrated")
-                self.assertEqual(migration["resumed_tasks"], ["T1"])
-                self.assertEqual(
-                    [item["from"] for item in migration["mappings"]],
-                    legacy_commands,
-                )
-                migrated_state = json.loads(state_path.read_text(encoding="utf-8"))
-                self.assertEqual(migrated_state["tasks"]["T1"]["attempt"], 1)
-                self.assertEqual(migrated_state["tasks"]["T1"]["executor_id"], "owner-thread")
-                resume_action = self.run_json("supervisor-next", goal_dir)["create"][0]
-                self.assertEqual(resume_action["thread"], "owner-thread")
-                self.assertEqual(resume_action["run"], ready["run"])
-                resumed = self.run_json(
-                    "supervisor-ack", goal_dir, resume_action["action_id"],
-                    "owner-thread", "local",
-                )
-                self.assertIn("不得重新实施任务", resumed["dispatch"])
-                migrated_binding = self.run_json("worker", "open", goal_dir, ready["run"])
-                migrated_ids = [item["id"] for item in migrated_binding["task"]["verify"]]
-                self.assertEqual(len(migrated_ids), 3)
-                for verification_id in migrated_ids:
+                binding = self.run_json("worker", "open", goal_dir, ready["run"])
+                verification_ids = [item["id"] for item in binding["task"]["verify"]]
+                self.assertEqual(verification_ids, ["state-unit"])
+                for verification_id in verification_ids:
                     self.run_json(
                         "worker", "verify", goal_dir, ready["run"], verification_id,
                     )
