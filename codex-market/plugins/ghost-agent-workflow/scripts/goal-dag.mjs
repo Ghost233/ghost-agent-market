@@ -55,7 +55,21 @@ import { fileURLToPath } from "node:url";
 
 
 
+
+
+
+
+
+
+
 const SUPERVISOR_CONTROL_TASKS = new Set(["planner", "planner-reviewer"]);
+
+
+
+
+
+
+
 
 
 
@@ -645,6 +659,32 @@ const TERMINAL_STATUSES = new Set                      ([
   "failed",
   "needs_repair",
 ]);
+
+function taskLifecycleForWorkerResult(status                      )
+
+
+
+  {
+  if (status === "completed") return { status: "completed", reason: null, action: null };
+  const reason             = status === "blocked" ? "input_missing" : "task_failed";
+  return { status: "stopped", reason, action: STOP_ACTION_MATRIX[reason] };
+}
+const STOP_ACTION_MATRIX                                               = Object.freeze({
+  input_missing: "provide_input",
+  decision_required: "await_user",
+  task_failed: "repair_task",
+  thread_failed: "replace_thread",
+  plan_invalid: "revise_plan",
+  runtime_failed: "retry_runtime",
+});
+const WORKFLOW_STATUSES = new Set                ([
+  "active", "completed", "stopped", "cancelled",
+]);
+const TASK_STATUSES = new Set            ([
+  "pending", "running", "completed", "stopped",
+]);
+const STOP_REASONS = new Set            (Object.keys(STOP_ACTION_MATRIX)                );
+const REQUIRED_ACTIONS = new Set                (Object.values(STOP_ACTION_MATRIX));
 const REASONING_EFFORTS = new Set([
   "none",
   "minimal",
@@ -796,6 +836,91 @@ function requireIdentifier(value         , label        )         {
     fail(`${label} is invalid: ${result}`);
   }
   return result;
+}
+
+function parseStopDirective(
+  reasonValue         ,
+  actionValue         ,
+  status                             ,
+  label        ,
+)                                                               {
+  const reason = reasonValue === null
+    ? null
+    : requireString(reasonValue, `${label}.reason`)              ;
+  const action = actionValue === null
+    ? null
+    : requireString(actionValue, `${label}.action`)                  ;
+  if (status !== "stopped") {
+    if (reason !== null || action !== null) fail(`${label} non-stopped state cannot contain reason/action`);
+    return { reason: null, action: null };
+  }
+  if (reason === null || action === null) fail(`${label} stopped state requires reason/action`);
+  if (!STOP_REASONS.has(reason) || !REQUIRED_ACTIONS.has(action)) {
+    fail(`${label} reason/action is invalid`);
+  }
+  if (STOP_ACTION_MATRIX[reason] !== action) {
+    fail(`${label} reason/action pair is not allowed: ${reason}/${action}`);
+  }
+  return { reason, action };
+}
+
+function stopTask(
+  taskState           ,
+  reason            ,
+)       {
+  taskState.status = "stopped";
+  taskState.reason = reason;
+  taskState.action = STOP_ACTION_MATRIX[reason];
+}
+
+function clearTaskStop(taskState           , status                                )       {
+  taskState.status = status;
+  taskState.reason = null;
+  taskState.action = null;
+}
+
+
+
+function stopWorkflow(state                        , reason            )       {
+  state.status = "stopped";
+  state.reason = reason;
+  state.action = STOP_ACTION_MATRIX[reason];
+}
+
+function activateWorkflow(state                        )       {
+  state.status = "active";
+  state.reason = null;
+  state.action = null;
+}
+
+function isClaimedTask(taskState           )          {
+  return taskState.status === "running" && taskState.executor_id === null;
+}
+
+function isBoundRunningTask(taskState           )          {
+  return taskState.status === "running" && taskState.executor_id !== null;
+}
+
+function isSupersededTask(taskState           )          {
+  return taskState.status === "stopped" && taskState.reason === "plan_invalid" &&
+    taskState.action === "revise_plan" && taskState.replacement_task_id !== null;
+}
+
+function lifecycleContractCommand()       {
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_LIFECYCLE_CONTRACT_V1",
+    workflow_statuses: [...WORKFLOW_STATUSES],
+    task_statuses: [...TASK_STATUSES],
+    stop_matrix: Object.entries(STOP_ACTION_MATRIX).map(([reason, action]) => ({
+      reason,
+      action,
+    })),
+    rules: {
+      stopped_requires_reason_action: true,
+      non_stopped_forbids_reason_action: true,
+      unknown_values_allowed: false,
+    },
+  })}\n`);
 }
 
 function readJson(path        )          {
@@ -3233,7 +3358,13 @@ function liveTaskIdsFromRawState(value         )              {
   const state = requireRecord(value, "state");
   const tasks = requireRecord(state.tasks, "state.tasks");
   return new Set(Object.entries(tasks)
-    .filter(([, taskValue]) => requireRecord(taskValue, "state task").status !== "superseded")
+    .filter(([, taskValue]) => {
+      const task = requireRecord(taskValue, "state task");
+      return task.status !== "superseded" && !(
+        task.status === "stopped" && task.reason === "plan_invalid" &&
+        task.action === "revise_plan" && task.replacement_task_id !== null
+      );
+    })
     .map(([taskId]) => taskId));
 }
 
@@ -3242,9 +3373,12 @@ function ownerValidationTaskIdsFromRawState(value         )              {
   const tasks = requireRecord(state.tasks, "state.tasks");
   return new Set(Object.entries(tasks)
     .filter(([, taskValue]) => {
-      const status = requireRecord(taskValue, "state task").status;
-      return status === "pending" || status === "reserved" || status === "running" ||
-        status === "blocked" || status === "failed" || status === "needs_repair";
+      const task = requireRecord(taskValue, "state task");
+      return task.status !== "completed" && !(
+        (task.status === "superseded") ||
+        (task.status === "stopped" && task.reason === "plan_invalid" &&
+          task.action === "revise_plan" && task.replacement_task_id !== null)
+      );
     })
     .map(([taskId]) => taskId));
 }
@@ -4175,14 +4309,35 @@ function parseTaskState(
 )            {
   const taskId = task.id;
   const source = requireRecord(value, `state.tasks.${taskId}`);
-  const statuses = new Set            ([
-    "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
-  ]);
-  if (!statuses.has(source.status              )) {
+  const legacyStatus = requireString(source.status, `state.tasks.${taskId}.status`);
+  const status             = legacyStatus === "reserved"
+    ? "running"
+    : legacyStatus === "blocked" || legacyStatus === "failed" || legacyStatus === "needs_repair" ||
+        legacyStatus === "superseded"
+      ? "stopped"
+      : legacyStatus              ;
+  if (!TASK_STATUSES.has(status)) {
     fail(`state.tasks.${taskId}.status is invalid`);
   }
+  const legacyReason                    = legacyStatus === "blocked"
+    ? "input_missing"
+    : legacyStatus === "failed" || legacyStatus === "needs_repair"
+      ? "task_failed"
+      : legacyStatus === "superseded"
+        ? "plan_invalid"
+        : null;
+  const stop = parseStopDirective(
+    source.reason === undefined ? legacyReason : source.reason,
+    source.action === undefined && legacyReason !== null
+      ? STOP_ACTION_MATRIX[legacyReason]
+      : source.action ?? null,
+    status,
+    `state.tasks.${taskId}`,
+  );
   const result            = {
-    status: source.status              ,
+    status,
+    reason: stop.reason,
+    action: stop.action,
     attempt: requireNonNegativeInteger(source.attempt, `state.tasks.${taskId}.attempt`),
     reservation_token: requireNullableString(
       source.reservation_token,
@@ -4234,8 +4389,10 @@ function parseTaskState(
         `state.tasks.${taskId}.accepted_change_seq`,
       ),
   };
-  const active = result.status === "reserved" || result.status === "running";
-  const workerTerminal = ["completed", "blocked", "failed", "needs_repair"].includes(result.status);
+  const active = result.status === "running";
+  const workerTerminal = result.status === "completed" || (
+    result.status === "stopped" && result.result_ref !== null
+  );
   if (result.status === "pending") {
     if (
       result.reservation_token !== null || result.owner_generation !== null ||
@@ -4261,13 +4418,10 @@ function parseTaskState(
       `state.tasks.${taskId}.result_path`,
     );
   }
-  if (result.status === "reserved" && result.executor_id !== null) {
-    fail(`state.tasks.${taskId} reserved state must not have executor_id`);
+  if (workerTerminal && result.executor_id === null) {
+    fail(`state.tasks.${taskId} terminal state requires executor_id`);
   }
-  if ((result.status === "running" || workerTerminal) && result.executor_id === null) {
-    fail(`state.tasks.${taskId} ${result.status} state requires executor_id`);
-  }
-  if (result.status === "running" && (
+  if (isBoundRunningTask(result) && (
     result.task_baseline_ref === null || result.task_baseline_digest === null
   )) fail(`state.tasks.${taskId} running state requires task baseline`);
   if ((result.task_baseline_ref === null) !== (result.task_baseline_digest === null)) {
@@ -4302,11 +4456,8 @@ function parseTaskState(
       fail(`state.tasks.${taskId} ${result.status} requires accepted_change_seq`);
     }
   }
-  if (result.status !== "superseded" && result.replacement_task_id !== null) {
-    fail(`state.tasks.${taskId} replacement_task_id requires superseded status`);
-  }
-  if (result.status === "superseded" && result.replacement_task_id === null) {
-    fail(`state.tasks.${taskId} superseded state requires replacement_task_id`);
+  if (result.replacement_task_id !== null && !isSupersededTask(result)) {
+    fail(`state.tasks.${taskId} replacement_task_id requires plan_invalid/revise_plan`);
   }
   if (result.result_path !== null) {
     if (result.attempt < 1 || result.reservation_token === null) {
@@ -4462,8 +4613,30 @@ function parseState(
     fail("state reviewer set does not match plan review tasks");
   }
   const rawOwnerRegistry = requireRecord(source.owner_registry, "state.owner_registry");
+  const workflowStatus = source.status === undefined
+    ? source.goal_refresh_pending === true || source.owner_change !== undefined && source.owner_change !== null
+      ? "stopped"
+      : "active"
+    : requireString(source.status, "state.status")                  ;
+  if (!WORKFLOW_STATUSES.has(workflowStatus)) fail("state.status is invalid");
+  const legacyStopReason                    = source.goal_refresh_pending === true
+    ? "plan_invalid"
+    : source.owner_change !== undefined && source.owner_change !== null
+      ? "decision_required"
+      : null;
+  const workflowStop = parseStopDirective(
+    source.reason === undefined ? legacyStopReason : source.reason,
+    source.action === undefined && legacyStopReason !== null
+      ? STOP_ACTION_MATRIX[legacyStopReason]
+      : source.action ?? null,
+    workflowStatus,
+    "state",
+  );
   const result           = {
     contract: "DAG_RUN_STATE_V5",
+    status: workflowStatus,
+    reason: workflowStop.reason,
+    action: workflowStop.action,
     plan_digest: requireString(source.plan_digest, "state.plan_digest"),
     goal_digest: requireString(source.goal_digest, "state.goal_digest"),
     goal_refresh_pending: requireBoolean(
@@ -4529,7 +4702,9 @@ function parseState(
         fail(`state.owners.${owner.id}.current_task_id is outside owner`);
       }
       const taskStatus = result.tasks[currentTask.id].status;
-      if (ownerState.status !== taskStatus) {
+      if (taskStatus !== "running" || (
+        ownerState.status !== "reserved" && ownerState.status !== "running"
+      )) {
         fail(`state owner/task active status mismatch: ${owner.id}/${currentTask.id}`);
       }
     }
@@ -4559,7 +4734,9 @@ function parseState(
       if (currentTask === undefined || currentTask.runtime_actor_id !== actor.id) {
         fail(`state.runtime_actors.${actor.id}.current_task_id is outside actor`);
       }
-      if (actorState.status !== result.tasks[currentTask.id].status) {
+      if (result.tasks[currentTask.id].status !== "running" || (
+        actorState.status !== "reserved" && actorState.status !== "running"
+      )) {
         fail(`state actor/task active status mismatch: ${actor.id}/${currentTask.id}`);
       }
     }
@@ -4586,7 +4763,10 @@ function parseState(
     if (reviewerState.current_task_id !== null && reviewerState.current_task_id !== task.id) {
       fail(`state.reviewers.${subjectId}.current_task_id is outside reviewer`);
     }
-    if (reviewerState.current_task_id !== null && reviewerState.status !== result.tasks[task.id].status) {
+    if (reviewerState.current_task_id !== null && (
+      result.tasks[task.id].status !== "running" ||
+      (reviewerState.status !== "reserved" && reviewerState.status !== "running")
+    )) {
       fail(`state reviewer/task active status mismatch: ${subjectId}/${task.id}`);
     }
     const allowedResult = result.tasks[task.id].result_ref;
@@ -4767,6 +4947,9 @@ function initializeState(planPath        , plan      )           {
   );
   return {
     contract: "DAG_RUN_STATE_V5",
+    status: "active",
+    reason: null,
+    action: null,
     plan_digest: digestFile(planPath),
     goal_digest: plan.goal_digest,
     goal_refresh_pending: false,
@@ -4781,6 +4964,8 @@ function initializeState(planPath        , plan      )           {
     owner_change: null,
     tasks: Object.fromEntries(plan.tasks.map((task) => [task.id, {
       status: "pending",
+      reason: null,
+      action: null,
       attempt: 0,
       reservation_token: null,
       owner_generation: null,
@@ -5165,6 +5350,7 @@ function refreshGoalCommand(
     state.plan_digest = canonicalPlanDigest;
     state.goal_digest = newGoalDigest;
     state.goal_refresh_pending = true;
+    stopWorkflow(state, "plan_invalid");
     state.source_revision = parsedCandidateGoal.source.revision;
     goalState.goal_digest = newGoalDigest;
     goalState.source_blocks.digest = candidateSourceBlocksDigest;
@@ -5264,7 +5450,7 @@ function dependencyResolved(
     );
   }
   if (taskState.status === "completed") return !state.review_pending.includes(taskId);
-  if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
+  if (isSupersededTask(taskState)) {
     return dependencyResolved(taskState.replacement_task_id, plan, state, visited);
   }
   return false;
@@ -5276,7 +5462,7 @@ function effectiveTaskStatus(task                , plan      , state          ) 
     const child = plan.tasks.find((candidate) => candidate.id === childId);
     if (child === undefined) fail(`composite task ${task.id} references unknown child: ${childId}`);
     const childState = state.tasks[child.id];
-    if (childState.status === "superseded" && childState.replacement_task_id !== null) {
+    if (isSupersededTask(childState)) {
       const replacementId = replacementTerminalTaskId(childState.replacement_task_id, state);
       const replacement = plan.tasks.find((candidate) => candidate.id === replacementId);
       if (replacement === undefined) fail(`replacement references unknown task: ${replacementId}`);
@@ -5289,10 +5475,8 @@ function effectiveTaskStatus(task                , plan      , state          ) 
   )) {
     return "completed";
   }
-  for (const attention of ["needs_repair", "failed", "blocked"]                ) {
-    if (childStatuses.includes(attention)) return attention;
-  }
-  if (childStatuses.some((status) => status === "running" || status === "reserved" || status === "completed")) {
+  if (childStatuses.includes("stopped")) return "stopped";
+  if (childStatuses.some((status) => status === "running" || status === "completed")) {
     return "running";
   }
   return "pending";
@@ -5337,7 +5521,7 @@ function replacementTerminalTaskId(
   visited.add(taskId);
   const taskState = state.tasks[taskId];
   if (taskState === undefined) fail(`replacement references unknown task: ${taskId}`);
-  if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
+  if (isSupersededTask(taskState)) {
     return replacementTerminalTaskId(taskState.replacement_task_id, state, visited);
   }
   return taskId;
@@ -5379,7 +5563,7 @@ function resultRefsForDependency(taskId        , state          , visited = new 
   visited.add(taskId);
   const taskState = state.tasks[taskId];
   if (taskState.status === "completed" && taskState.result_ref !== null) return [taskState.result_ref];
-  if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
+  if (isSupersededTask(taskState)) {
     return resultRefsForDependency(taskState.replacement_task_id, state, visited);
   }
   return [];
@@ -5401,7 +5585,7 @@ function resultTasksForDependency(
       resultTasksForDependency(childId, plan, state, new Set(visited))
     );
   }
-  if (taskState.status === "superseded" && taskState.replacement_task_id !== null) {
+  if (isSupersededTask(taskState)) {
     return resultTasksForDependency(taskState.replacement_task_id, plan, state, visited);
   }
   return taskState.status === "completed" && taskState.result_ref !== null ? [task] : [];
@@ -5483,10 +5667,7 @@ function criticalScores(tasks                  )                      {
 }
 
 function activeTasks(plan      , state          )                   {
-  return plan.tasks.filter((task) => {
-    const status = state.tasks[task.id].status;
-    return status === "reserved" || status === "running";
-  });
+  return plan.tasks.filter((task) => state.tasks[task.id].status === "running");
 }
 
 function taskReadyForReservation(
@@ -5506,7 +5687,7 @@ function taskReadyForReservation(
   if (!coverageFullyPlanned) return false;
   return plan.tasks.every((other) =>
     other.id === task.id || other.verification_ids.includes(COMMIT_READINESS_GATE_ID) ||
-    state.tasks[other.id].status === "superseded" ||
+    isSupersededTask(state.tasks[other.id]) ||
     (
       state.tasks[other.id].status === "completed" &&
       state.tasks[other.id].validated_source_revision === state.source_revision
@@ -5515,7 +5696,7 @@ function taskReadyForReservation(
 }
 
 function validateLiveDiffBarriers(plan      , state          )       {
-  const liveTasks = plan.tasks.filter((task) => state.tasks[task.id].status !== "superseded");
+  const liveTasks = plan.tasks.filter((task) => !isSupersededTask(state.tasks[task.id]));
   const liveDiffTasks = liveTasks.filter((task) =>
     task.satisfies_goal_gates.includes(DIFF_SCOPE_GATE_ID),
   );
@@ -5859,6 +6040,9 @@ function reserveCommand(
     if (plan.safety.status === "needs_user_review") fail("plan safety requires user review");
     if (state.goal_refresh_pending) fail("goal refresh requires DAG delta before reserve");
     if (state.owner_change !== null) fail("owner change is awaiting user action");
+    if (state.status !== "active") {
+      fail(`workflow is ${state.status}: ${state.reason ?? "no_reason"}/${state.action ?? "no_action"}`);
+    }
     if (state.stale_executors.length > 0) {
       fail("stale executors are stop-pending; confirm them before reserve");
     }
@@ -5909,7 +6093,7 @@ function reserveCommand(
           continue;
         }
       }
-      taskState.status = "reserved";
+      clearTaskStop(taskState, "running");
       taskState.attempt += 1;
       taskState.reservation_token = reservationToken;
       taskState.owner_generation = ownerState.generation;
@@ -5973,8 +6157,14 @@ function reserveCommand(
     }
     if (actions.length > 0) writeJson(statePath, state);
     const repairRequired = plan.tasks
-      .filter((task) => ["blocked", "failed", "needs_repair"].includes(state.tasks[task.id].status))
-      .map((task) => ({ task_id: task.id, status: state.tasks[task.id].status, result_ref: state.tasks[task.id].result_ref }));
+      .filter((task) => state.tasks[task.id].status === "stopped")
+      .map((task) => ({
+        task_id: task.id,
+        status: "stopped",
+        reason: state.tasks[task.id].reason,
+        action: state.tasks[task.id].action,
+        result_ref: state.tasks[task.id].result_ref,
+      }));
     return {
       actions,
       owner_busy: ownerBusy,
@@ -6000,7 +6190,7 @@ function bindTaskState(
     const taskState = state.tasks[taskId];
     const ownerState = subjectStateForTask(state, task);
     const subjectId = taskSubjectId(task);
-    if (taskState.status !== "reserved") fail(`task ${taskId} is not reserved`);
+    if (!isClaimedTask(taskState)) fail(`task ${taskId} is not claimed for binding`);
     if (ownerState.status !== "reserved" || ownerState.current_task_id !== taskId) {
       fail(`execution subject ${subjectId} is not reserved for task ${taskId}`);
     }
@@ -6034,7 +6224,7 @@ function bindTaskState(
     taskState.task_baseline_digest = digestFile(baselineRef);
     ownerState.bound_executor_id = actualExecutorId;
     ownerState.status = "running";
-    taskState.status = "running";
+    clearTaskStop(taskState, "running");
     taskState.executor_id = actualExecutorId;
     updateOwnerLease(goal, task, reservationToken, {
       executor_id: actualExecutorId,
@@ -6102,14 +6292,14 @@ function abandonCommand(
     const task = plan.tasks.find((candidate) => candidate.id === taskId);
     if (task === undefined) fail(`unknown task: ${taskId}`);
     const taskState = state.tasks[taskId];
-    if (taskState.status !== "reserved") {
+    if (!isClaimedTask(taskState)) {
       fail(`task ${taskId} can only be abandoned before bind; running tasks require reclaim`);
     }
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
     cleanupPaths = taskAttemptCleanupPaths(planPath, task, taskState);
     const ownerState = subjectStateForTask(state, task);
     if (ownerState.current_task_id !== taskId) fail("owner current task mismatch");
-    taskState.status = "pending";
+    clearTaskStop(taskState, "pending");
     taskState.reservation_token = null;
     taskState.owner_generation = null;
     taskState.executor_id = null;
@@ -6750,7 +6940,7 @@ function expectedDiffScopeAudit(
 
      ();
   const liveWorkTasks = plan.tasks
-    .filter((task) => task.role === "work" && state.tasks[task.id].status !== "superseded")
+    .filter((task) => task.role === "work" && !isSupersededTask(state.tasks[task.id]))
     .sort((left, right) => compareStableStrings(left.id, right.id));
   for (const workTask of liveWorkTasks) {
     const workState = state.tasks[workTask.id];
@@ -7473,7 +7663,7 @@ function passedDiffScopeEvidence(
 )                                  {
   const task = plan.tasks.find((candidate) =>
     candidate.satisfies_goal_gates.includes(DIFF_SCOPE_GATE_ID) &&
-    state.tasks[candidate.id].status !== "superseded",
+    !isSupersededTask(state.tasks[candidate.id]),
   );
   if (task === undefined) fail(`live ${DIFF_SCOPE_GATE_ID} task is missing`);
   const taskState = state.tasks[task.id];
@@ -7803,7 +7993,7 @@ function deliveryValidateCommand(manifestArgument        )       {
   const task = plan.tasks.find((item) =>
     item.runtime_actor_id === "commit-readiness" &&
     item.verification_ids.includes(COMMIT_READINESS_GATE_ID) &&
-    state.tasks[item.id].status !== "superseded",
+    !isSupersededTask(state.tasks[item.id]),
   );
   if (task === undefined) fail("live commit-readiness task is missing");
   const taskState = state.tasks[task.id];
@@ -7933,7 +8123,9 @@ function finishCommand(
     if (taskState.result_path === null) fail("task result_path is missing");
     const resultPath = canonicalPath(taskState.result_path, resultArgument, "result path");
     const acceptedResultPath = `${resultPath}.accepted.json`;
-    if (["completed", "blocked", "failed", "needs_repair"].includes(taskState.status)) {
+    if (taskState.status === "completed" || (
+      taskState.status === "stopped" && taskState.result_ref !== null
+    )) {
       const acceptedResultExists = existsSync(acceptedResultPath);
       const acceptedDigestMatches = acceptedResultExists && taskState.result_digest !== null
         ? digestFile(acceptedResultPath) === taskState["result_digest"]
@@ -7955,7 +8147,11 @@ function finishCommand(
         taskState,
       );
       validateReviewResultBinding(plan, state, task, acceptedResult);
-      if (acceptedResult.status !== taskState.status) fail("accepted result status mismatch");
+      const expectedLifecycle = taskLifecycleForWorkerResult(acceptedResult.status);
+      if (
+        expectedLifecycle.status !== taskState.status ||
+        expectedLifecycle.reason !== taskState.reason || expectedLifecycle.action !== taskState.action
+      ) fail("accepted result lifecycle mismatch");
       bindDiffScopeArtifact(
         planPath,
         plan,
@@ -7995,7 +8191,7 @@ function finishCommand(
         execution_subject_id: owner.id,
         owner_generation: ownerState.generation,
         executor_id: taskState.executor_id,
-        status: taskState.status,
+        status: acceptedResult.status,
         result_ref: acceptedResultPath,
         user_message: acceptedResultUserMessage(task, acceptedResult),
         owner_reusable: isOwnerDefinition(owner),
@@ -8083,7 +8279,13 @@ function finishCommand(
       false,
     );
     writeImmutableJson(acceptedResultPath, result);
-    taskState.status = result.status;
+    if (result.status === "completed") {
+      clearTaskStop(taskState, "completed");
+    } else if (result.status === "blocked") {
+      stopTask(taskState, "input_missing");
+    } else {
+      stopTask(taskState, "task_failed");
+    }
     taskState.result_ref = acceptedResultPath;
     taskState.result_digest = digestFile(acceptedResultPath);
     if (taskState.task_baseline_ref !== null) cleanupAfterFinish.push(taskState.task_baseline_ref);
@@ -8249,6 +8451,7 @@ function ownerChangePauseCommand(
       };
     }
     state.owner_change = { request_ref: requestPath, request_digest: requestDigest };
+    stopWorkflow(state, "decision_required");
     writeJson(statePath, state);
     return {
       status: "paused",
@@ -8714,7 +8917,7 @@ function applyDeltaCommand(
     if (!state.goal_refresh_pending) {
       const startedDiffAudits = plan.tasks.filter((task) =>
         task.satisfies_goal_gates.includes(DIFF_SCOPE_GATE_ID) &&
-        ["reserved", "running", "completed"].includes(state.tasks[task.id].status),
+        (state.tasks[task.id].status === "running" || state.tasks[task.id].status === "completed"),
       );
       if (startedDiffAudits.length > 0) {
         fail(`delta cannot change the plan after ${DIFF_SCOPE_GATE_ID} begins: ${startedDiffAudits.map((task) => task.id).join(", ")}`);
@@ -8814,7 +9017,7 @@ function applyDeltaCommand(
     }
     if (state.goal_refresh_pending) {
       const expected = plan.tasks
-        .filter((task) => state.tasks[task.id].status !== "superseded")
+        .filter((task) => !isSupersededTask(state.tasks[task.id]))
         .map((task) => task.id)
         .sort(compareStableStrings);
       const actual = delta.source_dispositions
@@ -8829,7 +9032,10 @@ function applyDeltaCommand(
     for (const repair of delta.repairs) {
       const failedState = state.tasks[repair.task_id];
       if (failedState === undefined) fail(`delta repairs unknown task: ${repair.task_id}`);
-      if (!["blocked", "failed", "needs_repair"].includes(failedState.status)) {
+      if (
+        failedState.status !== "stopped" ||
+        (failedState.action !== "repair_task" && failedState.action !== "provide_input")
+      ) {
         fail(`delta can only repair a terminal failed task: ${repair.task_id}`);
       }
       if (!newTaskIds.has(repair.replacement_task_id)) {
@@ -8838,10 +9044,10 @@ function applyDeltaCommand(
     }
     for (const disposition of delta.source_dispositions) {
       const taskState = state.tasks[disposition.task_id];
-      if (taskState === undefined || taskState.status === "superseded") {
+      if (taskState === undefined || isSupersededTask(taskState)) {
         fail(`delta source disposition references non-live task: ${disposition.task_id}`);
       }
-      if (taskState.status === "reserved" || taskState.status === "running") {
+      if (taskState.status === "running") {
         fail(`delta cannot disposition active task: ${disposition.task_id}`);
       }
       if (
@@ -8983,7 +9189,7 @@ function applyDeltaCommand(
       required_plan_items: delta.coverage_update.required_plan_items,
     };
     const supersededAfterDelta = new Set(plan.tasks
-      .filter((task) => state.tasks[task.id].status === "superseded")
+      .filter((task) => isSupersededTask(state.tasks[task.id]))
       .map((task) => task.id));
     for (const repair of delta.repairs) supersededAfterDelta.add(repair.task_id);
     for (const disposition of delta.source_dispositions) {
@@ -9121,6 +9327,8 @@ function applyDeltaCommand(
     for (const task of delta.add_tasks) {
       state.tasks[task.id] = {
         status: "pending",
+        reason: null,
+        action: null,
         attempt: 0,
         reservation_token: null,
         owner_generation: null,
@@ -9154,8 +9362,8 @@ function applyDeltaCommand(
       const repairedTask = plan.tasks.find((task) => task.id === repair.task_id)                  ;
       const repairedState = state.tasks[repair.task_id];
       const previousResultRef = repairedState.result_ref;
-      repairedState.status = "superseded";
       repairedState.replacement_task_id = repair.replacement_task_id;
+      stopTask(repairedState, "plan_invalid");
       repairedState.result_ref = null;
       repairedState.result_digest = null;
       const repairedSubjectState = subjectStateForTask(state, repairedTask);
@@ -9191,8 +9399,8 @@ function applyDeltaCommand(
       const taskState = state.tasks[disposition.task_id];
       if (disposition.action === "invalidate") {
         const oldResultRef = taskState.result_ref;
-        taskState.status = "superseded";
         taskState.replacement_task_id = disposition.replacement_task_id;
+        stopTask(taskState, "plan_invalid");
         taskState.result_ref = null;
         taskState.result_digest = null;
         if (oldResultRef !== null) obsoleteResultRefs.push(oldResultRef);
@@ -9237,18 +9445,20 @@ function applyDeltaCommand(
     state.plan_digest = canonicalPlanDigest;
     state.revision = nextPlan.revision;
     state.goal_refresh_pending = false;
+    activateWorkflow(state);
     state.review_pending = state.review_pending.filter(
-      (taskId) => !reviewUpgradeByTaskId.has(taskId) && state.tasks[taskId]?.status !== "superseded",
+      (taskId) => !reviewUpgradeByTaskId.has(taskId) &&
+        state.tasks[taskId] !== undefined && !isSupersededTask(state.tasks[taskId]),
     );
     const liveSourceAudits = new Set(nextPlan.tasks
       .filter((task) =>
-        state.tasks[task.id].status !== "superseded" &&
+        !isSupersededTask(state.tasks[task.id]) &&
         task.satisfies_goal_gates.includes(SOURCE_COVERAGE_GATE_ID),
       )
       .map((task) => task.id));
     const logicalAncestorCache = new Map                     ();
     for (const task of nextPlan.tasks.filter((candidate) =>
-      candidate.role === "work" && state.tasks[candidate.id].status !== "superseded" &&
+      candidate.role === "work" && !isSupersededTask(state.tasks[candidate.id]) &&
       state.tasks[candidate.id].status !== "completed",
     )) {
       if (![...logicalAncestorsFor(
@@ -9294,9 +9504,7 @@ function applyDeltaCommand(
 }
 
 function summarizeState(state          )                         {
-  const statuses               = [
-    "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
-  ];
+  const statuses               = ["pending", "running", "completed", "stopped"];
   return Object.fromEntries(statuses.map((status) => [
     status,
     Object.values(state.tasks).filter((task) => task.status === status).length,
@@ -9309,7 +9517,7 @@ function summarizeCoverage(
   state          ,
 )                          {
   const requiredIds = coverage.required_plan_items.map((item) => item.id);
-  const liveTasks = plan.tasks.filter((task) => state.tasks[task.id].status !== "superseded");
+  const liveTasks = plan.tasks.filter((task) => !isSupersededTask(state.tasks[task.id]));
   const requiredPairs = coverage.required_plan_items.flatMap((item) =>
     item.required_effects.map((effect) => `${item.id}:${effect}`),
   );
@@ -9361,7 +9569,7 @@ function inspectCompletion(
   const passedGates = new Set        ();
   for (const task of plan.tasks) {
     const taskState = state.tasks[task.id];
-    if (taskState.status === "superseded") continue;
+    if (isSupersededTask(taskState)) continue;
     if (taskState.status !== "completed") continue;
     if (taskState.validated_source_revision !== state.source_revision) {
       problems.push(`${task.id}: evidence is not validated for source revision ${state.source_revision}`);
@@ -9437,14 +9645,14 @@ function activeReservationRecords(
   state          ,
 )                            {
   return plan.tasks
-    .filter((task) => ["reserved", "running"].includes(state.tasks[task.id].status))
+    .filter((task) => state.tasks[task.id].status === "running")
     .map((task) => {
       const taskState = state.tasks[task.id];
       const ownerState = subjectStateForTask(state, task);
       if (task.owner_id === null) {
         return {
           action: "run_script",
-          phase: taskState.status === "running" ? "running_script" : "reserved_script",
+          phase: isBoundRunningTask(taskState) ? "running_script" : "claimed_script",
           task_id: task.id,
           runtime_actor_id: task.runtime_actor_id,
           status: taskState.status,
@@ -9454,14 +9662,14 @@ function activeReservationRecords(
         };
       }
       const binding = taskBinding(planPath, plan, goal, state, task);
-      const action = taskState.status === "running"
+      const action = isBoundRunningTask(taskState)
         ? "wait_or_redeliver"
         : ownerState.bound_executor_id === null
           ? "create_thread"
           : "reuse_thread";
       return {
         action,
-        phase: taskState.status === "running" ? "running_bound" : "reserved_unbound",
+        phase: isBoundRunningTask(taskState) ? "running_bound" : "claimed_unbound",
         task_id: task.id,
         owner_id: task.owner_id,
         runtime_actor_id: task.runtime_actor_id,
@@ -9469,7 +9677,7 @@ function activeReservationRecords(
         status: taskState.status,
         reservation_token: taskState.reservation_token,
         result_path: taskState.result_path,
-        executor_id: taskState.status === "running"
+        executor_id: isBoundRunningTask(taskState)
           ? taskState.executor_id
           : ownerState.bound_executor_id,
         attempt: taskState.attempt,
@@ -9524,7 +9732,7 @@ function nextActionFor(
   const statuses = plan.tasks
     .filter((task) => task.node_type === "leaf")
     .map((task) => state.tasks[task.id].status);
-  if (statuses.some((status) => status === "reserved" || status === "running")) {
+  if (statuses.some((status) => status === "running")) {
     return "execute";
   }
   if (plan.tasks.some((task) => taskReadyForReservation(
@@ -9533,7 +9741,7 @@ function nextActionFor(
     state,
     coverageFullyPlanned,
   ))) return "execute";
-  if (statuses.some((status) => status === "blocked" || status === "failed" || status === "needs_repair")) {
+  if (statuses.some((status) => status === "stopped")) {
     return "repair";
   }
   if (statuses.some((status) => status === "pending")) return "repair";
@@ -9602,7 +9810,7 @@ function pendingSubgraphRequests(plan      , state          )
   return plan.tasks.flatMap((task) => {
     const taskState = state.tasks[task.id];
     if (
-      (taskState.status !== "reserved" && taskState.status !== "running") ||
+      taskState.status !== "running" ||
       taskState.result_path === null || taskState.reservation_token === null ||
       taskState.result_ref !== null
     ) return [];
@@ -9646,6 +9854,9 @@ function reconcileCommand(planArgument        , stateArgument        , compact =
     return {
       goal_id: goal.goal_id,
       goal_status: goalState.status,
+      workflow_status: state.status,
+      reason: state.reason,
+      action: state.action,
       ...sourceDriftPayload(goal, goalState, plan, state),
       next_action: state.owner_change !== null
         ? "awaiting_owner_action"
@@ -9692,10 +9903,10 @@ function reclaimCommand(
     if (taskState.status === "pending" && taskState.last_reclaimed_token === reservationToken) {
       return { task_id: taskId, status: "pending", reclaimed: false, idempotent: true };
     }
-    if (taskState.status === "reserved" && ownerState.bound_executor_id === null) {
+    if (isClaimedTask(taskState) && ownerState.bound_executor_id === null) {
       fail(`task ${taskId} is reserved but unbound; use abandon instead of reclaim`);
     }
-    if (taskState.status !== "reserved" && taskState.status !== "running") {
+    if (taskState.status !== "running") {
       fail(`task ${taskId} cannot be reclaimed from ${taskState.status}`);
     }
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
@@ -9704,7 +9915,7 @@ function reclaimCommand(
     const reclaimedExecutorId = taskState.executor_id ?? ownerState.bound_executor_id;
     const reclaimedAttempt = taskState.attempt;
     const reclaimedSourceRevision = taskState.source_revision;
-    taskState.status = "pending";
+    clearTaskStop(taskState, "pending");
     taskState.last_reclaimed_token = reservationToken;
     taskState.reservation_token = null;
     taskState.owner_generation = null;
@@ -9842,6 +10053,9 @@ function statusCommand(planArgument        , stateArgument        , compact = fa
       return {
         goal_id: goal.goal_id,
         goal_status: goalState.status,
+        workflow_status: state.status,
+        reason: state.reason,
+        action: state.action,
         revision: plan.revision,
         source_revision: state.source_revision,
         ...sourceDriftPayload(goal, goalState, plan, state),
@@ -9858,6 +10072,9 @@ function statusCommand(planArgument        , stateArgument        , compact = fa
       goal_id: goal.goal_id,
       objective: goal.objective,
       goal_status: goalState.status,
+      workflow_status: state.status,
+      reason: state.reason,
+      action: state.action,
       native_sync: goalState.native_sync,
       ...continuationPayloadFor(plan.goal_contract_path),
       revision: plan.revision,
@@ -9896,10 +10113,14 @@ function dashboardSnapshot(planArgument        , stateArgument        )         
 }
 
 function dashboardSnapshotRead(planPath        , statePath        )                          {
+  const rawState = requireRecord(readJson(statePath), "dashboard state");
   const { plan, goal, coverage, state } = loadPlanAndState(
     planPath,
     statePath,
-    { allowSourceDrift: true },
+    {
+      allowSourceDrift: true,
+      allowOwnerRegistryDrift: rawState.owner_change !== null && rawState.owner_change !== undefined,
+    },
   );
     const sourceTitle = existsSync(goal.source.path)
       ? /^#\s+(.+)$/mu.exec(readFileSync(goal.source.path, "utf8"))?.[1]?.trim()
@@ -9965,6 +10186,8 @@ function dashboardSnapshotRead(planPath        , statePath        )             
           },
           status: aggregateStatus,
           runtime_status: taskState.status,
+          reason: taskState.reason,
+          action: taskState.action,
           phase,
           attempt: taskState.attempt,
           source_revision: taskState.source_revision,
@@ -9983,22 +10206,22 @@ function dashboardSnapshotRead(planPath        , statePath        )             
       .filter((task) => task.node_type === "leaf")
       .map((task) => state.tasks[task.id]);
     const leafSummary = Object.fromEntries([
-      "pending", "reserved", "running", "completed", "blocked", "failed", "needs_repair", "superseded",
+      "pending", "running", "completed", "stopped",
     ].map((status) => [status, leafStates.filter((task) => task.status === status).length]));
-    const topLevelTasks = tasks.filter((task) => task.parent_task_id === null && task.status !== "superseded");
+    const topLevelTasks = tasks.filter((task) =>
+      task.parent_task_id === null && !isSupersededTask(state.tasks[task.id])
+    );
     const gateTasks = (gateId        ) => plan.tasks.filter((task) =>
-      task.satisfies_goal_gates.includes(gateId) && state.tasks[task.id].status !== "superseded"
+      task.satisfies_goal_gates.includes(gateId) && !isSupersededTask(state.tasks[task.id])
     );
     const gates = goal.verification_gates.map((gate) => {
       const candidates = gateTasks(gate.id);
       const candidateStatuses = candidates.map((task) => state.tasks[task.id].status);
       const gateStatus = passedGates.has(gate.id)
         ? "passed"
-        : candidateStatuses.some((status) => status === "running" || status === "reserved")
+        : candidateStatuses.some((status) => status === "running")
           ? "running"
-          : candidateStatuses.some((status) =>
-            status === "blocked" || status === "failed" || status === "needs_repair"
-          )
+          : candidateStatuses.some((status) => status === "stopped")
             ? "attention"
             : "pending";
       return {
@@ -10029,6 +10252,9 @@ function dashboardSnapshotRead(planPath        , statePath        )             
         max_concurrency: goal.execution.max_concurrency,
       },
       progress: {
+        workflow_status: state.status,
+        reason: state.reason,
+        action: state.action,
         next_action: coordinatedNextAction(planPath, plan, goal, coverage, state, goalState),
         source_status: drift.source_status,
         source_drift_action: drift.source_drift_action ?? null,
@@ -10036,16 +10262,12 @@ function dashboardSnapshotRead(planPath        , statePath        )             
         top_level: {
           total: topLevelTasks.length,
           completed: topLevelTasks.filter((task) => task.status === "completed").length,
-          active: topLevelTasks.filter((task) => task.status === "running" || task.status === "reserved").length,
-          attention: topLevelTasks.filter((task) =>
-            task.status === "blocked" || task.status === "failed" || task.status === "needs_repair"
-          ).length,
+          active: topLevelTasks.filter((task) => task.status === "running").length,
+          attention: topLevelTasks.filter((task) => task.status === "stopped").length,
         },
         coverage: coverageSummary,
         ready: tasks.filter((task) => task.phase === "ready").length,
-        attention: tasks.filter((task) =>
-          task.phase === "blocked" || task.phase === "failed" || task.phase === "needs_repair"
-        ).length,
+        attention: tasks.filter((task) => task.phase === "stopped").length,
         completion_problem_count: inspection.problems.length,
       },
       gates,
@@ -10065,6 +10287,10 @@ function dashboardSnapshotRead(planPath        , statePath        )             
       ],
   };
 }
+
+
+
+
 
 
 
@@ -10204,12 +10430,20 @@ function observeProgressSources(planPath        , statePath        )            
     .map(([taskId, value]) => {
       const taskState = requireRecord(value, `progress state.tasks.${taskId}`);
       const status = requireString(taskState.status, `progress state.tasks.${taskId}.status`);
+      const reason = taskState.reason === null || taskState.reason === undefined
+        ? null
+        : requireString(taskState.reason, `progress state.tasks.${taskId}.reason`);
+      const action = taskState.action === null || taskState.action === undefined
+        ? null
+        : requireString(taskState.action, `progress state.tasks.${taskId}.action`);
       const resultPath = typeof taskState.result_path === "string" && taskState.result_path
         ? taskState.result_path
         : null;
       return {
         task_id: taskId,
         status,
+        reason,
+        action,
         attempt: requireNonNegativeInteger(taskState.attempt, `progress state.tasks.${taskId}.attempt`),
         source_revision: requireNonNegativeInteger(
           taskState.source_revision,
@@ -10234,6 +10468,12 @@ function observeProgressSources(planPath        , statePath        )            
         task_id: taskId,
         title: task === undefined || typeof task.title !== "string" ? taskId : task.title,
         status: requireString(taskState.status, `progress state.tasks.${taskId}.status`),
+        reason: taskState.reason === null || taskState.reason === undefined
+          ? null
+          : requireString(taskState.reason, `progress state.tasks.${taskId}.reason`),
+        action: taskState.action === null || taskState.action === undefined
+          ? null
+          : requireString(taskState.action, `progress state.tasks.${taskId}.action`),
         attempt: requireNonNegativeInteger(
           taskState.attempt,
           `progress state.tasks.${taskId}.attempt`,
@@ -10257,11 +10497,16 @@ function observeProgressSources(planPath        , statePath        )            
     plan_revision: plan.revision,
     source_revision: state.source_revision,
     goal_status: goalState.status ?? null,
+    workflow_status: state.status ?? null,
+    workflow_reason: state.reason ?? null,
+    workflow_action: state.action ?? null,
     native_sync_status: nativeSync.status ?? null,
     task_states: taskObservations,
     task_results: visibleTaskResults.map((result) => ({
       task_id: result.task_id,
       status: result.status,
+      reason: result.reason,
+      action: result.action,
       attempt: result.attempt,
       source_revision: result.source_revision,
       result_digest: result.result_digest,
@@ -10281,6 +10526,8 @@ function publicTaskResult(result                           )                    
     task_id: result.task_id,
     title: result.title,
     status: result.status,
+    reason: result.reason,
+    action: result.action,
     attempt: result.attempt,
     source_revision: result.source_revision,
     result_digest: result.result_digest,
@@ -10415,6 +10662,19 @@ function refreshProgressDocument(
           native_sync_status: confirmed.source.native_sync_status,
         });
       }
+      if (
+        previous !== null &&
+        (previousSource?.workflow_status !== confirmed.source.workflow_status ||
+          previousSource?.workflow_reason !== confirmed.source.workflow_reason ||
+          previousSource?.workflow_action !== confirmed.source.workflow_action)
+      ) {
+        appendEvent({
+          type: "workflow_status_updated",
+          status: confirmed.source.workflow_status,
+          reason: confirmed.source.workflow_reason,
+          action: confirmed.source.workflow_action,
+        });
+      }
       if (previous !== null) {
         const previousTaskStates = new Map                                 (
           previousSource !== null && Array.isArray(previousSource.task_states)
@@ -10439,12 +10699,15 @@ function refreshProgressDocument(
           }
           if (
             prior === undefined || prior.status !== taskState.status ||
+            prior.reason !== taskState.reason || prior.action !== taskState.action ||
             prior.attempt !== taskState.attempt || prior.source_revision !== taskState.source_revision
           ) {
             appendEvent({
               type: "task_status_updated",
               task_id: taskState.task_id,
               status: taskState.status,
+              reason: taskState.reason,
+              action: taskState.action,
               attempt: taskState.attempt,
               source_revision: taskState.source_revision,
             });
@@ -11254,7 +11517,7 @@ function finalizeCommand(
     const completedAt = new Date().toISOString();
     const resultRef = goalResultPathFor(goalPath);
     const finalTasks = plan.tasks
-      .filter((task) => task.node_type === "leaf" && state.tasks[task.id].status !== "superseded")
+      .filter((task) => task.node_type === "leaf" && !isSupersededTask(state.tasks[task.id]))
       .map((task) => {
         const taskState = state.tasks[task.id];
         const raw = taskState.result_ref === null
@@ -11289,13 +11552,20 @@ function finalizeCommand(
       tasks: finalTasks,
     };
     goalState.status = "completed";
+    state.status = "completed";
+    state.reason = null;
+    state.action = null;
     goalState.result_ref = resultRef;
     goalState.completed_at = completedAt;
     if (goalState.controller === "codex_native") {
       goalState.native_sync.status = "pending";
       goalState.native_sync.completion_token = randomUUID();
     }
-    writeTransaction(goalStatePath, [[resultRef, finalResult], [goalStatePath, goalState]]);
+    writeTransaction(goalStatePath, [
+      [resultRef, finalResult],
+      [statePath, state],
+      [goalStatePath, goalState],
+    ]);
     return {
       status: "completed",
       goal_id: goal.goal_id,
@@ -11458,8 +11728,8 @@ function expandTaskScopeCommand(
     if (task === undefined) fail(`unknown task: ${taskId}`);
     if (task.role !== "work" || task.owner_id === null) fail("only Owner work task scope can expand");
     const taskState = state.tasks[task.id];
-    const reopenRepair = taskState.status === "needs_repair";
-    if (!reopenRepair && taskState.status !== "reserved" && taskState.status !== "running") {
+    const reopenRepair = taskState.status === "stopped" && taskState.action === "repair_task";
+    if (!reopenRepair && taskState.status !== "running") {
       fail(`task ${task.id} scope can only expand while active or after needs_repair`);
     }
     if (taskState.reservation_token !== reservationToken) fail("reservation token mismatch");
@@ -11528,7 +11798,7 @@ function expandTaskScopeCommand(
       );
       reopenedCapsule.progress = `scope expanded for retry: ${normalizedPaths.join(", ")}`;
       reopenedCapsule.updated_at = new Date().toISOString();
-      taskState.status = "pending";
+      clearTaskStop(taskState, "pending");
       taskState.reservation_token = null;
       taskState.owner_generation = null;
       taskState.executor_id = null;
@@ -11736,6 +12006,8 @@ function expandTaskSubgraphInput(
 function pendingTaskState(sourceRevision        )            {
   return {
     status: "pending",
+    reason: null,
+    action: null,
     attempt: 0,
     reservation_token: null,
     owner_generation: null,
@@ -11775,8 +12047,8 @@ function expandSubgraphCommand(
       fail("a task that directly satisfies a goal gate cannot expand into a subgraph");
     }
     const parentState = state.tasks[parent.id];
-    if (parentState.status !== "reserved" && parentState.status !== "running") {
-      fail(`task ${parent.id} can only expand while reserved or running`);
+    if (parentState.status !== "running") {
+      fail(`task ${parent.id} can only expand while running`);
     }
     if (parentState.reservation_token !== reservationToken) fail("reservation token mismatch");
     if (parentState.result_ref !== null || parentState.result_digest !== null) {
@@ -11916,7 +12188,7 @@ function expandSubgraphCommand(
       safety: expansion.safety,
     };
     const liveTaskIds = new Set(nextPlan.tasks
-      .filter((task) => state.tasks[task.id]?.status !== "superseded")
+      .filter((task) => state.tasks[task.id] === undefined || !isSupersededTask(state.tasks[task.id]))
       .map((task) => task.id));
     validateGraph(nextPlan, goal, false, liveTaskIds);
     for (const child of expansion.children) {
@@ -11933,7 +12205,7 @@ function expandSubgraphCommand(
         };
       }
     }
-    parentState.status = "pending";
+    clearTaskStop(parentState, "pending");
     parentState.reservation_token = null;
     parentState.owner_generation = null;
     parentState.executor_id = null;
@@ -12796,7 +13068,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       : plan.tasks.find((task) => {
         const taskState = state.tasks[task.id];
         if (
-          taskState.status !== "reserved" || task.role !== "work" || task.owner_id === null ||
+          !isClaimedTask(taskState) || task.role !== "work" || task.owner_id === null ||
           isOwnerIntegrationRepair(goalDirectory, task, taskState)
         ) return false;
         const ownerWorktree = worktrees.owners[task.owner_id];
@@ -12827,7 +13099,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       const verificationResume = taskState.status === "running" &&
         existsSync(verificationMigrationResumePath(goalDirectory, task.id));
       if (
-        (taskState.status !== "reserved" && !integrationRepair && !verificationResume) ||
+        (!isClaimedTask(taskState) && !integrationRepair && !verificationResume) ||
         task.owner_id === null
       ) continue;
       if (!sourceCurrent) continue;
@@ -12936,7 +13208,7 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       } else if (SUPERVISOR_NOTIFY_STATES.has(status) && notifications.length < limit) {
         const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
           fail(`unknown watched task: ${taskId}`);
-        const bootstrapCompleted = taskState.status === "reserved" && status === "completed" &&
+        const bootstrapCompleted = isClaimedTask(taskState) && status === "completed" &&
           task.role === "work" && task.owner_id !== null &&
           existsSync(dagWorktreesPath(goalDirectory));
         notifications.push({
@@ -13020,7 +13292,7 @@ function supervisorRecordCommand(
       const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
         fail(`unknown task: ${taskId}`);
       const taskState = state.tasks[taskId];
-      if (taskState.status !== "reserved" || taskState.attempt !== attempt) {
+      if (!isClaimedTask(taskState) || taskState.attempt !== attempt) {
         fail(`task ${taskId} is not reserved for Owner bootstrap`);
       }
       if (task.role !== "work" || task.owner_id === null) {
@@ -13099,7 +13371,7 @@ function supervisorRecordCommand(
       }
       const bindingRef = taskBindingSnapshotPath(goalDirectory, task, taskState);
       let binding                         ;
-      if (taskState.status === "reserved") {
+      if (isClaimedTask(taskState)) {
         if (existsSync(bindingRef)) fail(`reserved task already has a binding snapshot: ${taskId}`);
         binding = bindTaskState(
           planPath,
@@ -13277,7 +13549,7 @@ function supervisorRecordCommand(
       }
       const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
         fail(`unknown watched task: ${taskId}`);
-      if (state.tasks[taskId].status === "reserved" && terminalStatus === "completed") {
+      if (isClaimedTask(state.tasks[taskId]) && terminalStatus === "completed") {
         assertOwnerWorktreeReady(goalDirectory, task);
         registry.watches = watches.filter((_, candidateIndex) => candidateIndex !== index);
         thread.status = "idle";
@@ -13586,7 +13858,7 @@ function supervisorRecoverCommand(
 
   const taskStatus = requireString(snapshot.task_status, "task status");
   const reservationToken = requireNullableString(snapshot.reservation_token, "reservation token");
-  if (taskStatus === "reserved" || taskStatus === "running") {
+  if (taskStatus === "running") {
     if (snapshot.thread_key === null) fail("active task has no supervisor watch");
     const threadStatus = requireString(snapshot.thread_status, "thread status");
     if (!["stalled", "attention_notified", "needs_attention", "lost"].includes(threadStatus)) {
@@ -14176,22 +14448,33 @@ function parseQuickAccepted(value         )                  {
 
 function parseWorkflowState(value         )                  {
   const source = requireRecord(value, "workflow state");
-  requireExactKeys(
+  requireAllowedKeys(
     source,
-    ["contract", "status", "revision", "next", "registry", "run", "accepted", "attention", "result_ref"],
+    [
+      "contract", "status", "reason", "action", "revision", "next", "registry", "run",
+      "accepted", "attention", "result_ref",
+    ],
     "workflow state",
   );
   if (source.contract !== "WORKFLOW_STATE_V1") {
     fail("workflow state contract must equal WORKFLOW_STATE_V1");
   }
-  if (source.status !== "active" && source.status !== "completed") fail("workflow state.status is invalid");
+  if (!WORKFLOW_STATUSES.has(source.status                  )) fail("workflow state.status is invalid");
+  const stop = parseStopDirective(
+    source.reason ?? null,
+    source.action ?? null,
+    source.status                  ,
+    "workflow state",
+  );
   const nextValues = new Set(["owner", "decision", "upgrade", "dag", "blocked", "completed"]);
   if (!nextValues.has(String(source.next))) fail("workflow state.next is invalid");
   const registry = requireRecord(source.registry, "workflow state.registry");
   requireExactKeys(registry, ["revision", "digest"], "workflow state.registry");
   const result                  = {
     contract: "WORKFLOW_STATE_V1",
-    status: source.status,
+    status: source.status                  ,
+    reason: stop.reason,
+    action: stop.action,
     revision: requirePositiveInteger(source.revision, "workflow state.revision"),
     next: source.next                           ,
     registry: {
@@ -14384,7 +14667,9 @@ function quickTask(run            , owner                 )                 {
 function quickTaskState(goalDirectory        , state                 , run            )            {
   const baselinePath = quickRuntimePath(goalDirectory, "baseline.json");
   return {
-    status: run.status,
+    status: "running",
+    reason: null,
+    action: null,
     attempt: state.revision,
     reservation_token: run.token,
     owner_generation: run.generation,
@@ -14512,6 +14797,9 @@ function workflowDispatchCommand(goalDirectoryArgument        , ownerIdArgument 
   if (loaded.workflow.mode !== "quick") fail("workflow dispatch is only available in quick mode");
   const payload = withStateLock(loaded.statePath, () => {
     const state = parseWorkflowState(readJson(loaded.statePath));
+    if (state.status === "stopped" && (
+      state.action === "repair_task" || state.action === "provide_input"
+    )) activateWorkflow(state);
     if (state.status !== "active" || state.run !== null) fail("quick workflow cannot dispatch now");
     if (hasCurrentOwnerChange(loaded.workflow.workspace)) fail("current Owner change requires user action");
     if (!new Set(["owner", "decision", "blocked"]).has(state.next)) {
@@ -14979,6 +15267,7 @@ function acceptQuickCandidate(
   } else {
     state.next = "blocked";
     state.attention = result.summary;
+    stopWorkflow(state, result.status === "blocked" ? "input_missing" : "task_failed");
   }
   state.run = null;
   state.revision += 1;
@@ -15010,6 +15299,8 @@ function finalizeQuickWorkflow(loaded                                 , state   
   };
   writeJson(resultPath, result);
   state.status = "completed";
+  state.reason = null;
+  state.action = null;
   state.next = "completed";
   state.run = null;
   state.accepted = null;
@@ -15072,6 +15363,8 @@ function completeWorkflowWrapper(goalDirectory        , resultRef        )      
       });
     }
     state.status = "completed";
+    state.reason = null;
+    state.action = null;
     state.next = "completed";
     state.run = null;
     state.accepted = null;
@@ -15121,6 +15414,7 @@ function quickWorkflowStepCommand(goalDirectoryArgument        )       {
         loaded.definitionPath,
       ));
       state.registry = { revision: registry.revision, digest: registry.digest };
+      activateWorkflow(state);
       state.revision += 1;
       writeJson(loaded.statePath, state);
       rmSync(currentOwnerChangeDirectory(loaded.workflow.workspace), {
@@ -15128,14 +15422,28 @@ function quickWorkflowStepCommand(goalDirectoryArgument        )       {
         force: true,
       });
     } else {
+      stopWorkflow(state, "decision_required");
+      state.revision += 1;
+      writeJson(loaded.statePath, state);
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
-        action: "owner_action_required",
+        action: state.action,
+        reason: state.reason,
         completed_tasks: completed === null ? [] : [completed],
-        reason: "Owner 变化等待用户批准并通过脚本应用",
+        summary: "Owner 变化等待用户批准并通过脚本应用",
       })}\n`);
       return;
     }
+  }
+  if (state.status === "stopped") {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: state.action,
+      reason: state.reason,
+      completed_tasks: completed === null ? [] : [completed],
+      summary: state.attention,
+    })}\n`);
+    return;
   }
   if (state.next === "upgrade") {
     upgradeQuickWorkflowToDag(loaded, state);
@@ -15154,7 +15462,7 @@ function quickWorkflowStepCommand(goalDirectoryArgument        )       {
       ? "owner_required"
       : state.next === "decision"
         ? "next_owner_or_review"
-        : "user_blocked",
+        : state.action ?? "await_user",
     completed_tasks: completed === null ? [] : [completed],
     attention: state.attention,
     owners: registry.owners.map((owner) => ({ id: owner.id, responsibility: owner.responsibility })),
@@ -15360,6 +15668,34 @@ function workflowMigrateVerificationsCommand(goalDirectoryArgument        )     
     contract: "VERIFICATION_MIGRATION_RECEIPT_V1",
     ...receipt,
   })}\n`);
+}
+
+function workflowMigrateLifecycleCommand(goalDirectoryArgument        )       {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  for (const path of [planPath, statePath]) {
+    if (!existsSync(path)) fail(`lifecycle migration requires an active Goal: ${path}`);
+  }
+  const receipt = withStateLock(statePath, () => {
+    const rawState = readJson(statePath);
+    const { plan } = parsePlan(readJson(planPath), planPath, {
+      liveTaskIds: liveTaskIdsFromRawState(rawState),
+      ownerValidationTaskIds: ownerValidationTaskIdsFromRawState(rawState),
+    });
+    const state = parseState(rawState, plan, planPath, { verifyExecutionArtifacts: false });
+    const current = serializedJson(rawState) === serializedJson(state);
+    if (!current) writeJson(statePath, state);
+    return {
+      contract: "LIFECYCLE_MIGRATION_RECEIPT_V1",
+      status: current ? "current" : "migrated",
+      workflow_status: state.status,
+      reason: state.reason,
+      action: state.action,
+      summary: summarizeState(state),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
 function planNeedsVerificationMigration(value         )          {
@@ -15762,7 +16098,7 @@ function plannerOpenCommand(goalDirectoryArgument        , cursorArgument       
             );
       problems = parsed.tasks.flatMap((task) => {
         const taskState = state.tasks[task.id];
-        if (!new Set(["blocked", "failed", "needs_repair"]).has(taskState.status) ||
+        if (taskState.status !== "stopped" ||
           taskState.result_ref === null || !existsSync(taskState.result_ref)) return [];
         const result = parseWorkerResult(
           readJson(taskState.result_ref),
@@ -15923,6 +16259,8 @@ function startWorkflow(
   const state                  = {
     contract: "WORKFLOW_STATE_V1",
     status: "active",
+    reason: null,
+    action: null,
     revision: 1,
     next: mode === "quick" ? "owner" : "dag",
     registry: { revision: registry.revision, digest: registry.digest },
@@ -16330,7 +16668,7 @@ function workflowOwnerSyncCommand(goalDirectoryArgument        , ownerIdArgument
     fail(`unknown DAG Owner: ${ownerId}`);
   const activeTasks = plan.tasks.filter((task) =>
     task.owner_id === ownerId && task.role === "work" &&
-    ["reserved", "running"].includes(state.tasks[task.id].status)
+    state.tasks[task.id].status === "running"
   );
   if (activeTasks.length !== 1) fail(`Owner ${ownerId} must have exactly one active work task`);
   const task = activeTasks[0];
@@ -17344,7 +17682,7 @@ function workflowStepCommand(goalDirectoryArgument        , deferDelivery = fals
     }
     if (nextAction === "source_drift_drain") {
       const reserved = loaded.plan.tasks.filter((task) =>
-        loaded.state.tasks[task.id].status === "reserved"
+        isClaimedTask(loaded.state.tasks[task.id])
       );
       if (reserved.length > 0) {
         for (const task of reserved) {
@@ -17425,7 +17763,7 @@ function runtimeExecuteCommand(
     return;
   }
   const executorId = `runtime-script-${task.runtime_actor_id}`;
-  if (taskState.status === "reserved") {
+  if (isClaimedTask(taskState)) {
     runSelfJson(["bind", planPath, statePath, taskId, reservationToken, executorId]);
     state = parseState(readJson(statePath), plan, planPath);
     taskState = state.tasks[taskId];
@@ -17510,6 +17848,12 @@ function main(argv          )       {
   }
   if (command === "workflow" && args[0] === "migrate-verifications" && args.length === 2) {
     return workflowMigrateVerificationsCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "migrate-lifecycle" && args.length === 2) {
+    return workflowMigrateLifecycleCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "lifecycle-contract" && args.length === 1) {
+    return lifecycleContractCommand();
   }
   if (command === "workflow" && args[0] === "step" && args.length === 2) {
     return workflowStepCommand(args[1]);
@@ -17755,7 +18099,7 @@ function main(argv          )       {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow migrate-verifications <goal-dir> | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow migrate-verifications <goal-dir> | workflow migrate-lifecycle <goal-dir> | workflow lifecycle-contract | internal runtime commands",
   );
 }
 

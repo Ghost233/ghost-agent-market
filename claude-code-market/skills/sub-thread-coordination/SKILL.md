@@ -7,7 +7,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 
 > 平台差异：Claude Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才能执行本工作流。标准 Agent 不具备用户长期持有上下文与完成约束，禁止作为回退；缺少子线程 API 时必须在规划后 fail closed。本平台固定使用 `standalone_thread`，不包含原生 Goal 桥接。
 
-这是唯一协调入口；禁止 subagent。首次进入时完整读取 [运行模式](references/goal-contract.md)、[Owner 治理](references/owner-governance.md) 和 [恢复约定](references/templates.md)，引用未变时不重复读取。
+这是唯一协调入口；禁止 subagent。首次进入时完整读取 [运行模式](references/goal-contract.md)、[生命周期契约](references/lifecycle-contract.md)、[Owner 治理](references/owner-governance.md) 和 [恢复约定](references/templates.md)，引用未变时不重复读取。
 
 本平台固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。
 
@@ -22,6 +22,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 - 脚本 JSON 只作机器收据，不复制到聊天。
 - Quick 只保留当前 Owner 上下文、当前状态和最终结果；DAG 运行中额外保留当前 Plan/State、`progress.json` 和唯一历史 `events.jsonl`。成功交付后只在原始工作区保留最终 `result.json` 与 `events.jsonl`。
 - 不新增 attempt、Review、evidence、recovery 或聊天 history。
+- Workflow 与 Task 只能使用生命周期契约中的 4 个状态；停止时只允许有限 `reason/action` 矩阵。Owner phase、线程观测、Worker 结果、调度命令和事件都不是生命周期状态。未知值一律由脚本拒绝，模型不得补写或猜测。
 
 ## 模式选择
 

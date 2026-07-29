@@ -2,6 +2,8 @@
 
 用户每次必须明确选择 Quick 或 DAG。两者共用 Owner、run-id、Binding、scope、脚本验证与最终 Result，不共用调度位置。
 
+Workflow 与 Task 的状态、停止原因和下一处理动作统一遵循 [生命周期契约](lifecycle-contract.md)。调度动作、Owner 执行阶段、线程宿主状态和 Worker 结果不得混入生命周期状态。
+
 Claude Code 固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。
 
 ## Quick

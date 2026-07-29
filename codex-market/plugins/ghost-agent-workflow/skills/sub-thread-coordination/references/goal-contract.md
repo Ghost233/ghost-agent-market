@@ -2,6 +2,8 @@
 
 用户每次必须明确选择 Quick 或 DAG。两者共用 Owner、run-id、Binding、scope、脚本验证与最终 Result，不共用调度位置。
 
+Workflow 与 Task 的状态、停止原因和下一处理动作统一遵循 [生命周期契约](lifecycle-contract.md)。调度动作、Owner 执行阶段、线程宿主状态和 Worker 结果不得混入生命周期状态。
+
 Codex Quick 不创建原生 Goal。DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。等待 Owner 或 Review 不映射为原生 blocked。
 
 ## Quick

@@ -162,6 +162,100 @@ class GoalDagCliTests(unittest.TestCase):
     def run_cli(self, *args: object, script: Path | None = None) -> subprocess.CompletedProcess[str]:
         return self.run_cli_with_env({}, *args, script=script)
 
+    def test_lifecycle_contract_is_finite_and_documented(self) -> None:
+        expected_matrix = [
+            {"reason": "input_missing", "action": "provide_input"},
+            {"reason": "decision_required", "action": "await_user"},
+            {"reason": "task_failed", "action": "repair_task"},
+            {"reason": "thread_failed", "action": "replace_thread"},
+            {"reason": "plan_invalid", "action": "revise_plan"},
+            {"reason": "runtime_failed", "action": "retry_runtime"},
+        ]
+        for script in (CODEX_SCRIPT, CLAUDE_SCRIPT, KIMI_SCRIPT):
+            result = self.run_cli("workflow", "lifecycle-contract", script=script)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(
+                payload["workflow_statuses"],
+                ["active", "completed", "stopped", "cancelled"],
+            )
+            self.assertEqual(
+                payload["task_statuses"],
+                ["pending", "running", "completed", "stopped"],
+            )
+            self.assertEqual(payload["stop_matrix"], expected_matrix)
+            self.assertFalse(payload["rules"]["unknown_values_allowed"])
+        relative = Path("sub-thread-coordination/references/lifecycle-contract.md")
+        docs = [
+            ROOT / "codex-market/plugins/ghost-agent-workflow/skills" / relative,
+            ROOT / "claude-code-market/skills" / relative,
+            ROOT / "kimi-market/plugins/ghost-agent-workflow/skills" / relative,
+        ]
+        contents = [path.read_text(encoding="utf-8") for path in docs]
+        self.assertEqual(contents[0], contents[1])
+        self.assertEqual(contents[0], contents[2])
+        for item in expected_matrix:
+            self.assertIn(f"`{item['reason']}`", contents[0])
+            self.assertIn(f"`{item['action']}`", contents[0])
+
+    def test_lifecycle_migration_normalizes_legacy_state_and_rejects_unknown_pairs(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state.pop("status")
+            state.pop("reason")
+            state.pop("action")
+            task = state["tasks"][action["task_id"]]
+            task["status"] = "reserved"
+            task.pop("reason")
+            task.pop("action")
+            state_path.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            migrated = self.run_json("workflow", "migrate-lifecycle", root)
+            self.assertEqual(migrated["status"], "migrated")
+            normalized = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(normalized["status"], "active")
+            self.assertIsNone(normalized["reason"])
+            self.assertIsNone(normalized["action"])
+            self.assertEqual(normalized["tasks"][action["task_id"]]["status"], "running")
+
+            normalized["status"] = "stopped"
+            normalized["reason"] = "not_defined"
+            normalized["action"] = "await_user"
+            state_path.write_text(
+                json.dumps(normalized, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            rejected = self.run_cli("status", plan_path, state_path)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("reason/action is invalid", rejected.stderr)
+
+    def test_worker_outcomes_map_to_finite_task_stop_matrix(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            self.bind(plan_path, state_path, action, "agent-lifecycle-matrix")
+            receipt = self.finish(plan_path, state_path, action, status="failed")
+            self.assertEqual(receipt["status"], "failed")
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            task = state["tasks"][action["task_id"]]
+            self.assertEqual(task["status"], "stopped")
+            self.assertEqual(task["reason"], "task_failed")
+            self.assertEqual(task["action"], "repair_task")
+            repeated = self.run_json(
+                "finish",
+                plan_path,
+                state_path,
+                action["task_id"],
+                action["reservation_token"],
+                action["binding"]["refs"]["result"],
+            )
+            self.assertEqual(repeated["status"], "failed")
+            self.assertTrue(repeated["idempotent"])
+
     def run_cli_with_env(
         self, extra_env: dict[str, str], *args: object, script: Path | None = None
     ) -> subprocess.CompletedProcess[str]:
@@ -1952,7 +2046,9 @@ class GoalDagCliTests(unittest.TestCase):
                     self.assertEqual(blocked_finish.returncode, 0, blocked_finish.stderr)
                     self.assertEqual(json.loads(blocked_finish.stdout)["status"], "blocked")
                     blocked_state = json.loads(state_path.read_text(encoding="utf-8"))
-                    self.assertEqual(blocked_state["tasks"]["T3"]["status"], "blocked")
+                    self.assertEqual(blocked_state["tasks"]["T3"]["status"], "stopped")
+                    self.assertEqual(blocked_state["tasks"]["T3"]["reason"], "input_missing")
+                    self.assertEqual(blocked_state["tasks"]["T3"]["action"], "provide_input")
                 finally:
                     subprocess.run(
                         [
@@ -3148,6 +3244,9 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertTrue(repeated["idempotent"])
             status = self.run_json("status", plan_path, state_path)
             self.assertEqual(status["next_action"], "awaiting_owner_action")
+            self.assertEqual(status["workflow_status"], "stopped")
+            self.assertEqual(status["reason"], "decision_required")
+            self.assertEqual(status["action"], "await_user")
             self.assertEqual(status["owner_change"]["request_ref"], str(request_path))
             rejected = self.run_cli("reserve", plan_path, state_path, 1)
             self.assertNotEqual(rejected.returncode, 0)
@@ -3212,6 +3311,9 @@ class GoalDagCliTests(unittest.TestCase):
                 hashlib.sha256(plan_path.read_bytes()).hexdigest(),
                 state["plan_digest"],
             )
+            self.assertEqual(state["status"], "stopped")
+            self.assertEqual(state["reason"], "plan_invalid")
+            self.assertEqual(state["action"], "revise_plan")
             blocked = self.run_cli("reserve", plan_path, state_path, 1)
             self.assertNotEqual(blocked.returncode, 0)
             self.assertIn("goal refresh requires DAG delta", blocked.stderr)
@@ -3629,7 +3731,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertTrue(failed_result.exists())
             planner_page = self.run_json("planner-open", root)
             self.assertEqual(planner_page["problems"][0]["task_id"], "T1")
-            self.assertEqual(planner_page["problems"][0]["status"], "failed")
+            self.assertEqual(planner_page["problems"][0]["status"], "stopped")
 
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             replacement = deepcopy(next(task for task in plan["tasks"] if task["id"] == "T1"))
@@ -5340,7 +5442,7 @@ class GoalDagCliTests(unittest.TestCase):
             recovered = self.run_json("reconcile", plan_path, state_path)["active_reservations"]
             self.assertEqual(len(recovered), 1)
             self.assertEqual(recovered[0]["action"], "create_thread")
-            self.assertEqual(recovered[0]["phase"], "reserved_unbound")
+            self.assertEqual(recovered[0]["phase"], "claimed_unbound")
             self.assertEqual(recovered[0]["binding"], reserved["binding"])
             self.assertEqual(recovered[0]["thread_key"], reserved["thread_key"])
 
@@ -5503,7 +5605,7 @@ class GoalDagCliTests(unittest.TestCase):
                 if event["type"] == "task_status_updated"
                 and event["task_id"] == action["task_id"]
             ]
-            self.assertEqual(task_statuses[-3:], ["reserved", "running", "completed"])
+            self.assertEqual(task_statuses[-2:], ["running", "completed"])
             serialized = json.dumps(updated)
             for private_field in (
                 "reservation_token", "executor_id", "result_path", "binding", "capsule_ref"

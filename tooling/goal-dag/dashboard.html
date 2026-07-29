@@ -122,10 +122,9 @@
     .node-meta { fill: var(--muted); font-size: 9px; }
     .node-status { font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
     .status-completed { color: var(--accent); }
-    .status-running, .status-reserved { color: var(--blue); }
+    .status-running { color: var(--blue); }
     .status-ready { color: var(--amber); }
-    .status-failed, .status-blocked, .status-needs_repair { color: var(--red); }
-    .status-superseded { color: var(--purple); }
+    .status-stopped { color: var(--red); }
     .status-waiting, .status-pending { color: var(--muted); }
 
     .lower { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.7fr); gap: 16px; margin-top: 16px; }
@@ -198,7 +197,7 @@
       <article class="metric">
         <div class="metric-label">当前活动</div>
         <div class="metric-value" id="active-count">—</div>
-        <div class="metric-note" id="active-note">running + reserved</div>
+        <div class="metric-note" id="active-note">running</div>
       </article>
       <article class="metric">
         <div class="metric-label">下一动作</div>
@@ -254,14 +253,12 @@
   <script>
     const SVG_NS = "http://www.w3.org/2000/svg";
     const statusLabels = {
-      waiting: "等待依赖", ready: "可调度", reserved: "已预留", running: "运行中",
-      completed: "已完成", blocked: "阻塞", failed: "失败", needs_repair: "需修复",
-      superseded: "已替换", pending: "待处理"
+      waiting: "等待依赖", ready: "可调度", running: "运行中",
+      completed: "已完成", stopped: "已停止", pending: "待处理"
     };
     const statusColors = {
-      waiting: "#637f74", ready: "#ffc766", reserved: "#74b9ff", running: "#74b9ff",
-      completed: "#55f2b2", blocked: "#ff7b7b", failed: "#ff7b7b", needs_repair: "#ff7b7b",
-      superseded: "#c7a6ff", pending: "#637f74"
+      waiting: "#637f74", ready: "#ffc766", running: "#74b9ff",
+      completed: "#55f2b2", stopped: "#ff7b7b", pending: "#637f74"
     };
     let snapshot = null;
     let selectedTaskId = null;
@@ -298,9 +295,9 @@
 
     function taskMatchesFilter(task) {
       if (activeFilter === "all") return true;
-      if (activeFilter === "active") return task.phase === "running" || task.phase === "reserved";
+      if (activeFilter === "active") return task.phase === "running";
       if (activeFilter === "ready") return task.phase === "ready";
-      if (activeFilter === "attention") return ["blocked", "failed", "needs_repair"].includes(task.phase);
+      if (activeFilter === "attention") return task.phase === "stopped";
       if (activeFilter === "completed") return task.phase === "completed";
       return true;
     }
@@ -538,6 +535,7 @@
       inspector.append(element("h3", "", task.title));
       const grid = element("dl", "detail-grid");
       appendDetail(grid, "状态", `${phaseLabel(task.phase)} · attempt ${task.attempt}`);
+      appendDetail(grid, "原因 / 动作", task.reason === null ? null : `${task.reason} / ${task.action}`);
       appendDetail(grid, "节点类型", task.node_type === "composite" ? "扩展任务 / 子 DAG" : "叶子任务");
       appendDetail(grid, "父任务", task.parent_task_id);
       appendDetail(grid, "执行主体", `${task.subject.kind}:${task.subject.id}`);
@@ -564,7 +562,7 @@
       const completed = snapshot.progress.top_level.completed;
       const taskPercent = total ? (completed / total) * 100 : 0;
       const coverage = snapshot.progress.coverage;
-      const active = (snapshot.progress.summary.running || 0) + (snapshot.progress.summary.reserved || 0);
+      const active = snapshot.progress.summary.running || 0;
       setText("objective", snapshot.goal.title || snapshot.goal.objective);
       setText("goal-id", `${snapshot.goal.id} · ${snapshot.goal.status}`);
       setText("task-progress", `${completed}/${total}`);
@@ -572,7 +570,7 @@
       setText("coverage-progress", `${coverage.completed_percent}%`);
       byId("coverage-progress-bar").style.width = `${clampPercent(coverage.completed_percent)}%`;
       setText("active-count", active);
-      setText("active-note", `${snapshot.progress.summary.running || 0} running · ${snapshot.progress.summary.reserved || 0} reserved · ${snapshot.progress.ready} ready`);
+      setText("active-note", `${snapshot.progress.summary.running || 0} running · ${snapshot.progress.ready} ready`);
       setText("next-action", snapshot.progress.next_action);
       setText("source-status", `source ${snapshot.progress.source_status}`);
       setText("plan-revision", `r${snapshot.plan.revision}`);

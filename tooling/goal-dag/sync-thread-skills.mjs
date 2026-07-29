@@ -17,6 +17,7 @@ const synchronizedFiles = [
   "sub-thread-goal-worker/SKILL.md",
   "sub-thread-goal-worker/references/templates.md",
   "sub-thread-task-supervisor/SKILL.md",
+  "sub-thread-coordination/references/lifecycle-contract.md",
   "sub-thread-coordination/references/owner-governance.md",
   "sub-thread-coordination/references/templates.md",
 ];

@@ -33,11 +33,13 @@ DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga
 
 子线程系统 key 只允许小写字母、数字和下划线。用户可见标题统一为 `[GA][任务][角色] <中文任务>`，中文后缀最多 32 个字符且不包含路径列表；每个新线程取得正式 threadId 后自行调用 `set_thread_title`。脚本 JSON 只作机器收据，不复制到聊天。
 
-初始 DAG 先由 runtime 机械校验，再由独立 Planner Reviewer 只审查并行度和结构复杂度；最多允许 Planner 修订一次。Plan/State 激活后，Main 用 `$start-dag-dashboard` 调用后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 均由 runtime 脚本维护，模型不得直接编辑；网页通过文件监听和 SSE 推送更新，默认监听 `127.0.0.1:7357`。
+初始 DAG 先由 runtime 机械校验，再由独立 Planner Reviewer 只审查并行度和结构复杂度；最多允许 Planner 修订一次。Plan/State 激活后，Main 用 `$start-dag-dashboard` 调用后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 均由 runtime 脚本维护，模型不得直接编辑；网页通过文件监听和 SSE 推送更新，默认监听 `127.0.0.1:57357`。
 
 模型 Review 不再是每个 task 的隐式步骤。Planner 必须把 Review 设计为显式 DAG 节点，并为 task 声明风险、Review 策略、批次和阻塞范围。机械验收由脚本执行；每个验证只保留当前运行日志，不保存或复用 evidence history。
 
 工作流自有的 JSON、JSONL、配置、Plan、State、Result、Progress 与 Review 状态都通过项目脚本或 runtime 命令写入；业务项目的 YAML/TOML 使用对应领域工具修改。完整 `WORKER_RESULT_V5` 只落盘，子线程聊天只返回紧凑 `THREAD_TASK_RECEIPT_V1`。
+
+生命周期保持有限：Workflow 只有 `active/completed/stopped/cancelled`，Task 只有 `pending/running/completed/stopped`。停止态必须使用固定的 `reason/action` 矩阵，未知值直接拒绝；reservation、Owner phase、线程状态、Worker 结果和调度命令只属于执行元数据。可用 `workflow lifecycle-contract` 查看权威契约，旧状态只允许通过 `workflow migrate-lifecycle <goal-dir>` 脚本迁移。
 
 原生 Goal 是可选桥接：默认使用 `standalone_thread`，用户可以直接回答 Owner 变化。只有用户已启动或明确要求 Goal 时才使用 `codex_native`。Goal 模式遇到 Owner 变化时返回 `owner_action_required`，通知用户暂停 Goal 并处理精确变更；应用后提示“可以继续 Goal”，不通过空模型回合累计 blocked 次数。
 
