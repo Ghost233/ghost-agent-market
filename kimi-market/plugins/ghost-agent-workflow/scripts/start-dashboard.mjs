@@ -28,7 +28,7 @@ function parseArgs(argv) {
     workspace: null,
     goalId: null,
     host: "127.0.0.1",
-    port: 7357,
+    port: 57357,
     allowRemote: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -285,19 +285,16 @@ function requestJson(url, timeoutMs) {
   });
 }
 
-async function probeDashboard(baseUrl, goalId) {
-  const [health, snapshot] = await Promise.all([
+async function probeDashboard(baseUrl, sourceId) {
+  const [health, catalog] = await Promise.all([
     requestJson(new URL("healthz", baseUrl), 500),
-    requestJson(new URL("api/snapshot", baseUrl), 800),
+    requestJson(new URL("api/catalog", baseUrl), 800),
   ]);
-  return health?.status === "ok"
-    && snapshot?.contract === "DAG_DASHBOARD_SNAPSHOT_V1"
-    && snapshot?.goal?.id === goalId;
-}
-
-async function probeDashboardService(baseUrl) {
-  const health = await requestJson(new URL("healthz", baseUrl), 500);
-  return health?.status === "ok";
+  return health?.contract === "DAG_DASHBOARD_HEALTH_V2"
+    && health?.status === "ok"
+    && catalog?.contract === "DAG_DASHBOARD_CATALOG_V1"
+    && Array.isArray(catalog.sources)
+    && catalog.sources.some((source) => source?.id === sourceId);
 }
 
 function pidIsAlive(pid) {
@@ -338,7 +335,7 @@ function removeTrackedFiles(runtimeDirectory, descriptorPath, descriptor) {
   }
 }
 
-async function stopTrackedDashboard(runtimeDirectory, descriptorPath, descriptor, baseUrl) {
+async function stopTrackedDashboard(runtimeDirectory, descriptorPath, descriptor) {
   const pid = descriptor?.pid;
   if (pidIsAlive(pid)) {
     try {
@@ -346,13 +343,8 @@ async function stopTrackedDashboard(runtimeDirectory, descriptorPath, descriptor
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
     }
-    let serving = true;
-    for (let attempt = 0; attempt < 40 && pidIsAlive(pid) && serving; attempt += 1) {
+    for (let attempt = 0; attempt < 40 && pidIsAlive(pid); attempt += 1) {
       await delay(50);
-      serving = await probeDashboardService(baseUrl);
-    }
-    if (pidIsAlive(pid) && serving) {
-      throw new StartError(`tracked dashboard process ${pid} did not stop`);
     }
   }
   removeTrackedFiles(runtimeDirectory, descriptorPath, descriptor);
@@ -365,17 +357,15 @@ function trackedDashboardDescriptors(runtimeDirectory) {
     .sort();
 }
 
-function trackedGoalIsActive(descriptor) {
-  if (typeof descriptor?.plan_path !== "string") return false;
-  const goalStatePath = join(dirname(resolve(descriptor.plan_path)), "goal-state.json");
-  try {
-    return readJson(goalStatePath).status === "active";
-  } catch {
-    return false;
-  }
+function trackedParticipantIsValid(descriptor) {
+  return typeof descriptor?.plan_path === "string"
+    && typeof descriptor?.state_path === "string"
+    && existsSync(resolve(descriptor.plan_path))
+    && existsSync(resolve(descriptor.state_path));
 }
 
-function responsePayload(status, data, url, pid, logPath, descriptorPath) {
+function responsePayload(status, data, sourceId, url, pid, logPath, descriptorPath, role) {
+  const sourceQuery = `source=${encodeURIComponent(sourceId)}`;
   return {
     contract: CONTRACT,
     status,
@@ -383,16 +373,18 @@ function responsePayload(status, data, url, pid, logPath, descriptorPath) {
     pid,
     log_path: logPath,
     descriptor_path: descriptorPath,
+    role,
+    source_id: sourceId,
     workspace_root: data.workspaceRoot,
     workflow_root: data.runtimeRoot,
     goal_id: data.goalId,
     plan_path: data.planPath,
     state_path: data.statePath,
     progress_document_path: join(dirname(data.planPath), "progress.json"),
-    progress_document_url: `${url}api/progress-document`,
+    progress_document_url: `${url}api/progress-document?${sourceQuery}`,
     progress_events_path: join(dirname(data.planPath), "events.jsonl"),
-    progress_events_url: `${url}api/progress-events`,
-    live_updates_url: `${url}api/live`,
+    progress_events_url: `${url}api/progress-events?${sourceQuery}`,
+    live_updates_url: `${url}api/live?${sourceQuery}`,
     read_only: true,
   };
 }
@@ -414,6 +406,10 @@ async function startDashboard(options) {
 
   const publicUrl = displayUrl(options.host, options.port);
   const healthUrl = probeUrl(options.host, options.port);
+  const sourceId = createHash("sha256")
+    .update(`${data.workspaceRoot}\n${data.goalId}`)
+    .digest("hex")
+    .slice(0, 20);
   const identity = [data.workspaceRoot, data.goalId, options.host, options.port].join("\n");
   const runtimeId = createHash("sha256").update(identity).digest("hex").slice(0, 20);
   const runtimeDirectory = join(tmpdir(), "ghost-agent-workflow-dashboard");
@@ -429,41 +425,41 @@ async function startDashboard(options) {
       rmSync(trackedPath, { force: true });
       continue;
     }
-    if (
-      tracked.workspace_root !== data.workspaceRoot
-      || tracked.host !== options.host
-      || tracked.port !== options.port
-    ) continue;
+    if (tracked.host !== options.host || tracked.port !== options.port) continue;
     if (!pidIsAlive(tracked.pid)) {
       removeTrackedFiles(runtimeDirectory, trackedPath, tracked);
       continue;
     }
-    if (tracked.goal_id === data.goalId) {
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        if (await probeDashboard(healthUrl, data.goalId)) {
+    if (!trackedParticipantIsValid(tracked)) {
+      await stopTrackedDashboard(runtimeDirectory, trackedPath, tracked);
+      continue;
+    }
+    if (tracked.workspace_root === data.workspaceRoot && tracked.goal_id === data.goalId) {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if (await probeDashboard(healthUrl, sourceId)) {
+          const health = await requestJson(new URL("healthz", healthUrl), 500);
           return responsePayload(
-            "already_running", data, publicUrl, tracked.pid, tracked.log_path, trackedPath,
+            "already_running",
+            data,
+            sourceId,
+            publicUrl,
+            tracked.pid,
+            tracked.log_path,
+            trackedPath,
+            health?.leader_runtime_id === runtimeId ? "leader" : "participant",
           );
         }
         await delay(100);
       }
-      await stopTrackedDashboard(runtimeDirectory, trackedPath, tracked, healthUrl);
-      continue;
+      await stopTrackedDashboard(runtimeDirectory, trackedPath, tracked);
     }
-    if (await probeDashboard(healthUrl, tracked.goal_id) && trackedGoalIsActive(tracked)) {
-      throw new StartError(
-        `port ${options.port} already serves active dashboard goal ${tracked.goal_id}; stop it or choose another port`,
-      );
-    }
-    await stopTrackedDashboard(runtimeDirectory, trackedPath, tracked, healthUrl);
   }
 
-  if (await probeDashboard(healthUrl, data.goalId)) {
-    return responsePayload("already_running", data, publicUrl, null, null, null);
-  }
-  if (await probeDashboardService(healthUrl)) {
-    throw new StartError(
-      `port ${options.port} is already used by an untracked dashboard or service`,
+  if (await probeDashboard(healthUrl, sourceId)) {
+    const health = await requestJson(new URL("healthz", healthUrl), 500);
+    return responsePayload(
+      "already_running", data, sourceId, publicUrl, null, null, null,
+      health?.leader_runtime_id === runtimeId ? "leader" : "participant",
     );
   }
 
@@ -506,6 +502,7 @@ async function startDashboard(options) {
     workspace_root: data.workspaceRoot,
     workflow_root: data.runtimeRoot,
     goal_id: data.goalId,
+    source_id: sourceId,
     plan_path: data.planPath,
     state_path: data.statePath,
     host: options.host,
@@ -516,8 +513,18 @@ async function startDashboard(options) {
   writeDescriptor(descriptorPath, descriptorPayload);
 
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (await probeDashboard(healthUrl, data.goalId)) {
-      return responsePayload("started", data, publicUrl, child.pid, logPath, descriptorPath);
+    if (await probeDashboard(healthUrl, sourceId)) {
+      const health = await requestJson(new URL("healthz", healthUrl), 500);
+      return responsePayload(
+        "started",
+        data,
+        sourceId,
+        publicUrl,
+        child.pid,
+        logPath,
+        descriptorPath,
+        health?.leader_runtime_id === runtimeId ? "leader" : "participant",
+      );
     }
     if (!pidIsAlive(child.pid)) {
       rmSync(descriptorPath, { force: true });
@@ -532,7 +539,10 @@ async function startDashboard(options) {
     process.kill(child.pid, "SIGTERM");
   } catch {}
   rmSync(descriptorPath, { force: true });
-  throw new StartError(`dashboard did not become healthy; see ${logPath}`);
+  const details = logTail(logPath);
+  throw new StartError(
+    `dashboard did not become healthy; see ${logPath}${details ? `\n${details}` : ""}`,
+  );
 }
 
 async function main() {

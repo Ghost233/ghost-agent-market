@@ -69,6 +69,10 @@ test("launcher accepts one workspace positional argument", () => {
   });
 });
 
+test("launcher defaults to the shared dashboard port", () => {
+  assert.equal(parseArgs(["/workspace"]).port, 57357);
+});
+
 test("discovers the active Goal below .ghost-agent-workflow", () => {
   withWorkspace((workspace) => {
     const expected = createDashboardGoal(workspace, "goal-a");

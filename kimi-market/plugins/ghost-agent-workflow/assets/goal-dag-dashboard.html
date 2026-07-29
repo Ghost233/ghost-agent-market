@@ -25,7 +25,7 @@
     }
 
     * { box-sizing: border-box; }
-    html, body { min-height: 100%; }
+    html, body { min-width: 800px; min-height: 100%; }
     body {
       margin: 0;
       color: var(--text);
@@ -37,7 +37,7 @@
 
     button { font: inherit; }
     a { font: inherit; text-decoration: none; }
-    .shell { width: min(1680px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 56px; }
+    .shell { width: calc(100% - 32px); min-width: 800px; margin: 0 auto; padding: 34px 0 56px; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
     .eyebrow {
       margin: 0 0 10px;
@@ -53,6 +53,25 @@
     .live-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--amber); box-shadow: 0 0 0 5px rgba(255, 199, 102, 0.1); }
     .live-dot.online { background: var(--accent); box-shadow: 0 0 0 5px rgba(85, 242, 178, 0.11); }
     .live-dot.error { background: var(--red); box-shadow: 0 0 0 5px rgba(255, 123, 123, 0.1); }
+
+    .project-tabs { display: flex; gap: 8px; margin: 22px 0 0; padding-bottom: 2px; overflow-x: auto; }
+    .project-tab {
+      flex: 0 0 auto;
+      min-width: 150px;
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--muted);
+      text-align: left;
+      background: rgba(13, 28, 25, 0.62);
+      cursor: pointer;
+    }
+    .project-tab:hover { color: var(--text); border-color: var(--line-strong); }
+    .project-tab.active { color: var(--text); border-color: rgba(85, 242, 178, 0.48); background: var(--accent-soft); }
+    .project-name { display: block; font-size: 12px; font-weight: 800; }
+    .project-goal { display: block; max-width: 240px; margin-top: 5px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .dag-meta-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 18px 0 10px; color: var(--muted); font-size: 11px; }
+    .dag-meta-bar .icon-button { color: var(--accent); border-color: var(--line); background: rgba(13, 28, 25, 0.62); }
 
     .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 30px 0 18px; }
     .metric, .panel {
@@ -87,7 +106,7 @@
     .filter.active { color: var(--text); border-color: rgba(85, 242, 178, 0.35); background: var(--accent-soft); }
     .icon-button { padding: 7px 9px; }
 
-    .graph-wrap { position: relative; min-height: 560px; overflow: auto; background-image: radial-gradient(rgba(173, 255, 218, 0.08) 0.8px, transparent 0.8px); background-size: 24px 24px; }
+    .graph-wrap { position: relative; height: min(70vh, 800px); min-height: 560px; max-height: 800px; overflow: auto; background-image: radial-gradient(rgba(173, 255, 218, 0.08) 0.8px, transparent 0.8px); background-size: 24px 24px; }
     #graph { display: block; min-width: 100%; }
     .edge { fill: none; stroke: rgba(155, 198, 181, 0.27); stroke-width: 1.4; }
     .edge.containment { stroke: rgba(199, 166, 255, 0.55); stroke-dasharray: 5 5; }
@@ -137,7 +156,7 @@
       .lower { grid-template-columns: 1fr; }
     }
     @media (max-width: 720px) {
-      .shell { width: min(100% - 18px, 1680px); padding-top: 20px; }
+      .shell { width: calc(100% - 18px); padding-top: 20px; }
       .topbar { flex-direction: column; }
       .metrics { grid-template-columns: repeat(2, 1fr); }
       .panel-head { align-items: flex-start; flex-direction: column; }
@@ -160,6 +179,8 @@
         <span id="live-label">连接中</span>
       </div>
     </header>
+
+    <nav class="project-tabs" id="project-tabs" aria-label="运行中的项目"></nav>
 
     <div class="error-banner" id="error-banner" role="alert"></div>
 
@@ -191,6 +212,11 @@
       </article>
     </section>
 
+    <div class="dag-meta-bar">
+      <a class="icon-button" id="progress-document-link" href="/api/progress-document" target="_blank" rel="noopener">进度文档</a>
+      <span id="updated-at">更新时间 —</span>
+    </div>
+
     <section class="panel">
       <div class="panel-head">
         <div class="panel-title">
@@ -203,8 +229,7 @@
           <button class="filter" data-filter="ready">可调度</button>
           <button class="filter" data-filter="attention">需处理</button>
           <button class="filter" data-filter="completed">已完成</button>
-          <a class="icon-button" href="/api/progress-document" target="_blank" rel="noopener">进度文档</a>
-          <a class="icon-button" href="/api/progress-events?after=0&amp;limit=100" target="_blank" rel="noopener">更新事件</a>
+          <a class="icon-button" id="progress-events-link" href="/api/progress-events?after=0&amp;limit=100" target="_blank" rel="noopener">更新事件</a>
           <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新">↻</button>
         </div>
       </div>
@@ -240,6 +265,9 @@
     };
     let snapshot = null;
     let selectedTaskId = null;
+    let selectedSourceId = null;
+    let catalog = [];
+    let liveEvents = null;
     let activeFilter = "all";
     let polling = false;
     const expandedCompositeIds = new Set();
@@ -249,6 +277,11 @@
     const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
     const statusClass = (phase) => `status-${phase}`;
     const phaseLabel = (phase) => statusLabels[phase] || phase;
+    const sourceUrl = (path) => {
+      const url = new URL(path, window.location.href);
+      if (selectedSourceId) url.searchParams.set("source", selectedSourceId);
+      return `${url.pathname}${url.search}`;
+    };
 
     function element(tag, className, text) {
       const node = document.createElement(tag);
@@ -554,6 +587,45 @@
       renderInspector();
     }
 
+    function renderProjectTabs() {
+      const tabs = byId("project-tabs");
+      tabs.replaceChildren();
+      for (const source of catalog) {
+        const tab = element("button", `project-tab${source.id === selectedSourceId ? " active" : ""}`);
+        tab.type = "button";
+        tab.title = source.workspace;
+        tab.append(element("span", "project-name", source.project));
+        tab.append(element("span", "project-goal", `${source.title} · ${source.status}`));
+        tab.addEventListener("click", () => selectSource(source.id));
+        tabs.append(tab);
+      }
+      byId("progress-document-link").href = sourceUrl("/api/progress-document");
+      const eventsUrl = new URL(sourceUrl("/api/progress-events"), window.location.href);
+      eventsUrl.searchParams.set("after", "0");
+      eventsUrl.searchParams.set("limit", "100");
+      byId("progress-events-link").href = `${eventsUrl.pathname}${eventsUrl.search}`;
+    }
+
+    function applyCatalog(next) {
+      if (!next || next.contract !== "DAG_DASHBOARD_CATALOG_V1" || !Array.isArray(next.sources)) return;
+      const previousSourceId = selectedSourceId;
+      catalog = next.sources;
+      if (!catalog.some((source) => source.id === selectedSourceId)) {
+        selectedSourceId = catalog[0]?.id || null;
+      }
+      renderProjectTabs();
+      if (liveEvents && selectedSourceId && selectedSourceId !== previousSourceId) connectLiveUpdates();
+    }
+
+    function selectSource(sourceId) {
+      if (sourceId === selectedSourceId && liveEvents) return;
+      selectedSourceId = sourceId;
+      selectedTaskId = null;
+      snapshot = null;
+      renderProjectTabs();
+      connectLiveUpdates();
+    }
+
     function setConnection(mode, label) {
       byId("live-dot").className = `live-dot ${mode}`;
       setText("live-label", label);
@@ -564,6 +636,7 @@
       if (selectedTaskId && !snapshot.tasks.some((task) => task.id === selectedTaskId)) selectedTaskId = null;
       renderAll();
       const time = new Date(snapshot.generated_at).toLocaleTimeString();
+      setText("updated-at", `更新时间 ${new Date(snapshot.generated_at).toLocaleString()}`);
       setConnection("online", `实时推送 · ${time}`);
       byId("error-banner").classList.remove("visible");
     }
@@ -572,7 +645,7 @@
       if (polling) return;
       polling = true;
       try {
-        const response = await fetch("/api/snapshot", { cache: "no-store" });
+        const response = await fetch(sourceUrl("/api/snapshot"), { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         applySnapshot(await response.json());
       } catch (error) {
@@ -585,12 +658,18 @@
     }
 
     function connectLiveUpdates() {
+      if (!selectedSourceId) return;
+      if (liveEvents) liveEvents.close();
       if (!("EventSource" in window)) {
         setConnection("error", "浏览器不支持实时推送");
         refresh();
         return;
       }
-      const events = new EventSource("/api/live");
+      const events = new EventSource(sourceUrl("/api/live"));
+      liveEvents = events;
+      events.addEventListener("catalog", (event) => {
+        try { applyCatalog(JSON.parse(event.data)); } catch {}
+      });
       events.addEventListener("snapshot", (event) => {
         try {
           applySnapshot(JSON.parse(event.data));
@@ -610,6 +689,19 @@
       events.onerror = () => setConnection("error", "实时推送重连中");
     }
 
+    async function bootstrap() {
+      try {
+        const response = await fetch("/api/catalog", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        applyCatalog(await response.json());
+        connectLiveUpdates();
+      } catch (error) {
+        setConnection("error", "项目列表读取失败");
+        byId("error-banner").textContent = `无法读取运行中的项目：${error instanceof Error ? error.message : String(error)}。`;
+        byId("error-banner").classList.add("visible");
+      }
+    }
+
     byId("filters").addEventListener("click", (event) => {
       const target = event.target.closest("[data-filter]");
       if (!target) return;
@@ -620,7 +712,7 @@
     });
     byId("refresh").addEventListener("click", refresh);
     window.addEventListener("resize", () => { if (snapshot) renderGraph(); });
-    connectLiveUpdates();
+    bootstrap();
   </script>
 </body>
 </html>

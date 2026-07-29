@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import {
   appendFileSync,
   closeSync,
@@ -10415,12 +10421,25 @@ type DashboardServeOptions = {
   runtimeId: string | null;
 };
 
+type DashboardSource = {
+  id: string;
+  workspace: string;
+  project: string;
+  goalId: string;
+  planPath: string;
+  statePath: string;
+  lifecyclePath: string | null;
+  runtimeId: string | null;
+  lastSeen: number;
+  local: boolean;
+};
+
 function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
   if (args.length === 0) fail("dashboard requires <plan.json>");
   const planPath = resolve(args[0]);
   let statePath = statePathFor(planPath);
   let host = "127.0.0.1";
-  let port = 7357;
+  let port = 57357;
   let allowRemote = false;
   let lifecyclePath: string | null = null;
   let runtimeId: string | null = null;
@@ -10509,9 +10528,221 @@ function sendDashboardEvent(
   response.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
+function dashboardConnectHost(host: string): string {
+  if (host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::") return "::1";
+  return host;
+}
+
+function dashboardSourceId(workspace: string, goalId: string): string {
+  return createHash("sha256").update(`${workspace}\n${goalId}`).digest("hex").slice(0, 20);
+}
+
+function dashboardPathWithin(root: string, candidate: string): boolean {
+  const offset = relative(root, candidate);
+  return offset === "" || (!offset.startsWith("..") && !isAbsolute(offset));
+}
+
+function localDashboardSource(options: DashboardServeOptions): DashboardSource {
+  const { plan } = parsePlan(readJson(options.planPath), options.planPath);
+  const goal = parseGoal(readJson(plan.goal_contract_path));
+  const workspace = resolve(goal.workspace.root);
+  const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+  const snapshotGoal = requireRecord(snapshot.goal, "dashboard snapshot goal");
+  const goalId = requireString(snapshotGoal.id, "dashboard snapshot goal.id");
+  return {
+    id: dashboardSourceId(workspace, goalId),
+    workspace,
+    project: basename(workspace),
+    goalId,
+    planPath: options.planPath,
+    statePath: options.statePath,
+    lifecyclePath: options.lifecyclePath,
+    runtimeId: options.runtimeId,
+    lastSeen: Date.now(),
+    local: true,
+  };
+}
+
+function dashboardCatalog(sources: Map<string, DashboardSource>, leaderRuntimeId: string | null) {
+  const catalogSources: Array<{
+    id: string;
+    project: string;
+    workspace: string;
+    goal_id: string;
+    title: string;
+    status: string;
+  }> = [];
+  for (const [id, source] of sources) {
+    let snapshot: Record<string, unknown>;
+    try {
+      snapshot = dashboardSnapshot(source.planPath, source.statePath);
+    } catch (error) {
+      if (source.local) throw error;
+      sources.delete(id);
+      continue;
+    }
+    const goal = requireRecord(snapshot.goal, "dashboard snapshot goal");
+    catalogSources.push({
+      id: source.id,
+      project: source.project,
+      workspace: source.workspace,
+      goal_id: source.goalId,
+      title: requireString(goal.title, "dashboard snapshot goal.title"),
+      status: requireString(goal.status, "dashboard snapshot goal.status"),
+    });
+  }
+  return {
+    contract: "DAG_DASHBOARD_CATALOG_V1",
+    leader_runtime_id: leaderRuntimeId,
+    sources: catalogSources
+      .sort((left, right) =>
+        left.project.localeCompare(right.project)
+        || left.goal_id.localeCompare(right.goal_id)),
+  };
+}
+
+function dashboardSourceFromRequest(
+  requestUrl: URL,
+  sources: Map<string, DashboardSource>,
+  localSourceId: string,
+): DashboardSource {
+  const requested = requestUrl.searchParams.get("source") ?? localSourceId;
+  const source = sources.get(requested);
+  if (source === undefined) fail(`dashboard source is not available: ${requested}`);
+  return source;
+}
+
+function dashboardLocalClient(request: IncomingMessage, host: string): boolean {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1"
+    || address === "::1"
+    || address === "::ffff:127.0.0.1"
+    || address === host
+    || address === `::ffff:${host}`;
+}
+
+async function readDashboardRequest(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 32_768) fail("dashboard participant payload is too large");
+    chunks.push(buffer);
+  }
+  const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return requireRecord(parsed, "dashboard participant payload");
+}
+
+function parseDashboardParticipant(payload: Record<string, unknown>): {
+  source: DashboardSource;
+  changed: boolean;
+} {
+  if (payload.contract !== "DAG_DASHBOARD_PARTICIPANT_V1") {
+    fail("dashboard participant contract is invalid");
+  }
+  const raw = requireRecord(payload.source, "dashboard participant source");
+  const workspace = resolve(requireString(raw.workspace, "dashboard participant workspace"));
+  const goalId = requireIdentifier(raw.goal_id, "dashboard participant goal_id");
+  const planPath = resolve(requireString(raw.plan_path, "dashboard participant plan_path"));
+  const statePath = resolve(requireString(raw.state_path, "dashboard participant state_path"));
+  const lifecycleValue = raw.lifecycle_path;
+  if (!dashboardPathWithin(workspace, planPath) || !dashboardPathWithin(workspace, statePath)) {
+    fail("dashboard participant paths escape workspace");
+  }
+  const lifecyclePath = lifecycleValue === null
+    ? null
+    : resolve(requireString(lifecycleValue, "dashboard participant lifecycle_path"));
+  if (lifecyclePath !== null && !dashboardPathWithin(workspace, lifecyclePath)) {
+    fail("dashboard participant lifecycle path escapes workspace");
+  }
+  if (!existsSync(planPath) || !existsSync(statePath)) {
+    fail("dashboard participant Plan/State is unavailable");
+  }
+  const snapshot = dashboardSnapshot(planPath, statePath);
+  const snapshotGoal = requireRecord(snapshot.goal, "dashboard participant snapshot goal");
+  if (snapshotGoal.id !== goalId) fail("dashboard participant goal does not match Plan/State");
+  const id = dashboardSourceId(workspace, goalId);
+  if (raw.id !== id) fail("dashboard participant source id is invalid");
+  const runtimeValue = raw.runtime_id;
+  const runtimeId = runtimeValue === null
+    ? null
+    : requireString(runtimeValue, "dashboard participant runtime_id");
+  return {
+    source: {
+      id,
+      workspace,
+      project: basename(workspace),
+      goalId,
+      planPath,
+      statePath,
+      lifecyclePath,
+      runtimeId,
+      lastSeen: Date.now(),
+      local: false,
+    },
+    changed: payload.changed === true,
+  };
+}
+
+function postDashboardParticipant(
+  options: DashboardServeOptions,
+  source: DashboardSource,
+  changed: boolean,
+): Promise<boolean> {
+  if (options.port === 0) return Promise.resolve(false);
+  const body = JSON.stringify({
+    contract: "DAG_DASHBOARD_PARTICIPANT_V1",
+    changed,
+    source: {
+      id: source.id,
+      workspace: source.workspace,
+      goal_id: source.goalId,
+      plan_path: source.planPath,
+      state_path: source.statePath,
+      lifecycle_path: source.lifecyclePath,
+      runtime_id: source.runtimeId,
+    },
+  });
+  return new Promise((resolvePost) => {
+    let responseSize = 0;
+    const request = httpRequest({
+      host: dashboardConnectHost(options.host),
+      port: options.port,
+      path: "/api/participants",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": String(Buffer.byteLength(body)),
+      },
+      timeout: 800,
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        responseSize += buffer.length;
+        if (responseSize <= 4_096) {
+          chunks.push(buffer);
+        }
+      });
+      response.once("end", () => {
+        if (response.statusCode !== 200) {
+          const detail = Buffer.concat(chunks).toString("utf8").trim();
+          process.stderr.write(`warning: dashboard registration rejected (${response.statusCode}): ${detail}\n`);
+        }
+        resolvePost(response.statusCode === 200);
+      });
+    });
+    request.once("timeout", () => request.destroy());
+    request.once("error", () => resolvePost(false));
+    request.end(body);
+  });
+}
+
 function dashboardCommand(args: string[]): void {
   const options = parseDashboardServeOptions(args);
-  dashboardSnapshot(options.planPath, options.statePath);
+  const localSource = localDashboardSource(options);
   const initialProgress = refreshProgressDocument(options.planPath, options.statePath);
   const assetPath = join(
     dirname(fileURLToPath(import.meta.url)),
@@ -10521,29 +10752,82 @@ function dashboardCommand(args: string[]): void {
   );
   if (!existsSync(assetPath)) fail(`dashboard asset is missing: ${assetPath}`);
   const dashboardHtml = readFileSync(assetPath, "utf8");
-  const liveResponses = new Set<ServerResponse>();
-  const server = createServer((request, response) => {
+  const sources = new Map<string, DashboardSource>([[localSource.id, localSource]]);
+  const liveResponses = new Map<ServerResponse, string>();
+  let server: Server | null = null;
+  let leader = false;
+  let announced = false;
+  let shuttingDown = false;
+
+  const sendCatalog = () => {
+    if (!leader) return;
     try {
+      const catalog = dashboardCatalog(sources, options.runtimeId);
+      for (const response of liveResponses.keys()) sendDashboardEvent(response, "catalog", catalog);
+    } catch (error) {
+      process.stderr.write(`warning: dashboard catalog refresh failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  };
+  const sendSourceSnapshot = (source: DashboardSource) => {
+    if (!leader) return;
+    const snapshot = dashboardSnapshot(source.planPath, source.statePath);
+    for (const [response, sourceId] of liveResponses) {
+      if (sourceId === source.id) sendDashboardEvent(response, "snapshot", snapshot);
+    }
+  };
+
+  const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
+    try {
+      const requestUrl = new URL(request.url ?? "/", "http://localhost");
+      const pathname = requestUrl.pathname;
+      if (request.method === "POST" && pathname === "/api/participants") {
+        if (!dashboardLocalClient(request, options.host)) {
+          sendDashboardResponse(request, response, 403, "text/plain; charset=utf-8", "local participants only\n");
+          return;
+        }
+        const participant = parseDashboardParticipant(await readDashboardRequest(request));
+        const previous = sources.get(participant.source.id);
+        sources.set(participant.source.id, participant.source);
+        sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", "{\"status\":\"registered\"}\n");
+        if (participant.changed || previous === undefined) sendCatalog();
+        if (participant.changed || previous === undefined) {
+          refreshProgressDocument(participant.source.planPath, participant.source.statePath);
+          sendSourceSnapshot(participant.source);
+        }
+        return;
+      }
       if (request.method !== "GET" && request.method !== "HEAD") {
         sendDashboardResponse(request, response, 405, "text/plain; charset=utf-8", "method not allowed\n", {
-          Allow: "GET, HEAD",
+          Allow: "GET, HEAD, POST",
         });
         return;
       }
-      const requestUrl = new URL(request.url ?? "/", "http://localhost");
-      const pathname = requestUrl.pathname;
       if (pathname === "/" || pathname === "/index.html") {
         sendDashboardResponse(request, response, 200, "text/html; charset=utf-8", dashboardHtml);
         return;
       }
+      if (pathname === "/api/catalog") {
+        sendDashboardResponse(
+          request,
+          response,
+          200,
+          "application/json; charset=utf-8",
+          serializedJson(dashboardCatalog(sources, options.runtimeId)),
+        );
+        return;
+      }
       if (pathname === "/api/snapshot") {
-        const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+        const source = dashboardSourceFromRequest(requestUrl, sources, localSource.id);
+        const snapshot = dashboardSnapshot(source.planPath, source.statePath);
         const body = `${JSON.stringify(snapshot)}\n`;
         sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", body);
         return;
       }
       if (pathname === "/api/live") {
-        const snapshot = dashboardSnapshot(options.planPath, options.statePath);
+        const requestedSourceId = requestUrl.searchParams.get("source") ?? localSource.id;
+        const source = sources.get(requestedSourceId) ?? sources.get(localSource.id);
+        if (source === undefined) fail("dashboard has no available source");
+        const snapshot = dashboardSnapshot(source.planPath, source.statePath);
         setDashboardHeaders(response);
         response.statusCode = 200;
         response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -10553,13 +10837,15 @@ function dashboardCommand(args: string[]): void {
           return;
         }
         response.flushHeaders();
-        liveResponses.add(response);
+        liveResponses.set(response, source.id);
+        sendDashboardEvent(response, "catalog", dashboardCatalog(sources, options.runtimeId));
         sendDashboardEvent(response, "snapshot", snapshot);
         request.once("close", () => liveResponses.delete(response));
         return;
       }
       if (pathname === "/api/progress-document") {
-        const progress = refreshProgressDocument(options.planPath, options.statePath);
+        const source = dashboardSourceFromRequest(requestUrl, sources, localSource.id);
+        const progress = refreshProgressDocument(source.planPath, source.statePath);
         sendDashboardResponse(
           request,
           response,
@@ -10570,7 +10856,8 @@ function dashboardCommand(args: string[]): void {
         return;
       }
       if (pathname === "/api/progress-events") {
-        refreshProgressDocument(options.planPath, options.statePath);
+        const source = dashboardSourceFromRequest(requestUrl, sources, localSource.id);
+        refreshProgressDocument(source.planPath, source.statePath);
         const rawAfter = requestUrl.searchParams.get("after") ?? "0";
         const rawLimit = requestUrl.searchParams.get("limit") ?? "100";
         const after = Number(rawAfter);
@@ -10584,12 +10871,17 @@ function dashboardCommand(args: string[]): void {
           response,
           200,
           "application/json; charset=utf-8",
-          serializedJson(progressEventsPage(options.planPath, after, requestedLimit)),
+          serializedJson(progressEventsPage(source.planPath, after, requestedLimit)),
         );
         return;
       }
       if (pathname === "/healthz") {
-        sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", "{\"status\":\"ok\"}\n");
+        sendDashboardResponse(request, response, 200, "application/json; charset=utf-8", `${JSON.stringify({
+          contract: "DAG_DASHBOARD_HEALTH_V2",
+          status: "ok",
+          leader_runtime_id: options.runtimeId,
+          source_count: sources.size,
+        })}\n`);
         return;
       }
       if (pathname === "/favicon.ico") {
@@ -10607,28 +10899,29 @@ function dashboardCommand(args: string[]): void {
         `${JSON.stringify({ error: message })}\n`,
       );
     }
-  });
-  server.once("error", (error) => {
-    process.stderr.write(`error: dashboard server failed: ${error.message}\n`);
-    process.exitCode = 1;
-  });
+  };
   let pendingRefresh: ReturnType<typeof setTimeout> | null = null;
   let dashboardWatcher: ReturnType<typeof watch> | null = null;
-  let shuttingDown = false;
+  let electionTimer: ReturnType<typeof setInterval> | null = null;
+  let sourceReaper: ReturnType<typeof setInterval> | null = null;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
     if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+    if (electionTimer !== null) clearInterval(electionTimer);
+    if (sourceReaper !== null) clearInterval(sourceReaper);
     dashboardWatcher?.close();
-    for (const response of liveResponses) response.end();
+    for (const response of liveResponses.keys()) response.end();
     liveResponses.clear();
-    server.close(() => {
+    const cleanup = () => {
       if (options.runtimeId !== null) {
         const runtimeDirectory = join(tmpdir(), "ghost-agent-workflow-dashboard");
         rmSync(join(runtimeDirectory, `${options.runtimeId}.json`), { force: true });
         rmSync(join(runtimeDirectory, `${options.runtimeId}.log`), { force: true });
       }
-    });
+    };
+    if (server !== null) server.close(cleanup);
+    else cleanup();
   };
   const inputsAvailable = () =>
     existsSync(options.planPath)
@@ -10651,10 +10944,12 @@ function dashboardCommand(args: string[]): void {
     }
     try {
       refreshProgressDocument(options.planPath, options.statePath);
-      const snapshot = dashboardSnapshot(options.planPath, options.statePath);
-      for (const response of liveResponses) {
-        sendDashboardEvent(response, "snapshot", snapshot);
+      localSource.lastSeen = Date.now();
+      if (leader) {
+        sendCatalog();
+        sendSourceSnapshot(localSource);
       }
+      else void postDashboardParticipant(options, localSource, true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`warning: dashboard live refresh failed: ${message}\n`);
@@ -10676,27 +10971,85 @@ function dashboardCommand(args: string[]): void {
     process.stderr.write(`warning: dashboard file watcher failed: ${error.message}\n`);
     if (!inputsAvailable()) shutdown();
   });
-  server.listen(options.port, options.host, () => {
-    const address = server.address();
-    const actualPort = typeof address === "object" && address !== null ? address.port : options.port;
+
+  const announce = (role: "leader" | "participant", actualPort = options.port) => {
+    if (announced) return;
+    announced = true;
     const urlHost = options.host.includes(":") ? `[${options.host}]` : options.host;
+    const sourceQuery = `source=${encodeURIComponent(localSource.id)}`;
     process.stdout.write(`${JSON.stringify({
-      status: "serving",
+      status: role === "leader" ? "serving" : "joined",
+      role,
       url: `http://${urlHost}:${actualPort}/`,
       host: options.host,
       port: actualPort,
+      source_id: localSource.id,
       plan_path: options.planPath,
       state_path: options.statePath,
       read_only: true,
       progress_document_path: initialProgress.path,
-      progress_document_url: `http://${urlHost}:${actualPort}/api/progress-document`,
+      progress_document_url: `http://${urlHost}:${actualPort}/api/progress-document?${sourceQuery}`,
       progress_events_path: progressEventsPathFor(options.planPath),
-      progress_events_url: `http://${urlHost}:${actualPort}/api/progress-events`,
-      live_updates_url: `http://${urlHost}:${actualPort}/api/live`,
+      progress_events_url: `http://${urlHost}:${actualPort}/api/progress-events?${sourceQuery}`,
+      live_updates_url: `http://${urlHost}:${actualPort}/api/live?${sourceQuery}`,
       update_transport: "sse",
       network_visible: options.allowRemote,
     })}\n`);
-  });
+  };
+
+  const becomeLeader = () => {
+    if (shuttingDown || leader || server !== null) return;
+    const candidate = createServer((request, response) => void handleRequest(request, response));
+    server = candidate;
+    candidate.once("error", (error: NodeJS.ErrnoException) => {
+      server = null;
+      if (error.code !== "EADDRINUSE") {
+        process.stderr.write(`warning: dashboard election failed: ${error.message}\n`);
+      }
+    });
+    candidate.listen(options.port, options.host, () => {
+      leader = true;
+      localSource.lastSeen = Date.now();
+      sources.clear();
+      sources.set(localSource.id, localSource);
+      const address = candidate.address();
+      const actualPort = typeof address === "object" && address !== null ? address.port : options.port;
+      announce("leader", actualPort);
+      sendCatalog();
+    });
+  };
+
+  const coordinate = async () => {
+    if (shuttingDown) return;
+    if (!inputsAvailable()) {
+      process.stderr.write("info: dashboard inputs were removed; stopping\n");
+      shutdown();
+      return;
+    }
+    if (leader) {
+      localSource.lastSeen = Date.now();
+      return;
+    }
+    const registered = await postDashboardParticipant(options, localSource, false);
+    if (registered) announce("participant");
+    else becomeLeader();
+  };
+
+  sourceReaper = setInterval(() => {
+    if (!leader) return;
+    const threshold = Date.now() - 7_000;
+    let changed = false;
+    for (const [id, source] of sources) {
+      if (!source.local && source.lastSeen < threshold) {
+        sources.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) sendCatalog();
+  }, 2_000);
+  electionTimer = setInterval(() => void coordinate(), 2_000);
+  becomeLeader();
+  setTimeout(() => void coordinate(), 100);
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }

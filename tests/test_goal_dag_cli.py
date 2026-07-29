@@ -5135,7 +5135,12 @@ class GoalDagCliTests(unittest.TestCase):
                 with urlopen(serving["url"], timeout=5) as response:
                     html = response.read().decode("utf-8")
                     self.assertIn("Goal DAG 进度", html)
+                    self.assertIn('id="project-tabs"', html)
                     self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+                with urlopen(f'{serving["url"]}api/catalog', timeout=5) as response:
+                    catalog = json.loads(response.read())
+                    self.assertEqual(catalog["contract"], "DAG_DASHBOARD_CATALOG_V1")
+                    self.assertEqual(len(catalog["sources"]), 1)
                 with urlopen(f'{serving["url"]}api/snapshot', timeout=5) as response:
                     payload = json.loads(response.read())
                     self.assertEqual(payload["contract"], "DAG_DASHBOARD_SNAPSHOT_V1")
@@ -5250,7 +5255,11 @@ class GoalDagCliTests(unittest.TestCase):
                 self.assertTrue(started["read_only"])
                 self.assertEqual(started["workspace_root"], str(workspace_root))
                 self.assertEqual(started["goal_id"], "refactor-page-state")
-                self.assertEqual(started["live_updates_url"], f'{started["url"]}api/live')
+                self.assertEqual(started["role"], "leader")
+                self.assertEqual(
+                    started["live_updates_url"],
+                    f'{started["url"]}api/live?source={started["source_id"]}',
+                )
                 pid = started["pid"]
                 self.assertEqual(
                     Path(started["progress_document_path"]),
@@ -5300,6 +5309,85 @@ class GoalDagCliTests(unittest.TestCase):
                         pass
                 for path in cleanup_paths:
                     path.unlink(missing_ok=True)
+
+    def test_dashboard_participants_share_port_and_elect_successor(self) -> None:
+        with self.workspace() as (_, first_goal, first_plan), self.workspace() as (_, second_goal, second_plan):
+            self.initialize(first_goal, first_plan)
+            self.initialize(second_goal, second_plan)
+            first_workspace = Path(json.loads(first_goal.read_text(encoding="utf-8"))["workspace"]["root"])
+            second_workspace = Path(json.loads(second_goal.read_text(encoding="utf-8"))["workspace"]["root"])
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                listener.bind(("127.0.0.1", 0))
+                port = listener.getsockname()[1]
+            started: list[dict] = []
+            try:
+                for workspace in (first_workspace, second_workspace):
+                    launched = subprocess.run(
+                        ["node", str(CODEX_DASHBOARD_STARTER), str(workspace), "--port", str(port)],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertEqual(launched.returncode, 0, launched.stdout + launched.stderr)
+                    started.append(json.loads(launched.stdout))
+                self.assertEqual({item["role"] for item in started}, {"leader", "participant"})
+                self.assertEqual(started[0]["url"], started[1]["url"])
+                with urlopen(f'{started[0]["url"]}api/catalog', timeout=5) as response:
+                    catalog = json.loads(response.read())
+                self.assertEqual(
+                    {source["id"] for source in catalog["sources"]},
+                    {item["source_id"] for item in started},
+                )
+
+                leader = next(item for item in started if item["role"] == "leader")
+                participant = next(item for item in started if item["role"] == "participant")
+                old_runtime_id = hashlib.sha256(
+                    f'{leader["workspace_root"]}\n{leader["goal_id"]}\n127.0.0.1\n{port}'.encode()
+                ).hexdigest()[:20]
+                os.kill(leader["pid"], 15)
+                successor = None
+                deadline = time.time() + 10
+                while time.time() < deadline:
+                    try:
+                        with urlopen(f'{participant["url"]}healthz', timeout=1) as response:
+                            health = json.loads(response.read())
+                        if health.get("leader_runtime_id") not in (None, old_runtime_id):
+                            successor = health
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
+                self.assertIsNotNone(successor, "participant did not take over the fixed port")
+                with urlopen(f'{participant["url"]}api/catalog', timeout=5) as response:
+                    recovered = json.loads(response.read())
+                self.assertIn(
+                    participant["source_id"],
+                    {source["id"] for source in recovered["sources"]},
+                )
+                with urlopen(
+                    f'{participant["url"]}api/live?source={leader["source_id"]}', timeout=5
+                ) as response:
+                    seen_events = []
+                    current_event = None
+                    while len(seen_events) < 2:
+                        line = response.readline().decode("utf-8").rstrip("\r\n")
+                        if line.startswith("event: "):
+                            current_event = line.removeprefix("event: ")
+                        elif not line and current_event is not None:
+                            seen_events.append(current_event)
+                            current_event = None
+                    self.assertEqual(seen_events, ["catalog", "snapshot"])
+            finally:
+                for item in started:
+                    try:
+                        os.kill(item["pid"], 15)
+                    except ProcessLookupError:
+                        pass
+                    if item.get("descriptor_path"):
+                        Path(item["descriptor_path"]).unlink(missing_ok=True)
+                    if item.get("log_path"):
+                        Path(item["log_path"]).unlink(missing_ok=True)
 
     def test_node_launcher_reclaims_tracked_unhealthy_dashboard(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
@@ -5448,7 +5536,12 @@ process.stdout.write(JSON.stringify({
         self.assertEqual(starter, CLAUDE_DASHBOARD_STARTER.read_text(encoding="utf-8"))
         self.assertEqual(starter, KIMI_DASHBOARD_STARTER.read_text(encoding="utf-8"))
         dashboard = DASHBOARD_SOURCE.read_text(encoding="utf-8")
-        self.assertIn('new EventSource("/api/live")', dashboard)
+        self.assertIn('new EventSource(sourceUrl("/api/live"))', dashboard)
+        self.assertIn('id="project-tabs"', dashboard)
+        self.assertIn('id="updated-at"', dashboard)
+        self.assertIn("max-height: 800px", dashboard)
+        self.assertIn("min-width: 800px", dashboard)
+        self.assertNotIn("1680px", dashboard)
         self.assertNotIn("setInterval(refresh", dashboard)
         self.assertEqual(
             dashboard,

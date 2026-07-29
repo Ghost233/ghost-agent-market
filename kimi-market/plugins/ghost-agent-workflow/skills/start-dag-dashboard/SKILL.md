@@ -14,11 +14,12 @@ whenToUse: 用户显式启动 Dashboard，或协调器在 Plan 激活后启动 D
 2. 运行后台启动器；不要追加 `nohup`、`&` 或 shell job control：
 
 ```bash
-node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs <workspace> [--goal <goal-id>] [--port 7357]
+node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs <workspace> [--goal <goal-id>] [--port 57357]
 ```
 
 3. 启动器必须从 `<workspace>/.ghost-agent-workflow` 发现并校验已激活的 `goal.json`、`goal-state.json`、`plan.json` 和 `state.json`。存在多个 active Goal 时传入 `--goal`；无法唯一选择时停止并报告候选。
-4. 只接受 `DAG_DASHBOARD_START_V1`。启动器会回收同工作区、同端口且已失效的已登记实例；仍在服务其他 active Goal 或无法确认归属的端口不得自动停止。`started` 或 `already_running` 时只向用户报告一次 `url`；不得继续轮询。
-5. Workflow 清理生命周期文件或 Plan/State 后，看板必须自行退出并清理启动收据与日志。失败时原样报告；协调工作流中 Dashboard 失败不使业务 DAG 失败，Main 可以稍后重试。
+4. 只接受 `DAG_DASHBOARD_START_V1`。所有实例使用同一固定端口：第一个绑定成功的实例成为主看板，其他实例登记为参与者并向主看板推送变化；不得因端口已由合法看板占用而改用其他端口或停止它。
+5. `started` 或 `already_running` 时只向用户报告一次共享 `url`。网页顶部按工作区文件夹显示项目 Tab；同一入口可切换多个运行中的 Goal。
+6. 主看板退出后，参与者必须自动竞争固定端口并由成功者接管。Workflow 清理生命周期文件或 Plan/State 后，仅对应参与者退出并清理自己的启动收据与日志。失败时原样报告；协调工作流中 Dashboard 失败不使业务 DAG 失败，Main 可以稍后重试。
 
-runtime 自动维护 `progress.json` 和 `events.jsonl`，模型不得写入。看板通过文件监听与 SSE 推送更新，不定时刷新页面数据。默认仅绑定 `127.0.0.1`；远程访问必须由用户明确授权。
+runtime 自动维护 `progress.json` 和 `events.jsonl`，模型不得写入。参与者通过文件监听向主看板推送，浏览器通过 SSE 接收更新，不定时刷新页面数据。默认仅绑定 `127.0.0.1`；远程访问必须由用户明确授权。

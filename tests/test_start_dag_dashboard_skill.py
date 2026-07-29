@@ -22,6 +22,10 @@ class StartDagDashboardSkillTests(unittest.TestCase):
             self.assertIn("events.jsonl", text)
             self.assertIn("文件监听", text)
             self.assertIn("SSE", text)
+            self.assertIn("成为主看板", text)
+            self.assertIn("项目 Tab", text)
+            self.assertIn("自动竞争固定端口", text)
+            self.assertIn("--port 57357", text)
             self.assertIn("远程访问", text)
         self.assertIn(
             "node <plugin-root>/scripts/start-dashboard.mjs <workspace>", codex

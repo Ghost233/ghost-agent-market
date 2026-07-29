@@ -35,7 +35,7 @@ DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本�
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 
-初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 通过 `/ghost-agent-workflow:start-dag-dashboard` 调用后台 Node 启动器；启动器从工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 由 runtime 脚本维护，页面通过文件监听和 SSE 推送更新，默认只监听 `127.0.0.1:7357`。
+初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 通过 `/ghost-agent-workflow:start-dag-dashboard` 调用后台 Node 启动器并只报告一次共享 URL。所有项目竞争 `127.0.0.1:57357`，首个成功者作为主看板，其他参与者推送变化；主看板退出后自动重新选举。页面顶部按工作区文件夹提供项目 Tab，`progress.json` 与 `events.jsonl` 仍由 runtime 脚本维护。
 
 所有结构化文件和配置都通过脚本写入；完整 `WORKER_RESULT_V5` 只落盘，聊天只返回紧凑 receipt。runtime 使用轻量 workspace fence，不复制所有受管理文件。初始化脚本自动生成 `.ghost-agent-workflow/.gitignore`，只跟踪自身、配置与 Owner 数据并忽略 runtime；已有文件不覆盖。Owner 新增、分裂或 scope 变化必须经脚本冲突验证和用户对精确 digest 的明确批准。
 

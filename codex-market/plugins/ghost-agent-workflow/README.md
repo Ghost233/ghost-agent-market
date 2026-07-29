@@ -16,7 +16,7 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 
 用户可见标题统一为 `[GA][任务][角色] <中文任务>`，例如 `[GA][任务][责任域] 实现用户登录接口`；新线程取得正式 threadId 后自行设置 canonical 标题。系统 key 只使用小写字母、数字和下划线，脚本 JSON 只作机器收据。
 
-初始 DAG 先机械校验，再由 Planner Reviewer 只检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 调用 `$start-dag-dashboard` 的后台 Node 启动器；启动器从工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 由 runtime 脚本维护，页面通过文件监听和 SSE 推送更新，默认只监听 `127.0.0.1:7357`。
+初始 DAG 先机械校验，再由 Planner Reviewer 只检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 调用 `$start-dag-dashboard` 的后台 Node 启动器并只报告一次共享 URL。所有项目竞争 `127.0.0.1:57357`，首个成功者作为主看板，其他参与者推送变化；主看板退出后自动重新选举。页面顶部按工作区文件夹提供项目 Tab，`progress.json` 与 `events.jsonl` 仍由 runtime 脚本维护。
 
 首次 `goal-validate` 保存轻量 `WORKSPACE_FENCE_V1`：Git tree/index digest 与当时的非 clean 项，不复制全部受管理文件。planner 为每个 plan item 写 source refs 和 required effects；active leaf 可在任何可归因修改前扩展为 T2-1、T2-2…递归子 DAG，父节点保留外层依赖边界。
 
