@@ -120,7 +120,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "create_thread",
                 "禁止 `fork_thread`",
                 "main_action",
-                "Planner 或 Planner Reviewer 正常结束不会通知 Main",
+                "Planner 或 Planner Reviewer 正常结束不通知 Main",
                 "不得再次 `owner-sync`",
                 "禁止 Orca",
                 "只有 Supervisor 负责等待",
@@ -130,6 +130,23 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("owner_sync_required", supervisor)
             self.assertIn("Supervisor 不创建或复用线程", supervisor)
             self.assertIn("独立 worktree", supervisor)
+            self.assertIn("Main 不负责重新唤醒 Supervisor", supervisor)
+            self.assertIn(".ghost-agent-workflow", supervisor)
+            self.assertNotIn("插件缓存", supervisor)
+            self.assertNotIn("runtime_ref", supervisor)
+            self.assertIn("上下文压缩或恢复后", supervisor)
+
+    def test_supervisor_goal_mode_is_platform_explicit(self) -> None:
+        codex = self.skill("codex", "sub-thread-task-supervisor")
+        self.assertIn("调用 `get_goal`", codex)
+        self.assertIn("调用 `create_goal`", codex)
+        self.assertIn("Goal active", codex)
+        self.assertNotIn("runtime_ref", codex)
+
+        for platform in ("claude", "kimi"):
+            supervisor = self.skill(platform, "sub-thread-task-supervisor")
+            self.assertIn("不提供 Codex 原生 Goal 工具", supervisor)
+            self.assertIn("持续监督 turn", supervisor)
 
     def test_dag_and_owner_worktrees_are_script_owned(self) -> None:
         for platform in PLATFORMS:
@@ -250,8 +267,6 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             "setup-sub-thread-workflow/SKILL.md",
             "sub-thread-goal-worker/SKILL.md",
             "sub-thread-goal-worker/references/templates.md",
-            "sub-thread-task-supervisor/SKILL.md",
-            "sub-thread-coordination/references/templates.md",
             "sub-thread-coordination/references/owner-governance.md",
         )
         codex_root = PLATFORMS["codex"] / "skills"

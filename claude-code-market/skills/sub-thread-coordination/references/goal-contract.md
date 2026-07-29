@@ -4,7 +4,7 @@
 
 Workflow 与 Task 的状态、停止原因和下一处理动作统一遵循 [生命周期契约](lifecycle-contract.md)。调度动作、Owner 执行阶段、线程宿主状态和 Worker 结果不得混入生命周期状态。
 
-Claude Code 固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。
+Claude Code 固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接；Supervisor 使用宿主长期线程内的持续监督循环。
 
 ## Quick
 

@@ -25,7 +25,7 @@ Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `st
 /ghost-agent-workflow:sub-thread-coordination 继续 `<goal.json绝对路径>`。
 ```
 
-短提示必须逐字使用 runtime 输出，不携带计划、DAG、Owner Capsule 或 worker prompt；下一轮从 `.ghost-agent-workflow/` 恢复当前状态。启动前必须由用户明确选择模式；Quick 不启动 Supervisor；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多监督 8 个已登记线程。新线程只用 `create_thread`，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
+短提示必须逐字使用 runtime 输出，不携带计划、DAG、Owner Capsule 或 worker prompt；下一轮从 `.ghost-agent-workflow/` 恢复当前状态。启动前必须由用户明确选择模式；Quick 不启动 Supervisor；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 在宿主长期线程内持续监督最多 8 个已登记线程，Main 不周期唤醒。新线程只用 `create_thread`，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
 
 DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `ga/<key>/main` 和 Owner 分支 `ga/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
 

@@ -1009,20 +1009,22 @@ function parseThreadWorkflowConfig(value         )                       {
   };
 }
 
-function loadThreadWorkflowConfig(workspaceRoot        )                       {
-  ensureWorkflowGitignore(workspaceRoot);
-  const path = threadWorkflowConfigPath(workspaceRoot);
-  if (!existsSync(path)) {
-    writeTextAtomic(path, serializedJson({
-      parallel: DEFAULT_THREAD_WORKFLOW_CONFIG.parallel,
-      profiles: Object.fromEntries(THREAD_PROFILE_ROLES.map((role) => [role, {
-        model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].model,
-        effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].reasoning_effort,
-      }])),
-    }));
-  }
-  const value = requireRecord(readJson(path), "thread workflow config");
-  const rawProfiles = requireRecord(value.profiles, "thread workflow config.profiles");
+function defaultThreadWorkflowConfigValue()                          {
+  return {
+    parallel: DEFAULT_THREAD_WORKFLOW_CONFIG.parallel,
+    profiles: Object.fromEntries(THREAD_PROFILE_ROLES.map((role) => [role, {
+      model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].model,
+      effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles[role].reasoning_effort,
+    }])),
+  };
+}
+
+function normalizeThreadWorkflowConfig(value         )
+
+
+  {
+  const source = requireRecord(value, "thread workflow config");
+  const rawProfiles = requireRecord(source.profiles, "thread workflow config.profiles");
   const profileKeys = Object.keys(rawProfiles).sort().join(",");
   if (!Object.hasOwn(rawProfiles, "supervisor") && profileKeys === "owner,planner,review") {
     rawProfiles.supervisor = {
@@ -1037,9 +1039,27 @@ function loadThreadWorkflowConfig(workspaceRoot        )                       {
       effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.main.reasoning_effort,
     };
   }
-  if (Object.keys(rawProfiles).sort().join(",") !== profileKeys) {
-    writeTextAtomic(path, serializedJson(value));
-  }
+  return {
+    value: source,
+    changed: Object.keys(rawProfiles).sort().join(",") !== profileKeys,
+  };
+}
+
+function readThreadWorkflowConfig(workspaceRoot        )                       {
+  const path = threadWorkflowConfigPath(workspaceRoot);
+  const normalized = normalizeThreadWorkflowConfig(
+    existsSync(path) ? readJson(path) : defaultThreadWorkflowConfigValue(),
+  );
+  return parseThreadWorkflowConfig(normalized.value);
+}
+
+function loadThreadWorkflowConfig(workspaceRoot        )                       {
+  ensureWorkflowGitignore(workspaceRoot);
+  const path = threadWorkflowConfigPath(workspaceRoot);
+  if (!existsSync(path)) writeTextAtomic(path, serializedJson(defaultThreadWorkflowConfigValue()));
+  const normalized = normalizeThreadWorkflowConfig(readJson(path));
+  const value = normalized.value;
+  if (normalized.changed) writeTextAtomic(path, serializedJson(value));
   return parseThreadWorkflowConfig(value);
 }
 
@@ -12829,7 +12849,7 @@ function supervisorMainResumePrompt(goalDirectory        )         {
     "",
     "Supervisor 检测到需要 Main 处理的确定性动作。",
     `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}，逐字执行脚本收据。`,
-    "完成主控动作后按收据重新唤醒 Supervisor；不要调用 wait_threads。",
+    "完成主控动作后直接结束当前 turn；Supervisor 会自行继续轮询，不要调用 wait_threads 或重新唤醒 Supervisor。",
   ].join("\n");
 }
 
@@ -12847,7 +12867,7 @@ function supervisorOwnerSyncPrompt(goalDirectory        , ownerId        )      
     "",
     "Supervisor 检测到 Owner worktree 需要同步。",
     `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}。`,
-    "成功后重新唤醒 Supervisor；不要调用 wait_threads。",
+    "成功后直接结束当前 turn；Supervisor 会自行继续轮询，不要调用 wait_threads 或重新唤醒 Supervisor。",
   ].join("\n");
 }
 
@@ -16151,6 +16171,7 @@ function recoverPendingDagHandoff(
   ) {
     fail("active DAG is not isolated in a DAG worktree");
   }
+  loadThreadWorkflowConfig(workspace);
   commitScriptManagedPaths(
     workspace,
     [".ghost-agent-workflow/.gitignore", ".ghost-agent-workflow/config.json"],
@@ -16178,7 +16199,7 @@ function workflowStartDagCommand(workspaceArgument        , developmentKeyArgume
   const workspace = gitRoot(resolve(workspaceArgument));
   const developmentKey = requireDevelopmentKey(developmentKeyArgument);
   const requestedDagBranch = dagBranchName(developmentKey);
-  const workflowConfig = loadThreadWorkflowConfig(workspace);
+  const workflowConfig = readThreadWorkflowConfig(workspace);
   const active = activeWorkflowDirectories(workspace);
   if (active.length > 1) fail(`DAG worktree has multiple active Goals: ${active.join(", ")}`);
   if (active.length === 1) {
@@ -16259,6 +16280,7 @@ function workflowStartDagCommand(workspaceArgument        , developmentKeyArgume
       branchConfig(workspace, dagBranch, "original-head"),
       "DAG original head",
     );
+    loadThreadWorkflowConfig(workspace);
     commitScriptManagedPaths(
       workspace,
       [".ghost-agent-workflow/.gitignore", ".ghost-agent-workflow/config.json"],
@@ -16978,13 +17000,27 @@ function supervisorResumeCommand(goalDirectoryArgument        , runIdArgument   
 
 function supervisorDispatchPrompt(goalDirectory        )         {
   const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  const nextCommand = [
+    "node",
+    fileURLToPath(import.meta.url),
+    "supervisor-next",
+    goalDirectory,
+    "--limit",
+    String(MAX_PARALLEL_THREADS),
+  ].map((value) => JSON.stringify(value)).join(" ");
+  const platformInstruction = EXPECTED_PLATFORM === "codex"
+    ? "首次运行先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，目标为持续监督这个 Goal 目录直到脚本报告 DAG completed。每个 Goal turn 只执行一次 supervisor-next 投影；普通等待只能结束当前 turn，不得结束或阻塞 Goal。"
+    : "本平台没有 Codex 原生 Goal；在当前长期线程内保持持续监督循环，普通等待不得结束监督 turn。";
   return [
     "$sub-thread-task-supervisor",
     "",
     `Goal 目录：${goalDirectory}`,
     `线程标题：${goalThreadTitles(goal).supervisor}`,
     "",
-    "立即按 Skill 使用当前插件 Node CLI 和宿主原生线程工具进入监督循环；禁止 Orca runtime 和 orchestration skill。",
+    platformInstruction,
+    `立即运行：${nextCommand}`,
+    "只通过脚本处理这个项目 .ghost-agent-workflow 下的 Goal 状态；不要读取原始 JSON、业务文件或其他目录。",
+    "按 Skill 使用宿主原生线程工具持续监督；禁止 Orca runtime 和 orchestration skill。",
   ].join("\n");
 }
 

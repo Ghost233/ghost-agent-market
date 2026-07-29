@@ -4,7 +4,7 @@
 
 Workflow 与 Task 的状态、停止原因和下一处理动作统一遵循 [生命周期契约](lifecycle-contract.md)。调度动作、Owner 执行阶段、线程宿主状态和 Worker 结果不得混入生命周期状态。
 
-Codex Quick 不创建原生 Goal。DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。等待 Owner 或 Review 不映射为原生 blocked。
+Codex Quick 不创建原生 Goal。业务 DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。DAG Supervisor 独立创建自己的原生 Goal，只负责持续轮询 `.ghost-agent-workflow`；等待 Owner、Review 或 Main 不映射为 blocked。
 
 ## Quick
 
@@ -17,9 +17,9 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 → workflow start-dag <workspace> <development-key> 创建 ga/<key>/main 并返回 handoff
 → 宿主以该分支创建 DAG worktree 和新 Main
 → 新 Main 用相同 key 再次 start-dag，认领分支并创建 Goal
-→ 新 Main 登记自身并立即创建 Supervisor
+→ 新 Main 登记自身并立即创建 Supervisor 原生 Goal
 → Main 用 create_thread 创建 Planner、Planner Reviewer 及后续执行线程
-→ Supervisor 只等待 Main 已登记的线程并通知 Main
+→ Supervisor Goal 持续等待 Main 已登记的线程并通知 Main
 → 原始会话停止
 ```
 

@@ -8,7 +8,7 @@ Kimi 推荐入口只有这一行：
 /skill:sub-thread-coordination 执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式
 ```
 
-Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。启动前必须由用户明确选择模式；Quick 由 Main 串行执行；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，Supervisor 使用 `gpt-5.6-luna/medium`，最多并发 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
+Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。启动前必须由用户明确选择模式；Quick 由 Main 串行执行；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，Supervisor 使用 `gpt-5.6-luna/medium` 并在宿主长期线程内持续监督最多 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
 
 DAG 使用 `workflow start-dag <workspace> <development-key>`，由脚本生成 `ga/<key>/main` 与 `ga/<key>/<owner_id>`。原始工作区不切换分支并允许并行提交；最终合并基于原始分支最新 HEAD，冲突时不清理任何现场。
 

@@ -25,9 +25,9 @@ Codex 默认不需要原生 `/goal`，直接输入：
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Supervisor 最多监督 8 个已登记线程。新线程只能通过 `create_thread` 创建，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行 `workflow owner-sync`。`setup-sub-thread-workflow` 配置并行上限与五组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
+`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Codex Supervisor 以原生 Goal 持续监督最多 8 个已登记线程，其他平台使用宿主长期监督循环。新线程只能通过 `create_thread` 创建，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行 `workflow owner-sync`。`setup-sub-thread-workflow` 配置并行上限与五组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
 
-DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga/<key>/main` 集成分支和 `ga/<key>/<owner_id>` Owner 分支。原始工作区始终停留在用户分支并允许继续提交；最终合并面向其最新 HEAD，冲突时保留全部分支与 worktree。
+DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga/<key>/main` 集成分支和 `ga/<key>/<owner_id>` Owner 分支。首次启动若配置不存在，只在内存读取默认值；配置会在 DAG worktree 认领后创建并提交，不会先弄脏原始工作区。原始工作区始终停留在用户分支并允许继续提交；最终合并面向其最新 HEAD，冲突时保留全部分支与 worktree。
 
 运行中的叶子任务如果发现需要插接多步工作，可在修改业务文件前发出 fenced 子图请求。runtime 原子把 T2 转成保留外层依赖边界的 composite，并在内部加入 T2-1、T2-2…递归 DAG；下游仍只依赖 T2，网页可折叠/展开子图并显示父节点聚合状态。
 

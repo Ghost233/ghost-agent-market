@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。",
   "author": {
     "name": "Ghost233",
@@ -29,7 +29,7 @@
   "interface": {
     "displayName": "Ghost Agent Workflow",
     "shortDescription": "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。",
-    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG 的 Supervisor 最多调度八个真实 ready 线程。",
+    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 在宿主长期线程内持续监督最多八个真实 ready 线程。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

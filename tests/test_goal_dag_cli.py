@@ -1233,6 +1233,21 @@ class GoalDagCliTests(unittest.TestCase):
                 check=True,
             )
             subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "rm", "-q",
+                    ".ghost-agent-workflow/config.json",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root),
+                    "-c", "user.name=Goal DAG", "-c", "user.email=goal-dag@example.invalid",
+                    "commit", "-q", "-m", "leave workflow config uninitialized",
+                ],
+                check=True,
+            )
+            subprocess.run(
                 ["git", "-C", str(workspace_root), "config", "user.name", "Goal DAG"],
                 check=True,
             )
@@ -1287,6 +1302,16 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(handoff["dag_branch"], "ga/next_auth_v2/main")
             self.assertEqual(handoff["target"]["environment"], "worktree")
             self.assertFalse((workspace_root / ".ghost-agent-workflow/runtime").exists())
+            self.assertFalse((workspace_root / ".ghost-agent-workflow/config.json").exists())
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
             self.assertEqual(
                 subprocess.run(
                     ["git", "-C", str(workspace_root), "branch", "--show-current"],
@@ -1347,6 +1372,16 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(Path(claimed["dag_worktree"]).resolve(), dag_worktree.resolve())
             self.assertTrue(Path(claimed["goal_dir"]).is_dir())
             self.assertTrue((Path(claimed["goal_dir"]) / "worktrees.json").is_file())
+            self.assertTrue((dag_worktree / ".ghost-agent-workflow/config.json").is_file())
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(dag_worktree), "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
             self.assertEqual(
                 subprocess.run(
                     ["git", "-C", str(dag_worktree), "branch", "--show-current"],
@@ -2179,6 +2214,12 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(initialized["effort"], "low")
             self.assertIsNone(initialized["preferred_thread"])
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
+            self.assertIn("get_goal", initialized["dispatch"])
+            self.assertIn("create_goal", initialized["dispatch"])
+            self.assertIn("supervisor-next", initialized["dispatch"])
+            self.assertIn("每个 Goal turn 只执行一次", initialized["dispatch"])
+            self.assertIn(".ghost-agent-workflow", initialized["dispatch"])
+            self.assertNotIn("runtime_ref", initialized["dispatch"])
             self.assertIn("禁止 Orca runtime", initialized["dispatch"])
             self.run_json(
                 "workflow", "thread", workflow_dir, "supervisor",
@@ -2434,6 +2475,11 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(initialized["effort"], "medium")
             self.assertIsNone(initialized["preferred_thread"])
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
+            self.assertIn("get_goal", initialized["dispatch"])
+            self.assertIn("create_goal", initialized["dispatch"])
+            self.assertIn("supervisor-next", initialized["dispatch"])
+            self.assertIn("每个 Goal turn 只执行一次", initialized["dispatch"])
+            self.assertNotIn("runtime_ref", initialized["dispatch"])
             action = self.reserve_one(plan_path, state_path)
 
             pending = self.run_json("supervisor-next", root, "--limit", 8)

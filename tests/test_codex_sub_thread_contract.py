@@ -83,7 +83,15 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap", self.coordinator)
         self.assertIn("禁止 `fork_thread`", self.coordinator)
         self.assertIn("最多 100 字", self.worker)
-        self.assertIn("用户可见文本不显示 result_ref", self.supervisor)
+        self.assertIn("用户可见文本不显示 `result_ref`", self.supervisor)
+        self.assertIn("调用 `get_goal`", self.supervisor)
+        self.assertIn("调用 `create_goal`", self.supervisor)
+        self.assertIn("每个 Goal turn 只执行一次 `supervisor-next`", self.supervisor)
+        self.assertIn("Main 不负责重新唤醒 Supervisor", self.supervisor)
+        self.assertIn("只关注 `<goal-dir>` 下 `.ghost-agent-workflow`", self.supervisor)
+        self.assertNotIn("插件缓存", self.supervisor)
+        self.assertNotIn("runtime_ref", self.supervisor)
+        self.assertNotIn("runtime_ref", self.coordinator)
         self.assertIn("default_prompt:", self.coordinator_metadata)
         self.assertIn("allow_implicit_invocation: false", self.coordinator_metadata)
         self.assertIn("standalone_thread", combined)
@@ -152,7 +160,9 @@ class CodexWorkflowContractTests(unittest.TestCase):
         combined = f"{self.coordinator}\n{self.goal_contract}"
         self.assertIn("codex_native", combined)
         self.assertIn("Quick 不创建原生 Goal", self.goal_contract)
-        self.assertIn("不映射为原生 blocked", self.goal_contract)
+        self.assertIn("不映射为 blocked", self.goal_contract)
+        self.assertIn("Supervisor 必须在自己的线程内创建原生 Goal", self.coordinator)
+        self.assertIn("Supervisor 独立创建自己的原生 Goal", self.goal_contract)
 
     def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
@@ -277,7 +287,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.0\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.1\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
