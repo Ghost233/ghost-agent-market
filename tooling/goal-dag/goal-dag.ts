@@ -12584,6 +12584,22 @@ const SUPERVISOR_NOTIFY_STATES = new Set([
   "needs_attention",
 ]);
 
+const SUPERVISOR_RUNNING_TURN_STATES = new Set([
+  "-",
+  "idle",
+  "inProgress",
+  "in_progress",
+  "pending",
+  "running",
+]);
+
+function normalizeSupervisorWaitStatus(turnStatusArgument: string): string {
+  const turnStatus = requireString(turnStatusArgument, "latest turn status");
+  if (SUPERVISOR_NOTIFY_STATES.has(turnStatus)) return turnStatus;
+  if (SUPERVISOR_RUNNING_TURN_STATES.has(turnStatus)) return "running";
+  fail(`latest turn status is invalid: ${turnStatus}`);
+}
+
 type SupervisorActionKind = "create" | "wait" | "stalled" | "notify";
 
 function isSupervisorControlTask(taskId: string): boolean {
@@ -13110,6 +13126,10 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     for (const task of plan.tasks) {
       if (create.length >= limit) break;
       const taskState = state.tasks[task.id];
+      const watched = watches.some((watch) =>
+        watch.task_id === task.id && watch.attempt === taskState.attempt
+      );
+      if (watched) continue;
       const integrationRepair = isOwnerIntegrationRepair(
         goalDirectory,
         task,
@@ -13708,6 +13728,12 @@ function supervisorAckCommand(
   args: string[],
 ): void {
   const action = parseSupervisorActionId(actionIdArgument);
+  if (action.kind === "wait") {
+    if (args.length !== 2) {
+      fail("wait acknowledgement requires <poll_cursor|-> <latest_turn_status|->");
+    }
+    args = [args[0], normalizeSupervisorWaitStatus(args[1])];
+  }
   if (isSupervisorControlTask(action.task)) {
     const receipt = supervisorControlRecord(goalDirectoryArgument, action, args);
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
@@ -13728,7 +13754,6 @@ function supervisorAckCommand(
       args[1],
     ]);
   } else if (action.kind === "wait") {
-    if (args.length !== 2) fail("wait acknowledgement requires <cursor|-> <status>");
     receipt = runSelfJson([
       "supervisor-record",
       resolve(goalDirectoryArgument),
@@ -16397,7 +16422,14 @@ function ensureGitlinkCheckout(
     if (existsSync(target) && readdirSync(target).length > 0) {
       fail(`${label} target submodule is not an empty directory: ${target}`);
     }
-    const cloned = gitAttempt(sourceRoot, ["clone", "--local", "--no-checkout", source, target]);
+    const cloned = gitAttempt(sourceRoot, [
+      "clone",
+      "--local",
+      "--no-hardlinks",
+      "--no-checkout",
+      source,
+      target,
+    ]);
     if (!cloned.ok) fail(`${label} submodule clone failed: ${cloned.stderr.trim()}`);
   }
   const fetched = gitAttempt(target, ["fetch", "--no-tags", source, entry.object_id]);

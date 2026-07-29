@@ -27,14 +27,17 @@ Goal 只负责持续唤醒。上下文压缩或恢复后，不从聊天重建状
 
 ```text
 goal-dag.mjs supervisor-next <goal-dir> --limit 8
-goal-dag.mjs supervisor-ack <goal-dir> <action-id> [宿主结果]
+goal-dag.mjs supervisor-ack <goal-dir> <action-id> [脚本要求的宿主标量]
 ```
 
 action id 是不透明值。不得调用低层 `supervisor-record`，不得读取或编辑原始 JSON，不得手写参数、状态或结果。禁止 Orca、`$orchestration` 和 subagent。
 
 每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后立即让出当前 turn；下一次 continuation 再读取本地状态：
 
-- `wait`：一次最多八项交给 `wait_threads(timeoutMs=60000)`，逐项沿用脚本 cursor；用对应 action id ack 后让出当前 turn。超时或仍为 running 也必须 ack，不得结束 Goal。
+同一 `task/attempt` 在一次收据中只能属于 `create`、`wait`、`stalled`、`notify` 之一；若脚本违反互斥约束，只向 Main 报告一次 CLI 契约错误并保持 Goal active，不猜测该执行哪个动作。重复出现 `create` 或非终态 `main_action`，无论多少轮都不算阻塞，禁止因此调用 `update_goal(status=blocked)`。
+
+- `wait`：一次最多八项交给一次 `wait_threads(timeoutMs=60000)`。按 `thread + host` 匹配每个 action 与 `polls[]`，不得依赖数组顺序；逐字复制匹配 poll 的 `cursor`（缺失用 `-`）和 `latestTurn.status`（缺失用 `-`），立即执行 `supervisor-ack <goal-dir> <action-id> <cursor|-> <latestTurn.status|->`。runtime 负责把宿主状态归一化；禁止传入 `thread.status.type`，尤其不能把 `idle` 当作任务终态。超时或非终态 poll 也必须 ack。
+- 一次 wait 返回后，所有 wait action 都必须成功 ack，才能声称本轮已处理；不得因为首个线程完成而漏掉其他 poll。匹配不到 poll、存在对应 per-target error、字段非法或 ack 失败时，只向 Main 发送一次简短错误和日志路径，立即停止当前 turn 并保持 Goal active；禁止继续调用 `supervisor-next`、声称成功或空转。
 - `create`：不执行、不 ack；只把脚本给出的 action id、target、model、thinking、title、thread/host 和 prompt 直接发送给 Main，然后让当前 Goal turn 结束但保持 Goal active。
 - 非终态 `main_action`：不执行、不 ack；把脚本 dispatch 直接发送给 Main，然后让当前 Goal turn 结束但保持 Goal active。Main 不负责重新唤醒 Supervisor。
 - `main_action.action: owner_sync_required`：只通知 Main 执行显式 `workflow owner-sync`；Supervisor 不运行 Git，不创建、同步、提交或合并分支/worktree。

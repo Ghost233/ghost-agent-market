@@ -1787,6 +1787,10 @@ class GoalDagCliTests(unittest.TestCase):
                     "owner-thread", "local", "bootstrap",
                 )
                 self.assertEqual(watched["status"], "bootstrap_watched")
+                bootstrap_pending = self.run_json("supervisor-next", goal_dir)
+                self.assertEqual(bootstrap_pending["create"], [])
+                self.assertEqual(len(bootstrap_pending["wait"]), 1)
+                self.assertEqual(bootstrap_pending["wait"][0]["task"], "T1")
                 ready_process = self.run_cli_from(
                     owner_worktree,
                     "workflow", "owner-sync", goal_dir, "state-domain",
@@ -1800,6 +1804,20 @@ class GoalDagCliTests(unittest.TestCase):
                     nested_change.read_text(encoding="utf-8"),
                     "export const nested = false;\n",
                 )
+                source_objects_root = submodule_source / ".git/objects"
+                target_objects_root = owner_worktree / "src/state/module/.git/objects"
+                copied_objects = [
+                    source_object
+                    for source_object in source_objects_root.glob("[0-9a-f][0-9a-f]/*")
+                    if (target_objects_root / source_object.relative_to(source_objects_root)).is_file()
+                ]
+                self.assertTrue(copied_objects)
+                for source_object in copied_objects:
+                    target_object = target_objects_root / source_object.relative_to(source_objects_root)
+                    self.assertNotEqual(
+                        (source_object.stat().st_dev, source_object.stat().st_ino),
+                        (target_object.stat().st_dev, target_object.stat().st_ino),
+                    )
                 bootstrap_wait = self.run_json("supervisor-next", goal_dir)["wait"][0]
                 self.run_json(
                     "supervisor-ack", goal_dir, bootstrap_wait["action_id"],
@@ -2314,6 +2332,21 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.run_json("planner-review", workflow_dir, "pass")
             review_wait = self.run_json("supervisor-next", workflow_dir)["wait"][0]
+            idle_observation = self.run_json(
+                "supervisor-ack", workflow_dir, review_wait["action_id"],
+                "review-cursor", "idle",
+            )
+            self.assertFalse(idle_observation["terminal"])
+            self.assertEqual(
+                self.run_json("supervisor-next", workflow_dir)["wait"][0]["cursor"],
+                "review-cursor",
+            )
+            invalid_observation = self.run_cli(
+                "supervisor-ack", workflow_dir, review_wait["action_id"],
+                "review-cursor", "unknown",
+            )
+            self.assertNotEqual(invalid_observation.returncode, 0)
+            self.assertIn("latest turn status is invalid", invalid_observation.stderr)
             self.run_json(
                 "supervisor-ack", workflow_dir, review_wait["action_id"],
                 "review-cursor", "completed",

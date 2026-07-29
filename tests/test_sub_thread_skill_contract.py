@@ -116,6 +116,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "supervisor-ack",
                 "action id 是不透明值",
                 "wait_threads",
+                "`latestTurn.status`",
+                "禁止传入 `thread.status.type`",
                 "--limit 8",
                 "create_thread",
                 "禁止 `fork_thread`",
@@ -131,6 +133,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("Supervisor 不创建或复用线程", supervisor)
             self.assertIn("独立 worktree", supervisor)
             self.assertIn("Main 不负责重新唤醒 Supervisor", supervisor)
+            self.assertIn("同一 `task/attempt`", supervisor)
             self.assertIn(".ghost-agent-workflow", supervisor)
             self.assertNotIn("插件缓存", supervisor)
             self.assertNotIn("runtime_ref", supervisor)

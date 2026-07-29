@@ -27,6 +27,8 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 
 Supervisor 必须早于 Planner 启动；Main 创建线程但不等待。除 Owner 使用专属分支外，Supervisor、Planner 与 Reviewer 都从 DAG 分支创建独立干净 worktree，禁止 fork Main；它们只通过绝对 Goal 目录和领域脚本访问共享状态。Planner 只生成最小顶层图；初始 child 被拒绝。runtime 必须先检查 required effects、schema、依赖和固定 gate，Planner Reviewer 才审查最终 Plan digest。父节点不能直接完成时再由 Composite Planner 展开子图；Implementation Review 是显式 DAG 节点。
 
+Supervisor 的 wait 回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。
+
 ## Owner 集成
 
 每个 Owner 在当前 Goal 内复用自己的分支、worktree 与线程：

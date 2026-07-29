@@ -11,7 +11,7 @@
       "name": "ghost-agent-workflow",
       "source": "./",
       "description": "A script-driven Owner workflow that requires choosing serial Quick or a minimal DAG with up to eight persistent sub-threads.",
-      "version": "0.8.9",
+      "version": "0.9.0",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"

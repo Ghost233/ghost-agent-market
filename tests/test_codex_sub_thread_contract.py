@@ -87,6 +87,11 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("调用 `get_goal`", self.supervisor)
         self.assertIn("调用 `create_goal`", self.supervisor)
         self.assertIn("每个 Goal turn 只执行一次 `supervisor-next`", self.supervisor)
+        self.assertIn("同一 `task/attempt`", self.supervisor)
+        self.assertIn("禁止因此调用 `update_goal(status=blocked)`", self.supervisor)
+        self.assertIn("`latestTurn.status`", self.supervisor)
+        self.assertIn("禁止传入 `thread.status.type`", self.supervisor)
+        self.assertIn("所有 wait action 都必须成功 ack", self.supervisor)
         self.assertIn("Main 不负责重新唤醒 Supervisor", self.supervisor)
         self.assertIn("只关注 `<goal-dir>` 下 `.ghost-agent-workflow`", self.supervisor)
         self.assertNotIn("插件缓存", self.supervisor)
@@ -287,7 +292,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.1\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.2\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
