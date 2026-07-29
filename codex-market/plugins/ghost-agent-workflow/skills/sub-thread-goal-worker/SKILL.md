@@ -7,6 +7,8 @@ description: 仅供 sub-thread-coordination 向已绑定的 Quick Owner、DAG Ow
 
 只执行当前 run；禁止 subagent。先调用：
 
+线程必须是 Main 通过 `create_thread` 创建的独立 worktree；禁止 fork Main。Goal 目录位于当前 worktree 之外时，对原始 Node CLI 使用宿主原生文件权限请求；Codex 使用 `require_escalated`。权限失败时停止并通知 Main，禁止直接编辑共享状态。
+
 ```text
 goal-dag.mjs worker open <workflow-dir> <run-id>
 ```
@@ -19,7 +21,7 @@ goal-dag.mjs worker open <workflow-dir> <run-id>
 
 - Quick Owner 在 Quick workspace 工作。
 - DAG Owner 只能在脚本登记的专属 Owner worktree 工作；本轮正式 dispatch 前必须已经完成 `workflow owner-sync`。
-- Review 在 DAG worktree 使用干净上下文，只读，不得读取实施聊天或修改文件。
+- Review 在从 DAG 分支创建的独立干净 worktree 中只读，不得读取实施聊天或修改文件。
 - Worker 不运行任何 Git、worktree、commit、merge、checkout、rebase 或 branch 命令；全部由 `owner-sync/owner-finish` 处理。
 
 Work 只修改 Binding writable scope。每个绑定验证都通过脚本执行一次：

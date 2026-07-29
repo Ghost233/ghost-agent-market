@@ -16,6 +16,7 @@ Codex 默认使用 `standalone_thread`；只有用户明确使用原生 Goal 时
 - 只通过领域脚本修改 workflow、Plan、State、Result、Registry、Capsule、配置与 Review 文件。
 - 运行中的 Main、Planner、Reviewer、Supervisor 和 Worker 都不得编辑、复制、替换或绕过 `goal-dag.mjs`、`owner-registry.mjs`、`workflow-config.mjs`、`start-dashboard.mjs`，包括插件缓存和 `/tmp` 副本。runtime 失败时立即停止当前动作，只报告失败命令、简短错误和日志路径；不得改用内部命令、手写状态或临时补丁继续。
 - Git 分支、worktree、提交、合并、验证、ID、路径、attempt、token、digest 和状态迁移都由脚本决定；LLM 不直接运行 Git。
+- 新线程使用独立 worktree 后，Goal 目录会位于其当前 worktree 之外。此时必须对收据指定的原始 Node CLI 使用宿主原生文件权限请求；Codex 使用 `require_escalated`。只授权该确定性脚本命令，禁止把权限失败改写为 fork、直接编辑文件或临时脚本。
 - 脚本 JSON 只作机器收据，不复制到聊天。
 - Quick 只保留当前 Owner 上下文、当前状态和最终结果；DAG 运行中额外保留当前 Plan/State、`progress.json` 和唯一历史 `events.jsonl`。成功交付后只在原始工作区保留最终 `result.json` 与 `events.jsonl`。
 - 不新增 attempt、Review、evidence、recovery 或聊天 history。
@@ -51,7 +52,7 @@ goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 
 收到 `handoff_required` 后：
 
-1. 逐字使用收据的 `model/thinking/dispatch/target.starting_branch` 创建一个 worktree 子线程；不得改写分支、prompt 或 thinking。
+1. 逐字使用收据的 `model/thinking/dispatch/target.starting_branch` 通过 `create_thread` 创建一个全新 worktree 子线程；禁止 `fork_thread`、对话分叉或继承当前聊天历史，不得改写分支、prompt 或 thinking。
 2. 取得正式 threadId 后输出创建的任务链接。
 3. 当前会话立即停止；不得创建 Goal、Planner、Supervisor、Dashboard，不得等待新主控，也不得继续执行任何 DAG 工作。
 
@@ -68,17 +69,21 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 ## DAG 动作
 
 - `main_route_required`：登记当前新 Main 的正式 threadId/hostId，然后再次投影。
-- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，在 DAG worktree 以 `environment: local` 创建唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建，登记并发送 dispatch 后新 Main 立即结束 turn。
-- Planner、Planner Reviewer、Owner 与 Implementation Review 全部由 Supervisor 根据 `supervisor-next` 的脚本 action 创建、复用和等待。Main 不直接创建或等待这些线程。
+- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，逐字使用收据的 target 以 `create_thread` 创建独立 worktree 的唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建。登记后由 Main 继续处理 `supervisor-next` 的 create/main_action，不等待任何线程。
+- Planner、Planner Reviewer、Owner 与 Implementation Review 全部由 Main 逐字执行 `supervisor-next` 的 create action；只允许 `create_thread` 或复用已登记线程。Main ack 并发送正式 dispatch 后，把已有 watch 交给 Supervisor 等待，Main 自己绝不调用 `wait_threads`。
 - `planner_required`、`planner_revision_required` 和 `planner_review_required` 如果意外投影到 Main，只能重新唤醒已登记 Supervisor；不得由 Main 执行。
 - `dashboard_start_required`：Plan 激活后由新 Main 启动 Dashboard，回执失败不阻断业务。
-- `supervisor_required`：只向已登记 Supervisor 发送收据 dispatch，然后结束；Main 不等待。
+- `supervisor_required`：Main 先调用 `supervisor-next`。有 create/main_action 时由 Main 处理；只有 wait/notify/stalled 时才把监督 dispatch 发送给已登记 Supervisor并结束。Main 不等待。
+- `owner_sync_required`：只执行收据指定的 `workflow owner-sync`。成功后重新唤醒 Supervisor；该 Git 写操作不得藏在 `supervisor-next` 或 `supervisor-ack` 中。
+- 新 Owner 的 create action 若为 `sync_status: worktree_required`：Main 用 `create_thread` 启动 action prompt，取得正式 threadId 后立即调用 `supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap` 登记 bootstrap watch，再唤醒 Supervisor；Main 不等待。bootstrap 结束后 Main 重新调用 `supervisor-next`，复用同一线程执行普通 create ack 并发送正式 Worker dispatch。
 - Planner、Planner Reviewer 或普通任务疑似挂死、异常结束或未生成有效结果时，Main 先报告并等待用户决定。用户确认关闭旧线程后，Main 调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`；脚本清除旧 watch，控制线程同时清除旧 route，随后重新唤醒 Supervisor。不得手写 route、watch 或状态。
 - `owner_action_required`：报告 Owner 变化并等待用户决定。
 - `native_completion_required`：只执行收据指定的原生 Goal 桥接。
 - `completed`：脚本已合并回原始分支、保存最终结果和 DAG 日志，并删除全部 Owner/DAG worktree 与分支；Main 才报告最终结果并停止。
 
 Plan 只生成最小顶层 DAG；父节点无法直接完成时才由 Composite Planner 展开内部子图。Implementation Review 必须是显式 DAG 节点。
+
+初始 Plan 必须先由 runtime 完整检查 required effects、schema、依赖和固定 gate，再创建 Planner Reviewer。Reviewer 收据必须绑定当前 Plan digest；Plan revision 改变后旧收据立即失效，禁止先 Review 再用 `needs_delta` 补初始计划。
 
 ## Owner worktree 循环
 
@@ -100,8 +105,10 @@ Goal 完成后，脚本在原始工作区仍处于启动分支且干净的前提
 
 - 同一 workspace 同时只能有一个 Main；多个时脚本拒绝。
 - 创建线程后必须取得正式 threadId；线程自行调用 `set_thread_title`。不得给 `create_thread` 伪造 title/name，不得登记 clientThreadId。
+- Main 创建任何 Planner、Reviewer、Owner 或 Review 线程时只能调用 `create_thread`；Supervisor 不创建线程。禁止调用 `fork_thread`，禁止复制 Main 的历史消息。首条 prompt 只能包含 Skill、Goal 目录、脚本 action 和必要标量。
 - 可见标题只使用脚本生成的 `[GA][任务][主控|规划|子图规划|规划审查|责任域|实现审查|监督] <中文标题>`。
-- Planner、Reviewer、Supervisor 在 DAG worktree 本地运行；Owner Work 只能在脚本登记的 Owner worktree 运行。
+- 可见标题的中文后缀最多 32 个字符；不得包含完整目标、文件路径列表或从用户原文机械截断的路径。
+- Planner、Reviewer、Supervisor 使用从 DAG 分支创建的独立干净 worktree，只通过绝对 Goal 目录和领域脚本访问共享状态；Owner Work 只能在脚本登记的 Owner worktree 运行。
 - Main 不调用 `wait_threads`、sleep 或轮询。DAG 中只有 Supervisor 等待执行线程。
 - 禁止 Orca runtime、`orca` CLI、`$orchestration` 和 subagent。
 - Main 只报告 Dashboard URL、Owner 决策、真实阻塞、疑似挂死、已机械验收结果和最终完成；普通 running、规划/测试过程和机器 JSON 保持静默。

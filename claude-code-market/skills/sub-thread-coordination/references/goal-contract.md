@@ -16,13 +16,14 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 → 宿主以该分支创建 DAG worktree 和新 Main
 → 新 Main 用相同 key 再次 start-dag，认领分支并创建 Goal
 → 新 Main 登记自身并立即创建 Supervisor
-→ Supervisor 创建和等待 Planner、Planner Reviewer 及后续执行线程
+→ Main 用 create_thread 创建 Planner、Planner Reviewer 及后续执行线程
+→ Supervisor 只等待 Main 已登记的线程并通知 Main
 → 原始会话停止
 ```
 
 `development-key` 只允许小写字母、数字、`_` 和 `-`，最长 64 字符；用户提供时原样使用，禁止时间戳、Goal ID 和 hash。首次 `start-dag` 不创建 Goal 或状态。新 Main 可从 detached HEAD 认领并由脚本附着 `ga/<key>/main`。认领后，Goal、Dashboard、Plan、State、Result、progress 与 events 只存在于 DAG worktree；原始工作区始终保留原始分支。
 
-Supervisor 必须早于 Planner 启动；Main 不等待任何工作线程。Planner 只生成最小顶层图；初始 child 被拒绝。父节点不能直接完成时再由 Composite Planner 展开子图。Planner Reviewer 是激活前门禁；Implementation Review 是显式 DAG 节点。
+Supervisor 必须早于 Planner 启动；Main 创建线程但不等待。除 Owner 使用专属分支外，Supervisor、Planner 与 Reviewer 都从 DAG 分支创建独立干净 worktree，禁止 fork Main；它们只通过绝对 Goal 目录和领域脚本访问共享状态。Planner 只生成最小顶层图；初始 child 被拒绝。runtime 必须先检查 required effects、schema、依赖和固定 gate，Planner Reviewer 才审查最终 Plan digest。父节点不能直接完成时再由 Composite Planner 展开子图；Implementation Review 是显式 DAG 节点。
 
 ## Owner 集成
 

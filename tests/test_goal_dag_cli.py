@@ -734,6 +734,24 @@ class GoalDagCliTests(unittest.TestCase):
             status = self.run_json("status", plan_path, state_path, script=CLAUDE_SCRIPT)
             self.assertEqual(status["continuation_prompt"], expected)
 
+    def test_thread_titles_skip_path_heavy_goal_prefixes(self) -> None:
+        with self.workspace() as (_, goal_path, _):
+            goal = json.loads(goal_path.read_text(encoding="utf-8"))
+            goal["objective"] = (
+                "依据 docs/v2/plan.md、/Volumes/work/spec.md，"
+                "完成 SourceDO 与 Auth V2 边缘验签改造并通过本地测试"
+            )
+            goal_path.write_text(
+                json.dumps(goal, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            payload = self.run_json("goal-validate", goal_path)
+            self.assertEqual(
+                payload["thread_titles"]["main"],
+                "[GA][任务][主控] 完成 SourceDO 与 Auth V2 边缘验签改造并通过…",
+            )
+            self.assertNotIn("/Volumes", payload["thread_titles"]["main"])
+
     def test_non_thread_execution_mode_is_rejected(self) -> None:
         for platform, script in (("codex", CODEX_SCRIPT), ("claude_code", CLAUDE_SCRIPT)):
             with self.workspace(platform) as (_, goal_path, _):
@@ -1256,6 +1274,13 @@ class GoalDagCliTests(unittest.TestCase):
                 "false",
             )
             self.run_json("workflow", "thread", goal_dir, "main", "new-main", "local")
+            supervisor_init = self.run_json(
+                "workflow", "supervisor-init", goal_dir,
+            )
+            self.assertEqual(
+                supervisor_init["target"],
+                {"environment": "worktree", "starting_branch": handoff["dag_branch"]},
+            )
             self.run_json(
                 "workflow", "thread", goal_dir, "supervisor", "test-supervisor", "local",
             )
@@ -1494,6 +1519,23 @@ class GoalDagCliTests(unittest.TestCase):
             action = self.reserve_one(plan_path, state_path)
             self.assertEqual(action["task_id"], "T1")
 
+            projected_sync = self.run_json("supervisor-next", goal_dir)
+            self.assertEqual(
+                projected_sync["main_action"]["action"],
+                "owner_sync_required",
+            )
+            self.assertEqual(projected_sync["main_action"]["owner"], "state-domain")
+            owner_branch = "ga/owner_sync/state-domain"
+            self.assertNotIn(
+                owner_branch,
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.splitlines(),
+            )
+
             first_sync_process = self.run_cli_from(
                 workspace_root,
                 "workflow", "owner-sync", goal_dir, "state-domain",
@@ -1501,6 +1543,10 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(first_sync_process.returncode, 0, first_sync_process.stderr)
             first_sync = json.loads(first_sync_process.stdout)
             self.assertEqual(first_sync["status"], "worktree_required")
+            projected_create = self.run_json("supervisor-next", goal_dir)
+            self.assertEqual(projected_create["create"][0]["sync_status"], "worktree_required")
+            self.assertNotIn("main_action", projected_create)
+            bootstrap_action = projected_create["create"][0]
             owner_worktree = workspace_root.parent / f"{workspace_root.name}-owner"
             subprocess.run(
                 [
@@ -1510,6 +1556,11 @@ class GoalDagCliTests(unittest.TestCase):
                 check=True,
             )
             try:
+                watched = self.run_json(
+                    "supervisor-ack", goal_dir, bootstrap_action["action_id"],
+                    "owner-thread", "local", "bootstrap",
+                )
+                self.assertEqual(watched["status"], "bootstrap_watched")
                 ready_process = self.run_cli_from(
                     owner_worktree,
                     "workflow", "owner-sync", goal_dir, "state-domain",
@@ -1518,10 +1569,24 @@ class GoalDagCliTests(unittest.TestCase):
                 ready = json.loads(ready_process.stdout)
                 self.assertEqual(ready["status"], "ready")
                 self.assertEqual(Path(ready["worktree"]).resolve(), owner_worktree.resolve())
+                bootstrap_wait = self.run_json("supervisor-next", goal_dir)["wait"][0]
                 self.run_json(
-                    "supervisor-record", goal_dir, "created", action["task_id"],
-                    "1", "owner-thread", "local",
+                    "supervisor-ack", goal_dir, bootstrap_wait["action_id"],
+                    "bootstrap-cursor", "completed",
                 )
+                bootstrap_notice = self.run_json("supervisor-next", goal_dir)["notify"][0]
+                self.assertEqual(
+                    bootstrap_notice["summary"],
+                    "Owner worktree 已登记，等待 Main 绑定任务",
+                )
+                self.run_json("supervisor-ack", goal_dir, bootstrap_notice["action_id"])
+                formal_action = self.run_json("supervisor-next", goal_dir)["create"][0]
+                self.assertEqual(formal_action["thread"], "owner-thread")
+                bound = self.run_json(
+                    "supervisor-ack", goal_dir, formal_action["action_id"],
+                    "owner-thread", "local",
+                )
+                self.assertEqual(bound["status"], "created")
                 changed = owner_worktree / "src/state/worktree.ts"
                 changed.parent.mkdir(parents=True, exist_ok=True)
                 changed.write_text("export const integrated = true;\n", encoding="utf-8")
@@ -2643,6 +2708,25 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("id is reserved for Supervisor control: planner", rejected.stderr)
+
+    def test_plan_rejects_uncovered_required_effects_before_review(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            compact = self.compact_plan_input(plan_path)
+            compact["items"][0]["effects"] = ["implementation", "verification"]
+            plan_path.unlink()
+            (root / "coverage.json").unlink()
+            rejected = subprocess.run(
+                ["node", str(CODEX_SCRIPT), "plan-create", str(goal_path), str(plan_path)],
+                input=json.dumps(compact),
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "GOAL_DAG_EXECUTION_PLATFORM": "codex"},
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("plan input leaves required effects uncovered", rejected.stderr)
+            self.assertFalse(plan_path.exists())
+            self.assertFalse((root / "planner-reviews").exists())
 
     def test_plan_activation_requires_planner_reviewer_pass(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):

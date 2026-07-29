@@ -9,6 +9,8 @@ description: 仅供 sub-thread-coordination 的 DAG 模式或 Quick 单向升级
 
 任何 runtime 命令失败时立即停止并通知 Main。禁止编辑、复制、替换或绕过工作流脚本，包括插件缓存和 `/tmp` 副本；禁止用内部命令、手写状态或临时补丁继续。
 
+Planner 运行在从 DAG 分支创建的独立干净 worktree。Goal 目录位于当前 worktree 之外时，对原始 Node CLI 使用宿主原生文件权限请求；Codex 使用 `require_escalated`。禁止 fork Main 取得共享目录权限。
+
 协调器创建新线程前必须重新读取仓库配置，并使用 `profiles.planner`；默认 `gpt-5.6-sol/high`。Composite Planner 继承同一 profile。Planner 不自行选择或修改模型。
 
 ## 规划规则
@@ -17,6 +19,7 @@ description: 仅供 sub-thread-coordination 的 DAG 模式或 Quick 单向升级
 - 初始只生成最小可执行顶层节点；不得提前生成 child。每个节点必须带来上下文隔离、真实并行、职责专业化或独立验证中的至少一种价值。
 - 不为接近 `parallel` 上限强拆任务。实际宽度只由真实 ready 节点决定。
 - 每个 task 的 `title` 必须是简短中文任务描述；不得把 task_id、owner_id 或英文责任域名当作可见标题。
+- 每个 task 的 `title` 最多 40 个字符；不得包含文件路径列表或完整用户目标。
 - 业务和 Implementation Review task 只归属 approved Owner；机械 gate 由 runtime 脚本生成。
 - Review 是显式 `role: review` 节点；机械验收不是 Review。
 - work 只绑定定向验证；共享全仓验证使用 verify 节点。
@@ -50,5 +53,7 @@ Planner 是唯一仍可提交结构化语义输入的角色，因为 task 目标
 - Reviewer 要求修改：最多一次 `planner-submit <goal-dir> revise`。
 - 局部变化：`planner-submit <goal-dir> delta`。
 - 子图：`planner-submit <goal-dir> subgraph <run-id>`。
+
+初始或 revise 提交若脚本报告 required effects 未覆盖，必须在当前 Planner turn 修正语义输入后重新提交；不得等待 Reviewer，也不得把缺口留到 Plan 激活后的 `needs_delta`。
 
 不要传 Plan/State 路径、parent task、attempt 或 token；脚本从 Goal 目录和 run id 解析。不要创建中间 JSON 文件，不要输出 canonical Plan/Delta/Expansion，也不要寻找通用 JSON 写入回退。Owner 定义、机械 runtime tasks、identity、默认策略、revision、digest、路径、中文线程标题和状态迁移全部由脚本生成。脚本 stdout 只作机器收据。

@@ -712,6 +712,25 @@ function compactUserSummary(value        )         {
     : `${characters.slice(0, 99).join("")}…`;
 }
 
+function compactThreadSummary(value        )         {
+  const normalized = value
+    .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const clauses = normalized
+    .split(/[，。；！？]/u)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause !== "");
+  const candidate = clauses.find((clause) =>
+    /[\u3400-\u9fff]/u.test(clause) &&
+    !/(?:^|\s)(?:\/|docs\/)|\.md(?:$|\s)|https?:\/\//iu.test(clause)
+  ) ?? clauses.find((clause) => /[\u3400-\u9fff]/u.test(clause)) ?? "当前开发任务";
+  const characters = [...candidate];
+  return characters.length <= 32
+    ? candidate
+    : `${characters.slice(0, 31).join("")}…`;
+}
+
 function requireNullableString(value         , label        )                {
   if (value === null) return null;
   return requireString(value, label);
@@ -2394,7 +2413,7 @@ function parseTask(value         , index        )                 {
   const role = requireString(source.role, `tasks[${index}].role`);
   if (!ROLES.has(role            )) fail(`tasks[${index}].role is invalid: ${role}`);
   const title = requireChineseText(source.title, `tasks[${index}].title`);
-  if (title.length > 80) fail(`tasks[${index}].title must be at most 80 characters`);
+  if ([...title].length > 40) fail(`tasks[${index}].title must be at most 40 characters`);
   const writablePaths = requireStringArray(
     source.writable_paths,
     `tasks[${index}].writable_paths`,
@@ -2851,6 +2870,17 @@ function buildPlanDraft(
   ensureUnique(items.map((item) => item.id), "plan input item id");
   const tasks = addFixedRuntimeTasks(semanticTasks, items.map((item) => item.id));
   ensureUnique(tasks.map((task) => task.id), "plan input task id");
+  const plannedEffects = new Set(tasks.flatMap((task) =>
+    task.plan_item_ids.map((itemId) => `${itemId}:${task.coverage_effect}`)
+  ));
+  const uncoveredEffects = items.flatMap((item) =>
+    item.required_effects
+      .map((effect) => `${item.id}:${effect}`)
+      .filter((pair) => !plannedEffects.has(pair))
+  );
+  if (uncoveredEffects.length > 0) {
+    fail(`plan input leaves required effects uncovered: ${uncoveredEffects.join(", ")}`);
+  }
   const registry = approvedOwnerRegistry(goal);
   const owners = registry.owners.map(ownerDefinitionFromApproved);
   const safetyStatus = (input.safety ?? "parallel_safe")                ;
@@ -5510,12 +5540,12 @@ function threadKey(
 function threadTitle(task                , subject                   )         {
   void subject;
   return task.role === "review"
-    ? `[GA][任务][实现审查] ${compactUserSummary(task.title)}`
-    : `[GA][任务][责任域] ${compactUserSummary(task.title)}`;
+    ? `[GA][任务][实现审查] ${compactThreadSummary(task.title)}`
+    : `[GA][任务][责任域] ${compactThreadSummary(task.title)}`;
 }
 
 function goalThreadTitles(goal              )                         {
-  const title = compactUserSummary(goal.objective);
+  const title = compactThreadSummary(goal.objective);
   return {
     main: `[GA][任务][主控] ${title}`,
     planner: `[GA][任务][规划] ${title}`,
@@ -5525,7 +5555,7 @@ function goalThreadTitles(goal              )                         {
 }
 
 function compositePlannerThreadTitle(task                )         {
-  return `[GA][任务][子图规划] ${compactUserSummary(task.title)}`;
+  return `[GA][任务][子图规划] ${compactThreadSummary(task.title)}`;
 }
 
 function acceptedResultUserMessage(task                , result                )         {
@@ -12324,6 +12354,24 @@ function supervisorResultNotice(
   }
 }
 
+function assertOwnerWorktreeReady(
+  goalDirectory        ,
+  task                ,
+)                     {
+  if (task.role !== "work" || task.owner_id === null || !existsSync(dagWorktreesPath(goalDirectory))) {
+    fail(`task ${task.id} does not use an Owner worktree`);
+  }
+  const worktrees = readDagWorktrees(goalDirectory);
+  const ownerWorktree = worktrees.owners[task.owner_id];
+  if (ownerWorktree?.path === null || ownerWorktree?.path === undefined) {
+    fail(`Owner ${task.owner_id} worktree bootstrap is incomplete`);
+  }
+  if (ownerWorktree.synced_dag_head !== gitHead(worktrees.dag.path)) {
+    fail(`Owner ${task.owner_id} worktree is not synchronized to current DAG HEAD`);
+  }
+  return ownerWorktree;
+}
+
 function supervisorMainRoute(registry                         )
 
 
@@ -12401,6 +12449,24 @@ function supervisorMainResumePrompt(goalDirectory        )         {
     "Supervisor 检测到需要 Main 处理的确定性动作。",
     `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}，逐字执行脚本收据。`,
     "完成主控动作后按收据重新唤醒 Supervisor；不要调用 wait_threads。",
+  ].join("\n");
+}
+
+function supervisorOwnerSyncPrompt(goalDirectory        , ownerId        )         {
+  const command = [
+    "node",
+    fileURLToPath(import.meta.url),
+    "workflow",
+    "owner-sync",
+    goalDirectory,
+    ownerId,
+  ];
+  return [
+    "$sub-thread-coordination",
+    "",
+    "Supervisor 检测到 Owner worktree 需要同步。",
+    `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}。`,
+    "成功后重新唤醒 Supervisor；不要调用 wait_threads。",
   ].join("\n");
 }
 
@@ -12556,7 +12622,12 @@ function supervisorControlNext(
           model: requireString(step.model, "control model"),
           thinking: requireString(step.effort, "control effort"),
           prompt: supervisorControlPrompt(goalDirectory, step, taskId, title),
-          target: { environment: "local" },
+          target: existsSync(dagWorktreesPath(goalDirectory))
+            ? {
+              environment: "worktree",
+              starting_branch: readDagWorktrees(goalDirectory).dag.branch,
+            }
+            : { environment: "local" },
           thread: preferred?.thread_id ?? null,
           host: preferred?.host_id ?? null,
           control: true,
@@ -12602,6 +12673,38 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
     const registry = readThreadRegistry(threadsPath, plan.goal_id);
     const threads = requireRecord(registry.threads, "thread registry.threads");
     const watches = registry.watches                             ;
+    const main = requireRecord(registry.main, "thread registry.main");
+    const mainRoute = {
+      thread: requireString(main.thread_id, "thread registry.main.thread_id"),
+      host: requireString(main.host_id, "thread registry.main.host_id"),
+    };
+    const worktrees = existsSync(dagWorktreesPath(goalDirectory))
+      ? readDagWorktrees(goalDirectory)
+      : null;
+    const dagHead = worktrees === null ? null : gitHead(worktrees.dag.path);
+    const syncTask = worktrees === null
+      ? null
+      : plan.tasks.find((task) => {
+        const taskState = state.tasks[task.id];
+        if (
+          taskState.status !== "reserved" || task.role !== "work" || task.owner_id === null ||
+          isOwnerIntegrationRepair(goalDirectory, task, taskState)
+        ) return false;
+        const ownerWorktree = worktrees.owners[task.owner_id];
+        return ownerWorktree === undefined || ownerWorktree.synced_dag_head !== dagHead;
+      }) ?? null;
+    if (syncTask !== null && syncTask.owner_id !== null) {
+      return {
+        ...emptySupervisorPayload(mainRoute),
+        main_action: {
+          action: "owner_sync_required",
+          task: syncTask.id,
+          owner: syncTask.owner_id,
+          summary: `责任域 ${syncTask.owner_id} 需要同步 DAG 分支`,
+          dispatch: supervisorOwnerSyncPrompt(goalDirectory, syncTask.owner_id),
+        },
+      };
+    }
     const create                            = [];
 
     for (const task of plan.tasks) {
@@ -12637,8 +12740,8 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       const profile = runtimeProfileForTask(goal, task);
       const title = threadTitle(task, subject);
       const ownerSync = !integrationRepair && task.role === "work" && task.owner_id !== null &&
-          existsSync(dagWorktreesPath(goalDirectory))
-        ? runSelfJson(["workflow", "owner-sync", goalDirectory, task.owner_id])
+          worktrees !== null
+        ? worktrees.owners[task.owner_id] ?? fail(`Owner ${task.owner_id} sync is missing`)
         : null;
       create.push({
         action_id: supervisorActionId("create", task.id, taskState.attempt),
@@ -12646,18 +12749,32 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
         attempt: taskState.attempt,
         run: taskRunId(task.id, taskState),
         title,
-        model: ownerSync?.model ?? profile.model,
-        thinking: ownerSync?.thinking ?? profile.reasoning_effort,
+        model: profile.model,
+        thinking: profile.reasoning_effort,
         prompt: integrationRepair
           ? `继续使用现有 Owner worktree 修复集成失败；不得重新创建线程或 worktree。`
-          : ownerSync?.prompt ?? [
+          : ownerSync === null ? [
           `请先把当前线程标题逐字设置为：${title}`,
           "不要执行任务或读取工作流文件；改名后结束当前 turn，等待 Supervisor 发送正式 dispatch。",
+        ].join("\n") : ownerSync.path === null ? [
+          `请先把当前线程标题逐字设置为：${title}`,
+          `然后只调用 workflow owner-sync ${goalDirectory} ${task.owner_id} 完成 worktree 登记。`,
+          "不要执行任务；同步成功后结束当前 turn，等待 Supervisor 发送正式 dispatch。",
+        ].join("\n") : [
+          `请先把当前线程标题逐字设置为：${title}`,
+          "Owner worktree 已由 Main 同步；不要再次操作 Git，结束当前 turn，等待 Supervisor 发送正式 dispatch。",
         ].join("\n"),
         ...(ownerSync === null ? {} : {
           owner: task.owner_id,
-          sync_status: ownerSync.status,
-          target: ownerSync.target,
+          sync_status: ownerSync.path === null ? "worktree_required" : "ready",
+          target: ownerSync.path === null
+            ? { environment: "worktree", starting_branch: ownerSync.branch }
+            : { environment: "local", path: ownerSync.path },
+        }),
+        ...(ownerSync !== null ? {} : {
+          target: worktrees === null
+            ? { environment: "local" }
+            : { environment: "worktree", starting_branch: worktrees.dag.branch },
         }),
         thread: registered?.thread_id ?? null,
         host: registered?.host_id ?? null,
@@ -12703,23 +12820,24 @@ function supervisorNextCommand(goalDirectoryArgument        , limitArgument     
       } else if (SUPERVISOR_NOTIFY_STATES.has(status) && notifications.length < limit) {
         const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
           fail(`unknown watched task: ${taskId}`);
+        const bootstrapCompleted = taskState.status === "reserved" && status === "completed" &&
+          task.role === "work" && task.owner_id !== null &&
+          existsSync(dagWorktreesPath(goalDirectory));
         notifications.push({
           action_id: supervisorActionId("notify", taskId, attempt),
           ...compact,
           run: taskRunId(taskId, taskState),
           status,
-          ...(status === "needs_attention"
+          ...(bootstrapCompleted
+            ? { result_ref: null, summary: "Owner worktree 已登记，等待 Main 绑定任务" }
+            : status === "needs_attention"
             ? { result_ref: null, summary: "线程需要用户处理" }
             : supervisorResultNotice(plan, task, taskState)),
         });
       }
     }
-    const main = requireRecord(registry.main, "thread registry.main");
     return {
-      main: {
-        thread: requireString(main.thread_id, "thread registry.main.thread_id"),
-        host: requireString(main.host_id, "thread registry.main.host_id"),
-      },
+      main: mainRoute,
       create,
       wait: waitActions,
       stalled: stalledActions,
@@ -12777,6 +12895,52 @@ function supervisorRecordCommand(
       host: requireString(main.host_id, "thread registry.main.host_id"),
     };
 
+    if (event === "bootstrap-created") {
+      if (args.length !== 4) {
+        fail("supervisor-record bootstrap-created requires <task> <attempt> <thread_id> <host_id>");
+      }
+      const [taskId, attemptArgument, executorId, hostId] = args;
+      const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+      const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
+        fail(`unknown task: ${taskId}`);
+      const taskState = state.tasks[taskId];
+      if (taskState.status !== "reserved" || taskState.attempt !== attempt) {
+        fail(`task ${taskId} is not reserved for Owner bootstrap`);
+      }
+      if (task.role !== "work" || task.owner_id === null) {
+        fail(`task ${taskId} is not an Owner work task`);
+      }
+      const ownerBootstrap = readDagWorktrees(goalDirectory).owners[task.owner_id];
+      if (ownerBootstrap === undefined) fail(`Owner ${task.owner_id} sync is missing`);
+      const subject = subjectForTask(plan, task);
+      const subjectState = subjectStateForTask(state, task);
+      const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
+      const actualExecutorId = requireString(executorId, "thread_id");
+      const actualHostId = requireString(hostId, "host_id");
+      threads[key] = {
+        thread_id: actualExecutorId,
+        host_id: actualHostId,
+        role: "owner",
+        status: "running",
+        cursor: null,
+      };
+      const watch = { task_id: taskId, attempt, thread_key: key, unchanged_waits: 0 };
+      const watchIndex = watches.findIndex((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watchIndex < 0) watches.push(watch);
+      else watches[watchIndex] = watch;
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return {
+        status: "bootstrap_watched",
+        task: taskId,
+        attempt,
+        thread: actualExecutorId,
+        main: mainRoute,
+      };
+    }
+
     if (event === "created") {
       if (args.length !== 4) {
         fail("supervisor-record created requires <task> <attempt> <thread_id> <host_id>");
@@ -12791,8 +12955,7 @@ function supervisorRecordCommand(
       if (task.owner_id === null) fail(`task ${taskId} is script-only`);
       const integrationRepair = isOwnerIntegrationRepair(goalDirectory, task, state.tasks[taskId]);
       if (!integrationRepair && task.role === "work" && existsSync(dagWorktreesPath(goalDirectory))) {
-        const synced = runSelfJson(["workflow", "owner-sync", goalDirectory, task.owner_id]);
-        if (synced.status !== "ready") fail(`Owner ${task.owner_id} worktree bootstrap is incomplete`);
+        assertOwnerWorktreeReady(goalDirectory, task);
       }
       const taskState = state.tasks[taskId];
       if (taskState.attempt !== attempt) fail("task attempt mismatch");
@@ -12980,6 +13143,14 @@ function supervisorRecordCommand(
       }
       const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
         fail(`unknown watched task: ${taskId}`);
+      if (state.tasks[taskId].status === "reserved" && terminalStatus === "completed") {
+        assertOwnerWorktreeReady(goalDirectory, task);
+        registry.watches = watches.filter((_, candidateIndex) => candidateIndex !== index);
+        thread.status = "idle";
+        validateThreadRegistry(registry);
+        writeJson(threadsPath, registry);
+        return { status: "bootstrap_notified", task: taskId, attempt };
+      }
       if (supervisorResultNotice(plan, task, state.tasks[taskId]).result_ref === null) {
         thread.status = "attention_notified";
         validateThreadRegistry(registry);
@@ -13131,11 +13302,13 @@ function supervisorAckCommand(
   }
   let receipt                         ;
   if (action.kind === "create") {
-    if (args.length !== 2) fail("create acknowledgement requires <thread_id> <host_id>");
+    if (args.length !== 2 && !(args.length === 3 && args[2] === "bootstrap")) {
+      fail("create acknowledgement requires <thread_id> <host_id> [bootstrap]");
+    }
     receipt = runSelfJson([
       "supervisor-record",
       resolve(goalDirectoryArgument),
-      "created",
+      args.length === 3 ? "bootstrap-created" : "created",
       action.task,
       String(action.attempt),
       args[0],
@@ -15469,7 +15642,7 @@ function startWorkflow(
     status: "created",
     mode,
     workflow_dir: directory,
-    thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
+    thread_title: `[GA][任务][主控] ${compactThreadSummary(objective)}`,
     action: mode === "quick" ? "owner_required" : "main_route_required",
   };
 }
@@ -15686,7 +15859,7 @@ function workflowStartDagCommand(workspaceArgument        , developmentKeyArgume
     dag_branch: dagBranch,
     model: profile.model,
     thinking: profile.reasoning_effort,
-    thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
+    thread_title: `[GA][任务][主控] ${compactThreadSummary(objective)}`,
     target: { environment: "worktree", starting_branch: dagBranch },
     dispatch: [
       "$sub-thread-coordination",
@@ -16154,12 +16327,19 @@ function supervisorInitCommand(
     requireString(mainHostIdArgument, "main host id"),
   ]);
   const profile = loadThreadWorkflowConfig(goal.workspace.root).profiles.supervisor;
+  const target = existsSync(dagWorktreesPath(goalDirectory))
+    ? {
+      environment: "worktree",
+      starting_branch: readDagWorktrees(goalDirectory).dag.branch,
+    }
+    : { environment: "local" };
   process.stdout.write(`${JSON.stringify({
     contract: "SUPERVISOR_INIT_V1",
     status: registry.status,
     thread_title: goalThreadTitles(goal).supervisor,
     model: profile.model,
     effort: profile.reasoning_effort,
+    target,
     preferred_thread: preferredWorkflowThread(goalDirectory, "supervisor"),
     dispatch: supervisorDispatchPrompt(goalDirectory),
   })}\n`);
@@ -16188,7 +16368,7 @@ function workflowStepCommand(goalDirectoryArgument        , deferDelivery = fals
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
         action: "main_route_required",
-        thread_title: `[GA][任务][主控] ${compactUserSummary(workflow.objective)}`,
+        thread_title: `[GA][任务][主控] ${compactThreadSummary(workflow.objective)}`,
       })}\n`);
       return;
     }

@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
   "description": "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

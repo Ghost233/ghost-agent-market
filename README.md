@@ -25,13 +25,13 @@ Codex 默认不需要原生 `/goal`，直接输入：
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Supervisor 最多调度 8 个真实 ready 线程。`setup-sub-thread-workflow` 配置并行上限与五组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
+`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Supervisor 最多监督 8 个已登记线程。新线程只能通过 `create_thread` 创建，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行 `workflow owner-sync`。`setup-sub-thread-workflow` 配置并行上限与五组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
 
 DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga/<key>/main` 集成分支和 `ga/<key>/<owner_id>` Owner 分支。原始工作区始终停留在用户分支并允许继续提交；最终合并面向其最新 HEAD，冲突时保留全部分支与 worktree。
 
 运行中的叶子任务如果发现需要插接多步工作，可在修改业务文件前发出 fenced 子图请求。runtime 原子把 T2 转成保留外层依赖边界的 composite，并在内部加入 T2-1、T2-2…递归 DAG；下游仍只依赖 T2，网页可折叠/展开子图并显示父节点聚合状态。
 
-子线程系统 key 只允许小写字母、数字和下划线。用户可见标题统一为 `[GA][任务][角色] <中文任务>`，例如 `[GA][任务][监督] 跟踪登录系统改造`；每个新线程取得正式 threadId 后自行调用 `set_thread_title`。脚本 JSON 只作机器收据，不复制到聊天。
+子线程系统 key 只允许小写字母、数字和下划线。用户可见标题统一为 `[GA][任务][角色] <中文任务>`，中文后缀最多 32 个字符且不包含路径列表；每个新线程取得正式 threadId 后自行调用 `set_thread_title`。脚本 JSON 只作机器收据，不复制到聊天。
 
 初始 DAG 先由 runtime 机械校验，再由独立 Planner Reviewer 只审查并行度和结构复杂度；最多允许 Planner 修订一次。Plan/State 激活后，Main 用 `$start-dag-dashboard` 调用后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。`progress.json` 与 `events.jsonl` 均由 runtime 脚本维护，模型不得直接编辑；网页通过文件监听和 SSE 推送更新，默认监听 `127.0.0.1:7357`。
 

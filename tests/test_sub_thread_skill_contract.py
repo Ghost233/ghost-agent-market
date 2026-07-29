@@ -53,7 +53,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "必须由用户明确选择",
                 "supervisor_required",
                 "Supervisor 必须早于 Planner",
-                "Main 不直接创建或等待这些线程",
+                "Main 自己绝不调用 `wait_threads`",
                 "当前会话立即停止",
                 "Main 不调用 `wait_threads`",
                 "Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree",
@@ -104,6 +104,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("正式 threadId", coordinator)
             self.assertIn("set_thread_title", coordinator)
             self.assertIn("不得给 `create_thread` 伪造 title/name", coordinator)
+            self.assertIn("禁止 `fork_thread`", coordinator)
+            self.assertIn("最多 32 个字符", coordinator)
             self.assertIn("[GA][任务][主控|规划|子图规划|规划审查|责任域|实现审查|监督]", coordinator)
 
     def test_supervisor_uses_opaque_actions_only(self) -> None:
@@ -116,11 +118,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "wait_threads",
                 "--limit 8",
                 "create_thread",
-                "set_thread_title",
-                "environment: local",
-                "target.environment: worktree",
-                "starting_branch",
-                "control: true",
+                "禁止 `fork_thread`",
                 "main_action",
                 "Planner 或 Planner Reviewer 正常结束不会通知 Main",
                 "不得再次 `owner-sync`",
@@ -129,6 +127,9 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             ):
                 self.assertIn(required, supervisor)
             self.assertIn("不得调用低层 `supervisor-record`", supervisor)
+            self.assertIn("owner_sync_required", supervisor)
+            self.assertIn("Supervisor 不创建或复用线程", supervisor)
+            self.assertIn("独立 worktree", supervisor)
 
     def test_dag_and_owner_worktrees_are_script_owned(self) -> None:
         for platform in PLATFORMS:

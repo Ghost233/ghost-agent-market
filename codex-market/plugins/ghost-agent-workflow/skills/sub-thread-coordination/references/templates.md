@@ -14,7 +14,7 @@ Quick Main 丢失上下文后运行脚本返回的 `workflow step` 当前动作�
 goal-dag.mjs workflow start-dag <原始工作区> <development-key>
 ```
 
-`development-key` 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`；用户提供时原样使用，否则根据需求生成稳定英文 key。收到 `handoff_required` 后逐字使用收据内含完整命令的 dispatch 创建 DAG worktree 新 Main，然后当前会话永久停止。不得等待或继续执行。
+`development-key` 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`；用户提供时原样使用，否则根据需求生成稳定英文 key。收到 `handoff_required` 后只用 `create_thread` 和收据内含完整命令的 dispatch 创建全新 DAG worktree Main；禁止 `fork_thread` 和历史继承。然后当前会话永久停止，不得等待或继续执行。
 
 ## DAG 新 Main
 
@@ -26,7 +26,7 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <相同 development-key>
 
 新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `ga/<key>/main`。认领成功后，先处理 `main_route_required`，再处理 `supervisor_init_required`。Supervisor 必须早于 Planner 创建。恢复或推进仍只运行同一命令；Dashboard 和 native ack 只按收据执行。
 
-Main 不调用 `wait_threads`。创建或唤醒 Supervisor 后立即结束 turn。
+Main 不调用 `wait_threads`。Main 逐字执行 `supervisor-next` 的 create/main_action；建立 watch 后才唤醒 Supervisor并结束 turn。
 
 ## Supervisor
 
@@ -38,9 +38,11 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 
 所有动作只用不透明 action id 调用 `supervisor-ack`：
 
-- control：创建或复用 Planner/Planner Reviewer，等待终态；正常结束由脚本自动推进，不唤醒 Main。
-- 新 Owner worktree：按 action branch 创建线程，等待其 bootstrap `owner-sync` 结束，再 ack 和发送正式 dispatch。
-- 已有 Owner：复用原线程/worktree；每个新 run 已由脚本先 `owner-sync`。
+- create/main_action：Supervisor 不执行，只通知 Main 重新调用 `supervisor-next`；Main 负责确定性调度。
+- control：Main 只用 `create_thread` 创建全新 Planner/Planner Reviewer，或复用已登记线程；禁止 fork。Supervisor只等待终态。
+- `owner_sync_required`：由 Main 显式执行 `workflow owner-sync`；`supervisor-next` 和 ack 不得隐式操作 Git。
+- 新 Owner worktree：Main 完成分支同步后，用 `create_thread` 按 action branch 创建全新线程，并以 `supervisor-ack ... bootstrap` 登记 watch；Supervisor 只等待 bootstrap。结束后 Main 重新投影、复用同一线程完成普通 create ack 和正式 dispatch。
+- 已有 Owner：复用原线程/worktree；每个新 run 先由 Main 显式执行 `owner-sync`。
 - integration repair：复用原 Owner，禁止再次同步或新建 worktree。
 - wait/notify/stalled：只传宿主标量和 cursor，不读取 Result 或 DAG。
 - main_action：把脚本 dispatch 原样发送给 Main 后结束 turn；最终交付和清理只能由 Main 执行。

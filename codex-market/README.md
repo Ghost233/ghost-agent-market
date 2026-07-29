@@ -23,7 +23,7 @@
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 严格串行且不启动 Planner、Supervisor 或 Dashboard；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多调度 8 个真实 ready 线程。配置包含五组 profile；机械 gate 与定向验证由脚本执行。
+`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 严格串行且不启动 Planner、Supervisor 或 Dashboard；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多监督 8 个已登记线程。新线程只用 `create_thread`，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行。配置包含五组 profile；机械 gate 与定向验证由脚本执行。
 
 DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `ga/<key>/main` 和 Owner 分支 `ga/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
 
