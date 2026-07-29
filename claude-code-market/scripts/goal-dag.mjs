@@ -642,6 +642,7 @@ const REASONING_EFFORTS = new Set([
 ]);
 const MAX_PARALLEL_THREADS = 8;
 const THREAD_PROFILE_ROLES                      = [
+  "main",
   "planner",
   "owner",
   "review",
@@ -650,6 +651,7 @@ const THREAD_PROFILE_ROLES                      = [
 const DEFAULT_THREAD_WORKFLOW_CONFIG                       = {
   parallel: 8,
   profiles: {
+    main: { model: "gpt-5.6-sol", reasoning_effort: "xhigh" },
     planner: { model: "gpt-5.6-sol", reasoning_effort: "high" },
     owner: { model: "gpt-5.6-sol", reasoning_effort: "high" },
     review: { model: "gpt-5.6-sol", reasoning_effort: "high" },
@@ -862,12 +864,21 @@ function loadThreadWorkflowConfig(workspaceRoot        )                       {
   }
   const value = requireRecord(readJson(path), "thread workflow config");
   const rawProfiles = requireRecord(value.profiles, "thread workflow config.profiles");
-  if (!Object.hasOwn(rawProfiles, "supervisor") &&
-      Object.keys(rawProfiles).sort().join(",") === "owner,planner,review") {
+  const profileKeys = Object.keys(rawProfiles).sort().join(",");
+  if (!Object.hasOwn(rawProfiles, "supervisor") && profileKeys === "owner,planner,review") {
     rawProfiles.supervisor = {
       model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.supervisor.model,
       effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.supervisor.reasoning_effort,
     };
+  }
+  if (!Object.hasOwn(rawProfiles, "main") &&
+      ["owner,planner,review", "owner,planner,review,supervisor"].includes(profileKeys)) {
+    rawProfiles.main = {
+      model: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.main.model,
+      effort: DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.main.reasoning_effort,
+    };
+  }
+  if (Object.keys(rawProfiles).sort().join(",") !== profileKeys) {
     writeTextAtomic(path, serializedJson(value));
   }
   return parseThreadWorkflowConfig(value);
@@ -1075,6 +1086,11 @@ function gitBranch(path        )         {
   );
 }
 
+function gitBranchOrNull(path        )                {
+  const result = gitAttempt(path, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  return result.ok ? requireString(result.stdout.trim(), "git branch") : null;
+}
+
 function assertCleanGitWorktree(path        , label        )       {
   const changes = [...gitAllStatusMap(path).keys()];
   if (changes.length > 0) fail(`${label} is not clean: ${changes.slice(0, 8).join(", ")}`);
@@ -1082,6 +1098,25 @@ function assertCleanGitWorktree(path        , label        )       {
 
 function gitBranchExists(path        , branch        )          {
   return gitAttempt(path, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).ok;
+}
+
+function gitWorktreeForBranch(path        , branch        )                {
+  const target = `branch refs/heads/${branch}`;
+  const matches           = [];
+  let worktree                = null;
+  for (const line of gitOutput(path, ["worktree", "list", "--porcelain"], "Git worktree listing")
+    .split(/\r?\n/u)) {
+    if (line.startsWith("worktree ")) {
+      worktree = canonicalFilesystemPath(line.slice("worktree ".length));
+    } else if (line === target) {
+      if (worktree === null) fail(`Git worktree listing omitted the path for ${branch}`);
+      matches.push(worktree);
+    } else if (line === "") {
+      worktree = null;
+    }
+  }
+  if (matches.length > 1) fail(`branch is attached to multiple worktrees: ${branch}`);
+  return matches[0] ?? null;
 }
 
 function gitCommonDirectory(path        )         {
@@ -12786,6 +12821,10 @@ function parseDagWorktrees(value         , goalDirectory        )               
       ),
     };
   }
+  const dagBranch = requireString(dag.branch, "DAG worktrees.dag.branch");
+  if (developmentKeyFromDagBranch(dagBranch) === null) {
+    fail(`invalid DAG integration branch: ${dagBranch}`);
+  }
   const result                 = {
     contract: "DAG_WORKTREES_V1",
     original: {
@@ -12795,10 +12834,16 @@ function parseDagWorktrees(value         , goalDirectory        )               
     },
     dag: {
       path: realpathSync(resolve(requireString(dag.path, "DAG worktrees.dag.path"))),
-      branch: requireString(dag.branch, "DAG worktrees.dag.branch"),
+      branch: dagBranch,
     },
     owners,
   };
+  for (const [ownerId, owner] of Object.entries(result.owners)) {
+    const expectedBranch = ownerBranchName(result.dag.branch, ownerId);
+    if (owner.branch !== expectedBranch) {
+      fail(`Owner ${ownerId} branch must equal ${expectedBranch}`);
+    }
+  }
   const goalRoot = realpathSync(resolve(goalDirectory, "..", "..", "..", ".."));
   if (result.dag.path !== goalRoot) fail("DAG worktree path does not own the Goal directory");
   return result;
@@ -14605,36 +14650,65 @@ function branchConfig(workspace        , branch        , key        )           
   return result.ok ? result.stdout.trim() : null;
 }
 
+function requireDevelopmentKey(value         )         {
+  const key = requireString(value, "development key");
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(key)) {
+    fail("development key must use lowercase letters, digits, underscores, or hyphens");
+  }
+  return key;
+}
+
+function dagBranchName(developmentKey        )         {
+  return `dev/${developmentKey}/main`;
+}
+
+function developmentKeyFromDagBranch(branch        )                {
+  const match = /^dev\/([a-z0-9][a-z0-9_-]{0,63})\/main$/u.exec(branch);
+  return match?.[1] ?? null;
+}
+
 function pendingDagBranches(workspace        )           {
   return gitOutput(
     workspace,
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads/codex/"],
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads/dev/"],
     "DAG branch listing",
-  ).split(/\r?\n/u).filter((branch) => branch.startsWith("codex/dag-") && branchConfig(
+  ).split(/\r?\n/u).filter((branch) => developmentKeyFromDagBranch(branch) !== null && branchConfig(
     workspace,
     branch,
     "pending",
   ) === "true");
 }
 
-function workflowStartDagCommand(workspaceArgument        )       {
+function workflowStartDagCommand(workspaceArgument        , developmentKeyArgument        )       {
   const workspace = gitRoot(resolve(workspaceArgument));
+  const developmentKey = requireDevelopmentKey(developmentKeyArgument);
+  const requestedDagBranch = dagBranchName(developmentKey);
+  const workflowConfig = loadThreadWorkflowConfig(workspace);
   const active = activeWorkflowDirectories(workspace);
   if (active.length > 1) fail(`DAG worktree has multiple active Goals: ${active.join(", ")}`);
   if (active.length === 1) {
     if (!existsSync(dagWorktreesPath(active[0]))) {
       fail("active DAG is not isolated in a DAG worktree");
     }
+    const worktrees = readDagWorktrees(active[0]);
+    if (worktrees.dag.branch !== requestedDagBranch) {
+      fail(`active DAG uses ${worktrees.dag.branch}, not ${requestedDagBranch}`);
+    }
     workflowStepCommand(active[0]);
     return;
   }
 
-  const currentBranch = gitBranch(workspace);
-  const currentDagOriginal = branchConfig(workspace, currentBranch, "original-path");
+  const currentBranch = gitBranchOrNull(workspace);
+  const currentDagOriginal = currentBranch === null
+    ? null
+    : branchConfig(workspace, currentBranch, "original-path");
   if (
     currentDagOriginal !== null && resolve(currentDagOriginal) !== workspace &&
     branchConfig(workspace, currentBranch, "pending") === "false"
   ) {
+    if (currentBranch !== requestedDagBranch) {
+      fail(`DAG worktree uses ${currentBranch}, not ${requestedDagBranch}`);
+    }
     const completed = completedWorkflowDirectories(workspace);
     if (completed.length !== 1) {
       fail("completed DAG worktree cannot identify exactly one finished workflow");
@@ -14644,25 +14718,34 @@ function workflowStartDagCommand(workspaceArgument        )       {
   }
 
   const pending = pendingDagBranches(workspace);
-  const claimable = pending.filter((branch) => {
-    const originalPath = branchConfig(workspace, branch, "original-path");
-    if (originalPath === null || resolve(originalPath) === workspace) return false;
-    const dagHead = gitOutput(workspace, ["rev-parse", branch], "pending DAG branch lookup").trim();
-    return gitAttempt(workspace, ["merge-base", "--is-ancestor", dagHead, "HEAD"]).ok;
-  });
   const objective = requireChineseText(readPlainSemanticInput("DAG objective"), "DAG objective");
 
-  if (claimable.length > 0) {
-    if (claimable.length !== 1) fail("multiple pending DAG branches can claim this worktree");
-    const dagBranch = claimable[0];
-    assertCleanGitWorktree(workspace, "new DAG worktree");
-    if (gitBranch(workspace) !== dagBranch) {
-      gitOutput(workspace, ["checkout", dagBranch], "DAG branch checkout");
+  if (pending.length > 0) {
+    if (pending.length !== 1) fail("multiple pending DAG handoffs exist for this repository");
+    const dagBranch = pending[0];
+    if (dagBranch !== requestedDagBranch) {
+      fail(`pending DAG uses ${dagBranch}, not ${requestedDagBranch}`);
     }
     const originalPath = resolve(requireString(
       branchConfig(workspace, dagBranch, "original-path"),
       "DAG original path",
     ));
+    if (originalPath === workspace) {
+      fail("pending DAG must be claimed from a new worktree, not the original workspace");
+    }
+    const dagHead = gitOutput(workspace, ["rev-parse", dagBranch], "pending DAG branch lookup").trim();
+    if (gitHead(workspace) !== dagHead) {
+      fail(`current HEAD does not match pending DAG branch ${dagBranch}`);
+    }
+    const occupiedBy = gitWorktreeForBranch(workspace, dagBranch);
+    if (occupiedBy !== null && occupiedBy !== workspace) {
+      fail(`pending DAG branch is already attached to another worktree: ${occupiedBy}`);
+    }
+    assertCleanGitWorktree(workspace, "new DAG worktree");
+    if (gitBranchOrNull(workspace) !== dagBranch) {
+      gitOutput(workspace, ["checkout", dagBranch], "DAG branch checkout");
+    }
+    if (gitBranch(workspace) !== dagBranch) fail("DAG worktree did not attach to its integration branch");
     const originalBranch = requireString(
       branchConfig(workspace, dagBranch, "original-branch"),
       "DAG original branch",
@@ -14697,11 +14780,11 @@ function workflowStartDagCommand(workspaceArgument        )       {
     return;
   }
 
-  if (pending.length > 0) fail("a DAG handoff is already pending for this repository");
   assertCleanGitWorktree(workspace, "original workspace");
   const originalBranch = gitBranch(workspace);
   const originalHead = gitHead(workspace);
-  const dagBranch = `codex/dag-${Date.now().toString(36)}-${digestJson(objective).slice(0, 8)}`;
+  const dagBranch = requestedDagBranch;
+  if (gitBranchExists(workspace, dagBranch)) fail(`DAG branch already exists: ${dagBranch}`);
   gitOutput(workspace, ["branch", dagBranch, originalHead], "DAG branch creation");
   for (const [key, value] of [
     ["original-path", workspace],
@@ -14711,9 +14794,7 @@ function workflowStartDagCommand(workspaceArgument        )       {
   ]) {
     gitOutput(workspace, ["config", `branch.${dagBranch}.ghost-agent-${key}`, value], "DAG handoff metadata");
   }
-  const profile = existsSync(threadWorkflowConfigPath(workspace))
-    ? parseThreadWorkflowConfig(readJson(threadWorkflowConfigPath(workspace))).profiles.planner
-    : DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.planner;
+  const profile = workflowConfig.profiles.main;
   process.stdout.write(`${JSON.stringify({
     contract: "WORKFLOW_START_DAG_V1",
     status: "handoff_required",
@@ -14726,14 +14807,19 @@ function workflowStartDagCommand(workspaceArgument        )       {
       "$sub-thread-coordination",
       "",
       "你是新的 DAG Main。当前工作目录必须是脚本指定分支创建的独立 worktree。",
-      "把下面目标通过 stdin 原样传给 `goal-dag.mjs workflow start-dag <当前工作区>`，然后只在新 Main 继续：",
+      `把下面目标通过 stdin 原样传给 \`goal-dag.mjs workflow start-dag <当前工作区> ${developmentKey}\`，然后只在新 Main 继续：`,
       objective,
     ].join("\n"),
   })}\n`);
 }
 
-function ownerBranchName(goal              , ownerId        )         {
-  return `codex/ga-owner-${goal.goal_id.slice(-12)}-${ownerId}`;
+function ownerBranchName(dagBranch        , ownerId        )         {
+  const developmentKey = developmentKeyFromDagBranch(dagBranch);
+  if (developmentKey === null) fail(`invalid DAG integration branch: ${dagBranch}`);
+  if (ownerId === "main" || ownerId.includes("..") || ownerId.endsWith(".") || ownerId.endsWith(".lock")) {
+    fail(`owner id cannot form a Git branch: ${ownerId}`);
+  }
+  return `dev/${developmentKey}/${ownerId}`;
 }
 
 function workflowOwnerSyncCommand(goalDirectoryArgument        , ownerIdArgument        )       {
@@ -14759,8 +14845,12 @@ function workflowOwnerSyncCommand(goalDirectoryArgument        , ownerIdArgument
     if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its integration branch");
     assertCleanGitWorktree(worktrees.dag.path, "DAG worktree");
     const dagHead = gitHead(worktrees.dag.path);
-    const branch = worktrees.owners[ownerId]?.branch ?? ownerBranchName(goal, ownerId);
-    if (!gitBranchExists(worktrees.dag.path, branch)) {
+    const registered = worktrees.owners[ownerId];
+    const branch = registered?.branch ?? ownerBranchName(worktrees.dag.branch, ownerId);
+    if (registered === undefined && gitBranchExists(worktrees.dag.path, branch)) {
+      fail(`Owner ${ownerId} branch already exists outside this workflow: ${branch}`);
+    }
+    if (registered === undefined) {
       gitOutput(worktrees.dag.path, ["branch", branch, dagHead], `Owner ${ownerId} branch creation`);
     }
     const current = worktrees.owners[ownerId] ?? {
@@ -14772,10 +14862,14 @@ function workflowOwnerSyncCommand(goalDirectoryArgument        , ownerIdArgument
 
     if (current.path === null && callerRoot !== worktrees.dag.path) {
       assertCleanGitWorktree(callerRoot, `Owner ${ownerId} bootstrap worktree`);
-      if (gitBranch(callerRoot) !== branch) {
+      if (gitBranchOrNull(callerRoot) !== branch) {
         const ownerHead = gitOutput(callerRoot, ["rev-parse", branch], "Owner branch lookup").trim();
-        if (!gitAttempt(callerRoot, ["merge-base", "--is-ancestor", ownerHead, "HEAD"]).ok) {
+        if (gitHead(callerRoot) !== ownerHead) {
           fail(`current worktree was not created from Owner ${ownerId} branch`);
+        }
+        const occupiedBy = gitWorktreeForBranch(callerRoot, branch);
+        if (occupiedBy !== null && occupiedBy !== callerRoot) {
+          fail(`Owner ${ownerId} branch is already attached to another worktree: ${occupiedBy}`);
         }
         gitOutput(callerRoot, ["checkout", branch], `Owner ${ownerId} branch checkout`);
       }
@@ -15736,8 +15830,8 @@ function main(argv          )       {
   if (command === "workflow" && args[0] === "start" && args.length === 3) {
     return workflowStartCommand(args[1], args[2]);
   }
-  if (command === "workflow" && args[0] === "start-dag" && args.length === 2) {
-    return workflowStartDagCommand(args[1]);
+  if (command === "workflow" && args[0] === "start-dag" && args.length === 3) {
+    return workflowStartDagCommand(args[1], args[2]);
   }
   if (command === "workflow" && args[0] === "owner-sync" && args.length === 3) {
     return workflowOwnerSyncCommand(args[1], args[2]);
@@ -15986,7 +16080,7 @@ function main(argv          )       {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start-dag <workspace> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | internal runtime commands",
   );
 }
 

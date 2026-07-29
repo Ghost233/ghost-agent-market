@@ -1113,28 +1113,100 @@ class GoalDagCliTests(unittest.TestCase):
             )
 
             objective = "在独立工作树中完成状态模块改造"
+            development_key = "next_auth_v2"
+            original_branch = subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "--show-current"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            invalid_key = self.run_cli_from(
+                workspace_root,
+                "workflow", "start-dag", workspace_root, "Next/Auth",
+                input_text=objective,
+            )
+            self.assertNotEqual(invalid_key.returncode, 0)
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "dev/existing_key/main"],
+                check=True,
+            )
+            existing_key = self.run_cli_from(
+                workspace_root,
+                "workflow", "start-dag", workspace_root, "existing_key",
+                input_text=objective,
+            )
+            self.assertNotEqual(existing_key.returncode, 0)
+            self.assertIn("already exists", existing_key.stderr)
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "-D", "dev/existing_key/main"],
+                check=True,
+                capture_output=True,
+            )
             handoff_process = self.run_cli_from(
                 workspace_root,
-                "workflow", "start-dag", workspace_root,
+                "workflow", "start-dag", workspace_root, development_key,
                 input_text=objective,
             )
             self.assertEqual(handoff_process.returncode, 0, handoff_process.stderr)
             handoff = json.loads(handoff_process.stdout)
             self.assertEqual(handoff["status"], "handoff_required")
+            self.assertEqual(handoff["model"], "gpt-5.6-sol")
+            self.assertEqual(handoff["thinking"], "xhigh")
+            self.assertEqual(handoff["dag_branch"], "dev/next_auth_v2/main")
             self.assertEqual(handoff["target"]["environment"], "worktree")
             self.assertFalse((workspace_root / ".ghost-agent-workflow/runtime").exists())
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--show-current"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+                original_branch,
+            )
 
             dag_worktree = workspace_root.parent / f"{workspace_root.name}-dag"
+            occupied_worktree = workspace_root.parent / f"{workspace_root.name}-dag-occupied"
             subprocess.run(
                 [
                     "git", "-C", str(workspace_root), "worktree", "add", "-q",
-                    "-b", "codex/host-created-main", str(dag_worktree), handoff["dag_branch"],
+                    str(occupied_worktree), handoff["dag_branch"],
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "add", "-q",
+                    "--detach", str(dag_worktree), handoff["dag_branch"],
+                ],
+                check=True,
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(dag_worktree), "branch", "--show-current"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+                "",
+            )
+            occupied_claim = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree, development_key,
+                input_text=objective,
+            )
+            self.assertNotEqual(occupied_claim.returncode, 0)
+            self.assertIn("already attached", occupied_claim.stderr)
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "remove", "--force",
+                    str(occupied_worktree),
                 ],
                 check=True,
             )
             claimed_process = self.run_cli_from(
                 dag_worktree,
-                "workflow", "start-dag", dag_worktree,
+                "workflow", "start-dag", dag_worktree, development_key,
                 input_text=objective,
             )
             self.assertEqual(claimed_process.returncode, 0, claimed_process.stderr)
@@ -1166,7 +1238,7 @@ class GoalDagCliTests(unittest.TestCase):
                 ["git", "-C", str(dag_worktree), "commit", "-q", "-m", "DAG delivery"],
                 check=True,
             )
-            owner_branch = "codex/ga-owner-cleanup-fixture"
+            owner_branch = "dev/next_auth_v2/cleanup-domain"
             owner_worktree = workspace_root.parent / f"{workspace_root.name}-owner-cleanup"
             subprocess.run(
                 [
@@ -1175,11 +1247,30 @@ class GoalDagCliTests(unittest.TestCase):
                 ],
                 check=True,
             )
+            review_branch = "dev/next_auth_v2/review"
+            review_worktree = workspace_root.parent / f"{workspace_root.name}-owner-review"
+            subprocess.run(
+                [
+                    "git", "-C", str(dag_worktree), "worktree", "add", "-q", "-b",
+                    review_branch, str(review_worktree), "HEAD",
+                ],
+                check=True,
+            )
             worktrees_path = goal_dir / "worktrees.json"
             worktrees = json.loads(worktrees_path.read_text(encoding="utf-8"))
             worktrees["owners"]["cleanup-domain"] = {
                 "branch": owner_branch,
                 "path": str(owner_worktree.resolve()),
+                "synced_dag_head": subprocess.run(
+                    ["git", "-C", str(dag_worktree), "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+            }
+            worktrees["owners"]["review"] = {
+                "branch": review_branch,
+                "path": str(review_worktree.resolve()),
                 "synced_dag_head": subprocess.run(
                     ["git", "-C", str(dag_worktree), "rev-parse", "HEAD"],
                     check=True,
@@ -1206,21 +1297,39 @@ class GoalDagCliTests(unittest.TestCase):
                 json.dumps(goal_state, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
+            hotfix_path = workspace_root / "hotfix.txt"
+            hotfix_path.write_text("committed while DAG was running\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "add", "hotfix.txt"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "commit", "-q", "-m", "parallel hotfix"],
+                check=True,
+            )
+            wrong_key_process = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree, "wrong_key",
+            )
+            self.assertNotEqual(wrong_key_process.returncode, 0)
+            self.assertIn("not dev/wrong_key/main", wrong_key_process.stderr)
             delivered_process = self.run_cli_from(
                 dag_worktree,
-                "workflow", "start-dag", dag_worktree,
+                "workflow", "start-dag", dag_worktree, development_key,
             )
             self.assertEqual(delivered_process.returncode, 0, delivered_process.stderr)
             delivered = json.loads(delivered_process.stdout)
             self.assertEqual(delivered["action"], "completed")
             self.assertEqual(delivered["delivery"]["cleanup"]["status"], "cleaned")
-            self.assertEqual(delivered["delivery"]["cleanup"]["removed_owner_branches"], 1)
+            self.assertEqual(delivered["delivery"]["cleanup"]["removed_owner_branches"], 2)
             self.assertEqual(
                 (workspace_root / "delivered.txt").read_text(encoding="utf-8"),
                 "merged from DAG\n",
             )
             self.assertFalse(dag_worktree.exists())
             self.assertFalse(owner_worktree.exists())
+            self.assertFalse(review_worktree.exists())
+            self.assertEqual(hotfix_path.read_text(encoding="utf-8"), "committed while DAG was running\n")
             self.assertEqual(
                 Path(delivered["result_ref"]).resolve(),
                 (workspace_root / ".ghost-agent-workflow/result.json").resolve(),
@@ -1243,6 +1352,15 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertNotIn(
                 owner_branch,
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.splitlines(),
+            )
+            self.assertNotIn(
+                review_branch,
                 subprocess.run(
                     ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
                     check=True,
@@ -1305,12 +1423,17 @@ class GoalDagCliTests(unittest.TestCase):
                 ["git", "-C", str(workspace_root), "commit", "-q", "-m", "workflow fixture"],
                 check=True,
             )
-            dag_branch = subprocess.run(
+            original_branch = subprocess.run(
                 ["git", "-C", str(workspace_root), "branch", "--show-current"],
                 check=True,
                 capture_output=True,
                 text=True,
             ).stdout.strip()
+            dag_branch = "dev/owner_sync/main"
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "checkout", "-q", "-b", dag_branch],
+                check=True,
+            )
             canonical_workspace = workspace_root.resolve()
             (goal_dir / "worktrees.json").write_text(
                 json.dumps(
@@ -1318,7 +1441,7 @@ class GoalDagCliTests(unittest.TestCase):
                         "contract": "DAG_WORKTREES_V1",
                         "original": {
                             "path": str(canonical_workspace),
-                            "branch": dag_branch,
+                            "branch": original_branch,
                             "head": subprocess.run(
                                 ["git", "-C", str(workspace_root), "rev-parse", "HEAD"],
                                 check=True,
@@ -1351,7 +1474,7 @@ class GoalDagCliTests(unittest.TestCase):
             subprocess.run(
                 [
                     "git", "-C", str(workspace_root), "worktree", "add", "-q",
-                    "-b", "codex/host-created-owner", str(owner_worktree), first_sync["branch"],
+                    "--detach", str(owner_worktree), first_sync["branch"],
                 ],
                 check=True,
             )
@@ -1518,6 +1641,140 @@ class GoalDagCliTests(unittest.TestCase):
                     ],
                     check=True,
                 )
+
+    def test_final_dag_merge_conflict_preserves_worktree_and_branch(self) -> None:
+        with self.workspace() as (_, goal_path, _):
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            shutil.rmtree(workspace_root / ".ghost-agent-workflow/goal-fixture")
+            subprocess.run(
+                ["node", str(WORKFLOW_CONFIG_SCRIPT), "init", str(workspace_root)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "add",
+                    "development.md", ".ghost-agent-workflow/.gitignore",
+                    ".ghost-agent-workflow/config.json", ".ghost-agent-workflow/owners",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root),
+                    "-c", "user.name=Goal DAG", "-c", "user.email=goal-dag@example.invalid",
+                    "commit", "-q", "-m", "workflow configuration",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "config", "user.name", "Goal DAG"],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "config", "user.email",
+                    "goal-dag@example.invalid",
+                ],
+                check=True,
+            )
+
+            objective = "在独立工作树中验证最终合并冲突"
+            development_key = "conflict_case"
+            handoff_process = self.run_cli_from(
+                workspace_root,
+                "workflow", "start-dag", workspace_root, development_key,
+                input_text=objective,
+            )
+            self.assertEqual(handoff_process.returncode, 0, handoff_process.stderr)
+            handoff = json.loads(handoff_process.stdout)
+            dag_worktree = workspace_root.parent / f"{workspace_root.name}-dag-conflict"
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "add", "-q", "--detach",
+                    str(dag_worktree), handoff["dag_branch"],
+                ],
+                check=True,
+            )
+            claimed_process = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree, development_key,
+                input_text=objective,
+            )
+            self.assertEqual(claimed_process.returncode, 0, claimed_process.stderr)
+            goal_dir = Path(json.loads(claimed_process.stdout)["goal_dir"])
+            self.run_json("workflow", "thread", goal_dir, "main", "new-main", "local")
+
+            (dag_worktree / "development.md").write_text("DAG version\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(dag_worktree), "add", "development.md"], check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(dag_worktree), "commit", "-q", "-m", "DAG change"],
+                check=True,
+            )
+            (workspace_root / "development.md").write_text("hotfix version\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "add", "development.md"], check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "commit", "-q", "-m", "hotfix change"],
+                check=True,
+            )
+
+            result_path = goal_dir / "result.json"
+            result_path.write_text("{}\n", encoding="utf-8")
+            goal_state_path = goal_dir / "goal-state.json"
+            goal_state = json.loads(goal_state_path.read_text(encoding="utf-8"))
+            goal_state["status"] = "completed"
+            goal_state["result_ref"] = str(result_path)
+            goal_state["native_sync"]["status"] = "not_required"
+            goal_state_path.write_text(
+                json.dumps(goal_state, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            delivered_process = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree, development_key,
+            )
+            self.assertNotEqual(delivered_process.returncode, 0)
+            self.assertIn("final DAG merge failed", delivered_process.stderr)
+            self.assertTrue(dag_worktree.exists())
+            self.assertEqual(
+                subprocess.run(
+                    [
+                        "git", "-C", str(workspace_root), "show-ref", "--verify", "--quiet",
+                        f"refs/heads/{handoff['dag_branch']}",
+                    ],
+                    check=False,
+                ).returncode,
+                0,
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "remove", "--force",
+                    str(dag_worktree),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "-D", handoff["dag_branch"]],
+                check=True,
+                capture_output=True,
+            )
 
     def test_dag_workflow_routes_main_then_requires_dashboard_before_execution(self) -> None:
         with self.workspace() as (_, goal_path, _):

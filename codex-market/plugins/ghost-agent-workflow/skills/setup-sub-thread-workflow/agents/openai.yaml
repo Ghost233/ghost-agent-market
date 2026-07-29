@@ -1,6 +1,6 @@
 interface:
   display_name: "子线程工作流设置"
-  short_description: "通过脚本配置四组模型 profile 和最多八路并发。"
+  short_description: "通过脚本配置五组模型 profile 和最多八路并发。"
   default_prompt: "使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与并行配置。"
 
 policy:

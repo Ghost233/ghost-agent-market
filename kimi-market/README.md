@@ -23,7 +23,9 @@
 
 Kimi Code 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。显式 `/skill:sub-thread-coordination` 是公开 DAG 控制器；当目标未完成时，它返回 runtime 生成的单行续跑提示（`/skill:sub-thread-coordination 继续 <goal.json绝对路径>`），请逐字使用。
 
-只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行。标准 Agent 禁止作为回退。启动前必须由用户明确选择模式；Quick 不启动 Supervisor；DAG 的 `gpt-5.6-luna/medium` Supervisor 最多调度 8 个 ready 线程。配置包含四组 profile，机械 gate 与定向验证由脚本执行。
+只有宿主提供可创建、发送和等待的长期子线程 API 时才能执行。标准 Agent 禁止作为回退。启动前必须由用户明确选择模式；Quick 不启动 Supervisor；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多调度 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
+
+DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `dev/<key>/main` 和 Owner 分支 `dev/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 

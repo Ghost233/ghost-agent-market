@@ -23,7 +23,9 @@
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 严格串行且不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，`gpt-5.6-luna/medium` Supervisor 最多调度 8 个真实 ready 线程。配置包含四组 profile；机械 gate 与定向验证由脚本执行。
+`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 严格串行且不启动 Planner、Supervisor 或 Dashboard；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多调度 8 个真实 ready 线程。配置包含五组 profile；机械 gate 与定向验证由脚本执行。
+
+DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `dev/<key>/main` 和 Owner 分支 `dev/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
 
 默认生命周期是 `standalone_thread`，不强制创建原生 Goal。只有用户已启动或明确要求 Goal 时才桥接 `codex_native`。Goal 模式遇到 Owner 变化时返回 `owner_action_required`：通知用户暂停 Goal、完成精确批准与脚本应用，再提示“可以继续 Goal”；不会启动空回合累计 blocked 次数。
 

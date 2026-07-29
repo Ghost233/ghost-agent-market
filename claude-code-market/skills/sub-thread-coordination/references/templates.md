@@ -11,20 +11,20 @@ Quick Main 丢失上下文后运行脚本返回的 `workflow step` 当前动作�
 首次只调用：
 
 ```text
-goal-dag.mjs workflow start-dag <原始工作区>
+goal-dag.mjs workflow start-dag <原始工作区> <development-key>
 ```
 
-收到 `handoff_required` 后按收据创建 DAG worktree 新 Main，然后当前会话永久停止。不得等待或继续执行。
+`development-key` 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`；用户提供时原样使用，否则根据需求生成稳定英文 key。收到 `handoff_required` 后逐字使用收据内含完整命令的 dispatch 创建 DAG worktree 新 Main，然后当前会话永久停止。不得等待或继续执行。
 
 ## DAG 新 Main
 
 首次把原目标通过 stdin 交给：
 
 ```text
-goal-dag.mjs workflow start-dag <当前 DAG worktree>
+goal-dag.mjs workflow start-dag <当前 DAG worktree> <相同 development-key>
 ```
 
-认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
+新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `dev/<key>/main`。认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
 
 Main 不调用 `wait_threads`。创建或唤醒 Supervisor 后立即结束 turn。
 
@@ -47,7 +47,7 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 
 Worker `complete` 后 task 仍为 running。新 Main 下一次 `start-dag` 内部执行 `owner-finish`。只有脚本合并和集成验证通过才完成；失败时返回 Supervisor repair 动作，由原 Owner 原地修复。
 
-Goal finalize 后脚本自动合并 DAG 分支回原始分支，保存最终结果与 DAG 日志，再删除全部 Owner/DAG worktree 和分支。失败时停止清理并保留剩余现场供继续修复。
+Goal finalize 后脚本自动合并 DAG 分支到原始分支的最新 HEAD，保存最终结果与 DAG 日志，再删除全部 Owner/DAG worktree 和分支。冲突时停止清理并保留完整现场供继续修复。
 
 ## 清理
 

@@ -36,8 +36,12 @@ class WorkflowConfigCliTests(unittest.TestCase):
             self.assertEqual(second["status"], "ensured")
             self.assertEqual(first["parallel"], 8)
             self.assertEqual(
-                set(first["profiles"]), {"planner", "owner", "review", "supervisor"}
+                set(first["profiles"]), {"main", "planner", "owner", "review", "supervisor"}
             )
+            self.assertEqual(first["profiles"]["main"], {
+                "model": "gpt-5.6-sol",
+                "effort": "xhigh",
+            })
             for role in ("planner", "owner", "review"):
                 self.assertEqual(first["profiles"][role], {
                     "model": "gpt-5.6-sol",
@@ -72,6 +76,10 @@ class WorkflowConfigCliTests(unittest.TestCase):
             self.assertEqual(updated["parallel"], 6)
             self.assertEqual(updated["profiles"]["review"]["effort"], "xhigh")
             self.assertEqual(updated["profiles"]["planner"]["effort"], "high")
+            main = self.run_json(
+                "set-profile", directory, "main", "gpt-5.6-sol", "max"
+            )
+            self.assertEqual(main["profiles"]["main"]["effort"], "max")
             rejected = self.run_cli("set-parallel", directory, 9)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("1 to 8", rejected.stderr)
@@ -108,7 +116,26 @@ class WorkflowConfigCliTests(unittest.TestCase):
             })
             stored = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(set(stored["profiles"]), {
-                "planner", "owner", "review", "supervisor"
+                "main", "planner", "owner", "review", "supervisor"
+            })
+
+    def test_show_migrates_the_previous_four_profile_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".ghost-agent-workflow/config.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({
+                "parallel": 8,
+                "profiles": {
+                    "planner": {"model": "gpt-5.6-sol", "effort": "high"},
+                    "owner": {"model": "gpt-5.6-sol", "effort": "high"},
+                    "review": {"model": "gpt-5.6-sol", "effort": "high"},
+                    "supervisor": {"model": "gpt-5.6-luna", "effort": "medium"},
+                },
+            }), encoding="utf-8")
+            migrated = self.run_json("show", directory)
+            self.assertEqual(migrated["profiles"]["main"], {
+                "model": "gpt-5.6-sol",
+                "effort": "xhigh",
             })
 
     def test_existing_workflow_gitignore_is_not_overwritten(self) -> None:

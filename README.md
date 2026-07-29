@@ -25,7 +25,9 @@ Codex 默认不需要原生 `/goal`，直接输入：
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Supervisor 最多调度 8 个真实 ready 线程。`setup-sub-thread-workflow` 配置并行上限与四组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
+`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 由 Main 严格串行调度 Owner 和显式 Review，不启动 Planner、Supervisor 或 Dashboard；DAG 使用最小顶层图，Supervisor 最多调度 8 个真实 ready 线程。`setup-sub-thread-workflow` 配置并行上限与五组 profile；机械 gate 与 Worker 定向验证由脚本实际执行。
+
+DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `dev/<key>/main` 集成分支和 `dev/<key>/<owner_id>` Owner 分支。原始工作区始终停留在用户分支并允许继续提交；最终合并面向其最新 HEAD，冲突时保留全部分支与 worktree。
 
 运行中的叶子任务如果发现需要插接多步工作，可在修改业务文件前发出 fenced 子图请求。runtime 原子把 T2 转成保留外层依赖边界的 composite，并在内部加入 T2-1、T2-2…递归 DAG；下游仍只依赖 T2，网页可折叠/展开子图并显示父节点聚合状态。
 

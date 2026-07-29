@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { dirname, join, resolve } from "node:path";
 
 const RECEIPT_CONTRACT = "THREAD_WORKFLOW_CONFIG_RECEIPT_V1";
-const ROLES = ["planner", "owner", "review", "supervisor"];
+const ROLES = ["main", "planner", "owner", "review", "supervisor"];
 const EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const WORKFLOW_GITIGNORE = [
   "# Managed by Ghost Agent Workflow.",
@@ -18,6 +18,7 @@ const WORKFLOW_GITIGNORE = [
 const DEFAULT_CONFIG = {
   parallel: 8,
   profiles: {
+    main: { model: "gpt-5.6-sol", effort: "xhigh" },
     planner: { model: "gpt-5.6-sol", effort: "high" },
     owner: { model: "gpt-5.6-sol", effort: "high" },
     review: { model: "gpt-5.6-sol", effort: "high" },
@@ -79,17 +80,26 @@ function parseStoredConfig(value) {
   requireExactKeys(value, ["parallel", "profiles"], "config");
   if (!isRecord(value.profiles)) fail("config.profiles must be an object");
   const roles = Object.keys(value.profiles).sort();
-  const legacyRoles = ["owner", "planner", "review"];
-  if (JSON.stringify(roles) !== JSON.stringify(legacyRoles)) {
+  const legacyRoles = [
+    ["owner", "planner", "review"],
+    ["owner", "planner", "review", "supervisor"],
+  ];
+  const matchedLegacyRoles = legacyRoles.find(
+    (candidate) => JSON.stringify(roles) === JSON.stringify(candidate),
+  );
+  if (matchedLegacyRoles === undefined) {
     return { config: parseConfig(value), migrated: false };
   }
   const profiles = Object.fromEntries(
-    legacyRoles.map((role) => [
+    matchedLegacyRoles.map((role) => [
       role,
       parseProfile(value.profiles[role], `config.profiles.${role}`),
     ]),
   );
-  profiles.supervisor = { ...DEFAULT_CONFIG.profiles.supervisor };
+  if (profiles.supervisor === undefined) {
+    profiles.supervisor = { ...DEFAULT_CONFIG.profiles.supervisor };
+  }
+  profiles.main = { ...DEFAULT_CONFIG.profiles.main };
   return {
     config: parseConfig({ parallel: value.parallel, profiles }),
     migrated: true,

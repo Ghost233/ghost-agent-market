@@ -113,7 +113,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             worker = self.skill(platform, "sub-thread-goal-worker")
             combined = f"{coordinator}\n{worker}"
             for required in (
-                "workflow start-dag <workspace>",
+                "workflow start-dag <workspace> <development-key>",
                 "workflow owner-sync <goal-dir> <owner-id>",
                 "workflow owner-finish <goal-dir> <run-id>",
                 "当前会话立即停止",
@@ -122,6 +122,9 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "下游只读取已合并到 DAG 分支的代码",
                 "原 Owner 在原 worktree 修复",
                 "Worker 不运行任何 Git",
+                "dev/<development-key>/main",
+                "dev/<development-key>/<owner_id>",
+                "detached HEAD",
             ):
                 self.assertIn(required, combined)
 
@@ -182,7 +185,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("用户明确批准", owner)
             self.assertIn("不保存 task/result/evidence history", owner)
 
-    def test_setup_controls_four_profiles_and_parallel(self) -> None:
+    def test_setup_controls_five_profiles_and_parallel(self) -> None:
         for platform in PLATFORMS:
             setup = self.skill(platform, "setup-sub-thread-workflow")
             for required in (
@@ -190,6 +193,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "set-parallel",
                 "set-profile",
                 "parallel: 8",
+                "gpt-5.6-sol/xhigh",
                 "gpt-5.6-sol/high",
                 "gpt-5.6-luna/medium",
                 ".ghost-agent-workflow/.gitignore",

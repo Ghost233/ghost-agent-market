@@ -9,7 +9,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 
 Codex 默认使用 `standalone_thread`；只有用户明确使用原生 Goal 时，DAG 才绑定 `codex_native`，并在本地结果完成后桥接。
 
-默认 profile：Planner/Owner/Review 为 `gpt-5.6-sol/high`，Supervisor 为 `gpt-5.6-luna/medium`。执行与 Implementation Review 使用 `$sub-thread-goal-worker`；DAG 额外使用 `$parallel-task-planner`、`$planner-reviewer`、`$sub-thread-task-supervisor` 和 `$start-dag-dashboard`。
+默认 profile：移交后的 Main 为 `gpt-5.6-sol/xhigh`，Planner/Owner/Review 为 `gpt-5.6-sol/high`，Supervisor 为 `gpt-5.6-luna/medium`。执行与 Implementation Review 使用 `$sub-thread-goal-worker`；DAG 额外使用 `$parallel-task-planner`、`$planner-reviewer`、`$sub-thread-task-supervisor` 和 `$start-dag-dashboard`。
 
 ## 硬边界
 
@@ -39,12 +39,14 @@ Worker 使用 `worker request-dag` 请求升级时，脚本只迁移已经验收
 DAG 的三个主要入口只有：
 
 ```text
-goal-dag.mjs workflow start-dag <workspace>
+goal-dag.mjs workflow start-dag <workspace> <development-key>
 goal-dag.mjs workflow owner-sync <goal-dir> <owner-id>
 goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 ```
 
-当前用户会话把中文目标通过 stdin 交给 `workflow start-dag <原始工作区>`。脚本要求原始工作树干净，只创建 DAG 分支并返回 `handoff_required`；此时原始工作区不得出现 Goal、Dashboard 或 DAG State。
+其中 `start-dag` 的实际签名是 `start-dag <workspace> <development-key>`。Main 根据开发需求生成简短、稳定的英文 key；用户明确提供时原样使用。key 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，首次调用和移交后的 Main 必须完全一致，禁止时间戳、Goal ID 或 hash。完整分支名只由脚本生成：DAG 为 `dev/<development-key>/main`，Owner 为 `dev/<development-key>/<owner_id>`；Owner ID 只来自 Planner/runtime，Main 与 Supervisor 不拼接分支。
+
+当前用户会话把中文目标通过 stdin 交给 `workflow start-dag <原始工作区> <development-key>`。脚本要求原始工作树干净，只创建 DAG 分支并返回 `handoff_required`；收据的 dispatch 必须包含带 key 的完整命令。此时原始工作区不得出现 Goal、Dashboard 或 DAG State，也不得切换原始分支。
 
 收到 `handoff_required` 后：
 
@@ -52,12 +54,12 @@ goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 2. 取得正式 threadId 后输出创建的任务链接。
 3. 当前会话立即停止；不得创建 Goal、Planner、Supervisor、Dashboard，不得等待新主控，也不得继续执行任何 DAG 工作。
 
-新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区>`。脚本认领 DAG 分支、创建 Goal 和状态并返回 `ready`。从此只有新 Main 继续工作；Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
+新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区> <相同 development-key>`。宿主创建的 worktree 可以是 detached HEAD；脚本验证 HEAD、清洁状态和分支占用后自行附着 `dev/<key>/main`，不得强制抢占。认领成功后脚本创建 Goal 和状态并返回 `ready`。从此只有新 Main 继续工作；Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
 
 新 Main 后续每次只调用：
 
 ```text
-goal-dag.mjs workflow start-dag <当前 DAG worktree>
+goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 ```
 
 它会投影当前唯一动作。`main_route_required` 等脚本明确要求的宿主 route/dashboard/native ack 属于内部回执；只能按收据执行，不得把低层命令当作新的协调入口。
@@ -80,7 +82,7 @@ Plan 只生成最小顶层 DAG；父节点无法直接完成时才由 Composite 
 每个 Owner 在当前 Goal 内长期复用一个线程、一个分支和一个独立 worktree：
 
 ```text
-owner-sync：DAG 分支快进到 Owner 分支
+owner-sync：Owner 分支快进到最新 DAG 分支
 → Owner 只在自己的 worktree 开发和验证
 → worker complete 只提交结果候选
 → owner-finish 在临时集成 worktree 合并并重跑验证
@@ -89,7 +91,7 @@ owner-sync：DAG 分支快进到 Owner 分支
 
 每轮开始前必须 `owner-sync`。下游只读取已合并到 DAG 分支的代码。合并冲突或集成验证失败时，task 保持 running、DAG HEAD 不变、结果候选清除；Supervisor 必须唤醒原 Owner 在原 worktree 修复，禁止新建 Owner 线程或 worktree，也禁止重新同步覆盖修复分支。
 
-Goal 完成后，脚本先把 DAG 分支合并回原始分支，再把最终结果和 `events.jsonl` 固定保存到原始工作区的 `.ghost-agent-workflow/`，最后删除全部 Owner worktree/分支和 DAG worktree/分支。任何分支尚未合并、worktree 不干净或最终合并失败时都停止清理并保留现场，不得声称交付完成。
+Goal 完成后，脚本在原始工作区仍处于启动分支且干净的前提下，把 DAG 分支合并到原始分支的最新 HEAD；DAG 期间原始分支新增的提交不得被覆盖。随后把最终结果和 `events.jsonl` 固定保存到原始工作区的 `.ghost-agent-workflow/`，最后删除全部 Owner worktree/分支和 DAG worktree/分支。任何分支尚未合并、worktree 不干净或最终合并冲突时都停止清理并保留现场，不得声称交付完成。
 
 ## 线程与输出
 

@@ -128,7 +128,7 @@ for (const relativePath of [
   "claude-code-market/skills/planner-reviewer/agents/openai.yaml",
 ]) writeFileSync(join(root, relativePath), reviewerYaml, "utf8");
 
-const setupYaml = `interface:\n  display_name: "子线程工作流设置"\n  short_description: "通过脚本配置四组模型 profile 和最多八路并发。"\n  default_prompt: "使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与并行配置。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
+const setupYaml = `interface:\n  display_name: "子线程工作流设置"\n  short_description: "通过脚本配置五组模型 profile 和最多八路并发。"\n  default_prompt: "使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与并行配置。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/setup-sub-thread-workflow/agents/openai.yaml",
   "claude-code-market/skills/setup-sub-thread-workflow/agents/openai.yaml",

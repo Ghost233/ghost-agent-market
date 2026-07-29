@@ -8,7 +8,9 @@ Kimi 推荐入口只有这一行：
 /skill:sub-thread-coordination 执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式
 ```
 
-Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。启动前必须由用户明确选择模式；Quick 由 Main 串行执行；DAG 才启动 Planner、Dashboard 和 `gpt-5.6-luna/medium` Supervisor，最多并发 8 个 ready 线程。配置包含四组 profile，机械 gate 与定向验证由脚本执行。
+Kimi 固定使用 `standalone_thread` 生命周期，不依赖原生 Goal。启动前必须由用户明确选择模式；Quick 由 Main 串行执行；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，Supervisor 使用 `gpt-5.6-luna/medium`，最多并发 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
+
+DAG 使用 `workflow start-dag <workspace> <development-key>`，由脚本生成 `dev/<key>/main` 与 `dev/<key>/<owner_id>`。原始工作区不切换分支并允许并行提交；最终合并基于原始分支最新 HEAD，冲突时不清理任何现场。
 
 active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层依赖边界，T2-1、T2-2…在内部形成可递归 DAG；dashboard 可折叠/展开并聚合父节点状态。
 

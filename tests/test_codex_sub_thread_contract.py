@@ -90,6 +90,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "workflow-config.mjs ensure",
             "set-parallel",
             "set-profile",
+            "gpt-5.6-sol/xhigh",
             "gpt-5.6-sol/high",
             "parallel: 8",
             "$setup-sub-thread-workflow",
@@ -152,7 +153,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
     def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
         self.assertIn("聊天不是状态源", combined)
-        self.assertIn("workflow start-dag <当前 DAG worktree>", combined)
+        self.assertIn("workflow start-dag <当前 DAG worktree> <development-key>", combined)
         self.assertIn("supervisor-next <goal-dir> --limit 8", combined)
         self.assertIn("成功验收后立即删除当前临时文件", combined)
 
@@ -272,7 +273,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.2\.6\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.2\.8\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
