@@ -1756,6 +1756,14 @@ class GoalDagCliTests(unittest.TestCase):
                 "新 active 批次创建 Goal",
                 projected_sync["main_action"]["dispatch"],
             )
+            resume_dispatch = projected_sync["main_action"]["dispatch"]
+            self.assertIn('"workflow" "step"', resume_dispatch)
+            self.assertIn(json.dumps(str(goal_dir)), resume_dispatch)
+            self.assertNotIn('"workflow" "start-dag"', resume_dispatch)
+            self.assertNotIn(
+                f'"start-dag" {json.dumps(str(canonical_workspace))}',
+                resume_dispatch,
+            )
             owner_branch = "ga/owner_sync/state-domain"
             self.assertNotIn(
                 owner_branch,
@@ -2239,7 +2247,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertEqual(initialized["model"], "gpt-supervisor-live")
             self.assertEqual(initialized["effort"], "low")
-            self.assertIn("连续 10 轮", initialized["goal_objective"])
+            self.assertIn("没有活动任务时立即结束当前 Goal", initialized["goal_objective"])
             self.assertEqual(
                 initialized["status_document"],
                 str(workflow_dir / "supervision.md"),
@@ -2252,8 +2260,8 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
             self.assertIn("get_goal", initialized["dispatch"])
             self.assertIn("create_goal", initialized["dispatch"])
-            self.assertIn("supervisor-next", initialized["dispatch"])
-            self.assertIn("每个 Goal turn 只执行一次", initialized["dispatch"])
+            self.assertIn('"supervisor" "start"', initialized["dispatch"])
+            self.assertIn("不得同时存在两个", initialized["dispatch"])
             self.assertIn(".ghost-agent-workflow", initialized["dispatch"])
             self.assertNotIn("runtime_ref", initialized["dispatch"])
             self.assertIn("禁止 Orca runtime", initialized["dispatch"])
@@ -2490,7 +2498,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertIn("$parallel-task-planner", resumed["thread_notify"]["message"])
             self.assertEqual(resumed["supervisor_notify"]["thread"], "supervisor-thread")
-            self.assertIn("supervisor-next", resumed["supervisor_notify"]["message"])
+            self.assertIn('"supervisor" "start"', resumed["supervisor_notify"]["message"])
             for _ in range(10):
                 waiting = self.run_json("supervisor-next", workflow_dir)["wait"][0]
                 self.run_json(
@@ -2568,6 +2576,60 @@ class GoalDagCliTests(unittest.TestCase):
                 projected,
             )
 
+    def test_supervisor_public_facade_is_finite_and_script_driven(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            state_path = self.initialize(goal_path, plan_path)
+            initialized = self.run_json(
+                "supervisor-init", root, "main-thread", "local"
+            )
+            started = self.run_json(
+                "supervisor", "start", root, initialized["goal_objective"]
+            )
+            self.assertEqual(started["action"], "start")
+            self.assertEqual(started["goal_objective"], initialized["goal_objective"])
+            self.assertEqual(started["status_document"], str(root / "supervision.md"))
+
+            invalid = self.run_cli(
+                "supervisor", "start", root, "模型自行改写的目标"
+            )
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertIn("fixed objective", invalid.stderr)
+
+            action = self.reserve_one(plan_path, state_path)
+            projected = self.run_json("supervisor", "next", root)
+            self.assertEqual(
+                set(projected), {"contract", "action", "main", "items"}
+            )
+            self.assertEqual(projected["contract"], "SUPERVISOR_ACTION_V1")
+            self.assertIn(projected["action"], {"create", "wait", "notify", "stop"})
+            self.assertEqual(projected["action"], "create")
+            created_action = projected["items"][0]
+            self.assertEqual(created_action["task"], action["task_id"])
+            self.run_json(
+                "supervisor", "ack", root, created_action["action_id"],
+                "worker-thread", "local",
+            )
+
+            for _ in range(11):
+                waiting = self.run_json("supervisor", "next", root)
+                self.assertEqual(waiting["action"], "wait")
+                wait_action = waiting["items"][0]
+                self.assertEqual(wait_action["timeout_ms"], 120000)
+                self.run_json(
+                    "supervisor", "ack", root, wait_action["action_id"],
+                    "same-cursor", "running",
+                )
+
+            inspection = self.run_json("supervisor", "next", root)
+            self.assertEqual(inspection["action"], "notify")
+            self.assertEqual(inspection["items"][0]["kind"], "inspect")
+            inspected = self.run_json(
+                "supervisor", "inspect", root,
+                inspection["items"][0]["action_id"], "running", "idle",
+            )
+            self.assertEqual(inspected["status"], "inspection_reported")
+            self.assertEqual(inspected["conclusion"], "idle_without_progress")
+
     def test_failed_verification_stops_task_and_notifies_supervisor(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -2610,7 +2672,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(failed["task_status"], "stopped")
             self.assertEqual(failed["task_action"], "repair_task")
             self.assertEqual(failed["supervisor_notify"]["thread"], "supervisor-thread")
-            self.assertIn("supervisor-next", failed["supervisor_notify"]["message"])
+            self.assertIn('"supervisor" "start"', failed["supervisor_notify"]["message"])
             state = json.loads(state_path.read_text(encoding="utf-8"))
             task_state = state["tasks"][action["task_id"]]
             self.assertEqual(task_state["status"], "stopped")
@@ -2634,14 +2696,14 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(initialized["contract"], "SUPERVISOR_INIT_V1")
             self.assertEqual(initialized["model"], "gpt-5.6-luna")
             self.assertEqual(initialized["effort"], "medium")
-            self.assertIn("连续 10 轮", initialized["goal_objective"])
+            self.assertIn("没有活动任务时立即结束当前 Goal", initialized["goal_objective"])
             self.assertEqual(initialized["status_document"], str(root / "supervision.md"))
             self.assertIsNone(initialized["preferred_thread"])
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
             self.assertIn("get_goal", initialized["dispatch"])
             self.assertIn("create_goal", initialized["dispatch"])
-            self.assertIn("supervisor-next", initialized["dispatch"])
-            self.assertIn("每个 Goal turn 只执行一次", initialized["dispatch"])
+            self.assertIn('"supervisor" "start"', initialized["dispatch"])
+            self.assertIn("运行期间不得修改 Goal 提示词", initialized["dispatch"])
             self.assertNotIn("runtime_ref", initialized["dispatch"])
             action = self.reserve_one(plan_path, state_path)
 
@@ -2781,7 +2843,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertIn("$sub-thread-goal-worker", resumed["thread_notify"]["message"])
             self.assertIn(create["run"], resumed["thread_notify"]["message"])
             self.assertEqual(resumed["supervisor_notify"]["thread"], "supervisor-thread")
-            self.assertIn("supervisor-next", resumed["supervisor_notify"]["message"])
+            self.assertIn('"supervisor" "start"', resumed["supervisor_notify"]["message"])
             rejected_argv = subprocess.run(
                 [
                     "node", str(CODEX_SCRIPT), "worker", "verify", str(root),
@@ -2819,7 +2881,7 @@ class GoalDagCliTests(unittest.TestCase):
                 worker_receipt["supervisor_notify"]["thread"],
                 "supervisor-thread",
             )
-            self.assertIn("supervisor-next", worker_receipt["supervisor_notify"]["message"])
+            self.assertIn('"supervisor" "start"', worker_receipt["supervisor_notify"]["message"])
             supervision = (root / "supervision.md").read_text(encoding="utf-8")
             self.assertIn("抽离页面状态类型", supervision)
             self.assertIn("result_submitted", supervision)

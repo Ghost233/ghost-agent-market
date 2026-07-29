@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.4.4+codex.20260729165635",
+  "version": "1.4.5+codex.20260729174158",
   "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。",
   "author": {
     "name": "Ghost233",
@@ -29,7 +29,7 @@
   "interface": {
     "displayName": "Ghost Agent Workflow",
     "shortDescription": "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。",
-    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 在原生 Goal 内持续监督最多八个真实 ready 线程。",
+    "longDescription": "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 通过脚本按需启动原生 Goal，监督最多八个真实 ready 线程。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [

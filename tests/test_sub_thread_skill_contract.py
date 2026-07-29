@@ -112,41 +112,41 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         for platform in PLATFORMS:
             supervisor = self.skill(platform, "sub-thread-task-supervisor")
             for required in (
-                "supervisor-next",
-                "supervisor-ack",
+                "supervisor start",
+                "supervisor next",
+                "supervisor ack",
+                "supervisor inspect",
+                "supervisor stop",
                 "action id 是不透明值",
                 "wait_threads",
                 "timeoutMs=120000",
                 "read_thread",
-                "累计十次",
+                "累计十轮",
                 "`latestTurn.status`",
-                "禁止传入 `thread.status.type`",
-                "--limit 8",
+                "禁止传 `thread.status.type`",
+                "一次最多八项",
                 "create_thread",
                 "禁止 `fork_thread`",
-                "main_action",
-                "goal_action",
-                "Planner 或 Planner Reviewer 正常结束不通知 Main",
+                "`kind: main`",
+                "`create`、`wait`、`notify` 或 `stop`",
+                "Planner、Planner Reviewer 正常结束不通知 Main",
                 "不得再次 `owner-sync`",
                 "禁止 Orca",
                 "只有 Supervisor 负责等待",
             ):
                 self.assertIn(required, supervisor)
-            self.assertIn("不得调用低层 `supervisor-record`", supervisor)
-            self.assertIn("owner_sync_required", supervisor)
+            self.assertIn("不得调用内部 `supervisor-next`", supervisor)
+            self.assertIn("`supervisor-record`", supervisor)
             self.assertIn("supervisor-resume", self.skill(platform, "sub-thread-coordination"))
-            self.assertIn("Supervisor 不创建或复用线程", supervisor)
+            self.assertIn("Supervisor 不创建或复用执行线程", supervisor)
             self.assertIn("独立 worktree", supervisor)
-            self.assertIn("Main 不负责重新唤醒 Supervisor", supervisor)
-            self.assertIn("同一 `task/attempt`", supervisor)
             self.assertIn(".ghost-agent-workflow", supervisor)
             self.assertNotIn("插件缓存", supervisor)
             self.assertNotIn("runtime_ref", supervisor)
             self.assertIn("上下文压缩或恢复后", supervisor)
-            self.assertIn("`goal_objective`", supervisor)
             self.assertIn("`status_document`", supervisor)
-            self.assertIn("仍有未完成任务", supervisor)
-            self.assertIn("所有 action 为空", supervisor)
+            self.assertIn("禁止 `unknown`", supervisor)
+            self.assertIn("没有活动任务时立即结束当前 Goal", supervisor)
             coordinator = self.skill(platform, "sub-thread-coordination")
             self.assertIn("`thread_notify`", coordinator)
             self.assertIn("`supervisor_notify`", coordinator)
@@ -155,17 +155,17 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         codex = self.skill("codex", "sub-thread-task-supervisor")
         self.assertIn("调用 `get_goal`", codex)
         self.assertIn("调用 `create_goal`", codex)
-        self.assertIn("Goal active", codex)
-        self.assertIn("旧 Goal 已 complete", codex)
+        self.assertIn("同一时间不得存在两个 Supervisor Goal", codex)
+        self.assertIn("禁止修改提示词或 objective", codex)
         self.assertIn("`update_goal(status=complete)`", codex)
-        self.assertIn("已无 active 任务", codex)
+        self.assertIn("没有 active 监控动作", codex)
         self.assertNotIn("runtime_ref", codex)
 
         for platform in ("claude", "kimi"):
             supervisor = self.skill(platform, "sub-thread-task-supervisor")
             self.assertIn("不提供 Codex 原生 Goal 工具", supervisor)
             self.assertIn("持续监督 turn", supervisor)
-            self.assertIn("`goal_action: stop`", supervisor)
+            self.assertIn("`supervisor stop`", supervisor)
 
     def test_dag_and_owner_worktrees_are_script_owned(self) -> None:
         for platform in PLATFORMS:

@@ -65,6 +65,7 @@ const SUPERVISOR_CONTROL_TASKS = new Set(["planner", "planner-reviewer"]);
 const SUPERVISOR_WAIT_TIMEOUT_MS = 120_000;
 const SUPERVISOR_INSPECTION_WAIT_LIMIT = 10;
 const SUPERVISOR_INSPECTION_TURN_LIMIT = 3;
+const SUPERVISOR_GOAL_OBJECTIVE = "持续监督当前项目 .ghost-agent-workflow 中由 Main 通过脚本登记的活动任务。按脚本返回的动作创建、等待和检查线程；线程结束后通知 Main 验收。不得读取或推断完整 DAG，不处理业务内容，不自行修改任务状态。没有活动任务时立即结束当前 Goal。";
 
 type WorkflowDefinitionV1 = {
   contract: "WORKFLOW_V1";
@@ -12734,16 +12735,8 @@ function supervisionDocumentPath(goalDirectory: string): string {
   return join(goalDirectory, "supervision.md");
 }
 
-function supervisorGoalObjective(goal: GoalContract): string {
-  return [
-    `监督 DAG Goal ${goal.goal_id}（${compactThreadSummary(goal.objective)}）`,
-    "跟踪 Main 通过 runtime 登记的 Planner、Planner Reviewer、Owner 与 Implementation Review",
-    "接收执行线程的主动结束通知",
-    `每次最多等待 ${SUPERVISOR_WAIT_TIMEOUT_MS / 1_000} 秒`,
-    `连续 ${SUPERVISOR_INSPECTION_WAIT_LIMIT} 轮无 cursor 变化时深入检查线程并把脚本结论交给 Main`,
-    "仅在 runtime 返回 goal_action=continue 时保持本次 Goal active",
-    "runtime 返回 goal_action=stop 表示没有 active 任务，立即结束本次 Goal；后续新任务到来时重新创建 Goal",
-  ].join("；");
+function supervisorGoalObjective(_goal: GoalContract): string {
+  return SUPERVISOR_GOAL_OBJECTIVE;
 }
 
 function markdownTableCell(value: string): string {
@@ -13024,19 +13017,6 @@ function supervisorControlAttempt(
 }
 
 function supervisorMainResumeCommand(goalDirectory: string): string[] {
-  if (existsSync(dagWorktreesPath(goalDirectory))) {
-    const worktrees = readDagWorktrees(goalDirectory);
-    const developmentKey = developmentKeyFromDagBranch(worktrees.dag.branch) ??
-      fail(`invalid DAG integration branch: ${worktrees.dag.branch}`);
-    return [
-      "node",
-      fileURLToPath(import.meta.url),
-      "workflow",
-      "start-dag",
-      worktrees.dag.path,
-      developmentKey,
-    ];
-  }
   return ["node", fileURLToPath(import.meta.url), "workflow", "step", goalDirectory];
 }
 
@@ -13590,6 +13570,143 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     };
   }
   process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+type SupervisorPublicAction = "create" | "wait" | "notify" | "stop";
+
+function supervisorPayloadItems(
+  payload: Record<string, unknown>,
+  key: "create" | "wait" | "stalled" | "notify",
+): Record<string, unknown>[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) fail(`Supervisor payload ${key} must be an array`);
+  return value.map((item, index) => requireRecord(item, `Supervisor payload ${key}[${index}]`));
+}
+
+function publicSupervisorProjection(payload: Record<string, unknown>): Record<string, unknown> {
+  const main = requireRecord(payload.main, "Supervisor payload main");
+  const mainAction = payload.main_action === undefined
+    ? null
+    : requireRecord(payload.main_action, "Supervisor payload main_action");
+  const terminal = supervisorPayloadItems(payload, "notify");
+  const stalled = supervisorPayloadItems(payload, "stalled");
+  const create = supervisorPayloadItems(payload, "create");
+  const wait = supervisorPayloadItems(payload, "wait");
+  let action: SupervisorPublicAction;
+  let items: Record<string, unknown>[];
+  if (mainAction !== null) {
+    action = "notify";
+    items = [{ kind: "main", ...mainAction }];
+  } else if (terminal.length > 0) {
+    action = "notify";
+    items = terminal.map((item) => ({ kind: "terminal", ...item }));
+  } else if (stalled.length > 0) {
+    action = "notify";
+    items = stalled.map((item) => ({ kind: "inspect", ...item }));
+  } else if (create.length > 0) {
+    action = "create";
+    items = create;
+  } else if (wait.length > 0) {
+    action = "wait";
+    items = wait;
+  } else {
+    if (payload.goal_action !== "stop") {
+      fail("Supervisor runtime did not return a finite action");
+    }
+    action = "stop";
+    items = [];
+  }
+  return {
+    contract: "SUPERVISOR_ACTION_V1",
+    action,
+    main,
+    items,
+  };
+}
+
+function supervisorPublicProjection(goalDirectoryArgument: string): Record<string, unknown> {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const payload = runSelfJson([
+    "supervisor-next",
+    goalDirectory,
+    "--limit",
+    String(MAX_PARALLEL_THREADS),
+  ]);
+  return publicSupervisorProjection(payload);
+}
+
+function supervisorStartFacadeCommand(
+  goalDirectoryArgument: string,
+  objectiveArgument: string,
+): void {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const objective = requireString(objectiveArgument, "Supervisor objective");
+  if (objective !== SUPERVISOR_GOAL_OBJECTIVE) {
+    fail("Supervisor objective must equal the runtime-provided fixed objective");
+  }
+  const goalStatePath = join(goalDirectory, "goal-state.json");
+  const completed = existsSync(goalStatePath) &&
+    requireRecord(readJson(goalStatePath), "Supervisor goal state").status === "completed";
+  process.stdout.write(`${JSON.stringify({
+    contract: "SUPERVISOR_START_V1",
+    action: completed ? "stop" : "start",
+    goal_objective: SUPERVISOR_GOAL_OBJECTIVE,
+    status_document: refreshSupervisionDocument(goalDirectory),
+  })}\n`);
+}
+
+function supervisorNextFacadeCommand(goalDirectoryArgument: string): void {
+  process.stdout.write(`${JSON.stringify(supervisorPublicProjection(goalDirectoryArgument))}\n`);
+}
+
+function supervisorStopFacadeCommand(goalDirectoryArgument: string): void {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const payload = runSelfJson([
+    "supervisor-next",
+    goalDirectory,
+    "--limit",
+    String(MAX_PARALLEL_THREADS),
+  ]);
+  const projection = publicSupervisorProjection(payload);
+  const onlyMainNotification = projection.action === "notify" &&
+    (projection.items as Record<string, unknown>[]).length > 0 &&
+    (projection.items as Record<string, unknown>[]).every((item) => item.kind === "main");
+  if (projection.action !== "stop" && !onlyMainNotification) {
+    fail(`Supervisor still has active work: ${String(projection.action)}`);
+  }
+  process.stdout.write(`${JSON.stringify({
+    contract: "SUPERVISOR_STOP_V1",
+    action: "stop",
+    status: "confirmed",
+    status_document: refreshSupervisionDocument(goalDirectory),
+  })}\n`);
+}
+
+function supervisorAckFacadeCommand(
+  goalDirectoryArgument: string,
+  actionIdArgument: string,
+  args: string[],
+): void {
+  if (parseSupervisorActionId(actionIdArgument).kind === "stalled") {
+    fail("stalled actions must use supervisor inspect");
+  }
+  supervisorAckCommand(goalDirectoryArgument, actionIdArgument, args);
+}
+
+function supervisorInspectFacadeCommand(
+  goalDirectoryArgument: string,
+  actionIdArgument: string,
+  latestTurnStatusArgument: string,
+  threadStatusArgument: string,
+): void {
+  if (parseSupervisorActionId(actionIdArgument).kind !== "stalled") {
+    fail("supervisor inspect requires an inspect action");
+  }
+  supervisorAckCommand(
+    goalDirectoryArgument,
+    actionIdArgument,
+    [latestTurnStatusArgument, threadStatusArgument],
+  );
 }
 
 function supervisorRecordCommand(
@@ -16054,7 +16171,6 @@ function workerVerifyCommand(
         result_ref: finished.result_ref,
       },
       supervisorRoute,
-      "failed",
     ))}\n`);
     return;
   }
@@ -16088,7 +16204,6 @@ function workerReceiptWithSupervisor(
   goalDirectory: string,
   receipt: Record<string, unknown>,
   route: { thread: string; host: string } | null,
-  status: string,
 ): Record<string, unknown> {
   refreshSupervisionDocument(goalDirectory);
   if (route === null) return receipt;
@@ -16096,7 +16211,7 @@ function workerReceiptWithSupervisor(
     ...receipt,
     supervisor_notify: {
       ...route,
-      message: `执行线程已通过脚本提交 ${status}；请按当前 goal_action 模式启动或复用本批监督，并立即运行 supervisor-next。`,
+      message: supervisorDispatchPrompt(goalDirectory),
     },
   };
 }
@@ -16157,7 +16272,6 @@ function workerOutcomeCommand(
     run.goalDirectory,
     receipt,
     supervisorRoute,
-    status,
   ))}\n`);
 }
 
@@ -16215,7 +16329,6 @@ function workerScopeRequestCommand(
     run.goalDirectory,
     receipt,
     supervisorRoute,
-    "needs_repair",
   ))}\n`);
 }
 
@@ -16236,7 +16349,6 @@ function workerSubgraphCommand(goalDirectoryArgument: string, runIdArgument: str
     run.goalDirectory,
     receipt,
     supervisorRoute,
-    "subgraph_requested",
   ))}\n`);
 }
 
@@ -17618,17 +17730,17 @@ function supervisorDispatchPrompt(goalDirectory: string): string {
   const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
   const goalObjective = supervisorGoalObjective(goal);
   const statusDocument = supervisionDocumentPath(goalDirectory);
-  const nextCommand = [
+  const startCommand = [
     "node",
     fileURLToPath(import.meta.url),
-    "supervisor-next",
+    "supervisor",
+    "start",
     goalDirectory,
-    "--limit",
-    String(MAX_PARALLEL_THREADS),
+    goalObjective,
   ].map((value) => JSON.stringify(value)).join(" ");
   const platformInstruction = EXPECTED_PLATFORM === "codex"
-    ? `每次收到 dispatch 先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，objective 必须逐字使用：${goalObjective}。不得概括或改写。每个 Goal turn 只执行一次 supervisor-next 投影；只按脚本 goal_action 决定保持或结束 Goal。`
-    : "本平台没有 Codex 原生 Goal；只在脚本 goal_action=continue 时保持监督循环，goal_action=stop 时结束当前监督 turn。";
+    ? `先执行 supervisor start。它返回 stop 时不得创建 Goal；返回 start 时先用 get_goal 确认不存在另一个未完成 Supervisor Goal，再调用 create_goal，objective 必须逐字使用：${goalObjective}。不得同时存在两个 Supervisor Goal。运行期间不得修改 Goal 提示词；若必须更换，先 complete 旧 Goal 并确认停止，再创建新 Goal。`
+    : "本平台没有 Codex 原生 Goal；supervisor start 返回 start 时开始监督 turn，返回 stop 时结束且不启动新 turn。";
   return [
     "$sub-thread-task-supervisor",
     "",
@@ -17638,7 +17750,7 @@ function supervisorDispatchPrompt(goalDirectory: string): string {
     `当前目标文档：${statusDocument}`,
     "",
     platformInstruction,
-    `立即运行：${nextCommand}`,
+    `立即运行：${startCommand}`,
     "只通过脚本处理这个项目 .ghost-agent-workflow 下的 Goal 状态；不要读取原始 JSON、业务文件或其他目录。",
     "按 Skill 使用宿主原生线程工具持续监督；禁止 Orca runtime 和 orchestration skill。",
   ].join("\n");
@@ -18465,6 +18577,21 @@ function main(argv: string[]): void {
   if (command === "thread-registry" && args.length >= 2) {
     return threadRegistryCommand(args[0], args.slice(1));
   }
+  if (command === "supervisor" && args[0] === "start" && args.length === 3) {
+    return supervisorStartFacadeCommand(args[1], args[2]);
+  }
+  if (command === "supervisor" && args[0] === "next" && args.length === 2) {
+    return supervisorNextFacadeCommand(args[1]);
+  }
+  if (command === "supervisor" && args[0] === "ack" && args.length >= 3) {
+    return supervisorAckFacadeCommand(args[1], args[2], args.slice(3));
+  }
+  if (command === "supervisor" && args[0] === "inspect" && args.length === 5) {
+    return supervisorInspectFacadeCommand(args[1], args[2], args[3], args[4]);
+  }
+  if (command === "supervisor" && args[0] === "stop" && args.length === 2) {
+    return supervisorStopFacadeCommand(args[1]);
+  }
   if (command === "supervisor-next" && (
     args.length === 1 || (args.length === 3 && args[1] === "--limit")
   )) {
@@ -18525,7 +18652,7 @@ function main(argv: string[]): void {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow lifecycle-contract | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | supervisor <start|next|ack|inspect|stop> ... | workflow lifecycle-contract | internal runtime commands",
   );
 }
 

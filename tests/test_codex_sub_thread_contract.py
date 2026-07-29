@@ -53,8 +53,11 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for requirement in (
             "长期 Owner 线程",
-            "supervisor-next",
-            "supervisor-ack",
+            "supervisor start",
+            "supervisor next",
+            "supervisor ack",
+            "supervisor inspect",
+            "supervisor stop",
             "gpt-5.6-luna/medium",
             "gpt-5.6-sol/high",
             "workflow start-dag",
@@ -66,13 +69,13 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("$sub-thread-goal-worker", self.coordinator)
         self.assertIn("$parallel-task-planner", self.coordinator)
         self.assertIn("$sub-thread-task-supervisor", self.coordinator)
-        self.assertIn("禁止读取 Plan、State、Registry、Result", self.supervisor)
+        self.assertIn("禁止读取 Plan、State、Registry、Binding、Result", self.supervisor)
         self.assertIn("脚本 JSON 只作机器收据", self.coordinator)
         self.assertIn("workflow supervisor-init", self.coordinator)
         self.assertIn("Supervisor 必须早于 Planner", self.coordinator_reference)
         self.assertIn("Main 自己绝不调用 `wait_threads`", self.coordinator)
-        self.assertIn("Supervisor 不创建或复用线程", self.supervisor)
-        self.assertIn("main_action", self.supervisor)
+        self.assertIn("Supervisor 不创建或复用执行线程", self.supervisor)
+        self.assertIn("`kind: main`", self.supervisor)
         self.assertIn("独立 worktree", self.supervisor)
         self.assertIn("禁止 Orca", self.supervisor)
         self.assertIn("Main 不调用 `wait_threads`", self.coordinator)
@@ -80,28 +83,26 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("完全不创建、切换、合并或删除 Git 分支/worktree", self.coordinator)
         self.assertIn("删除全部 Owner/DAG worktree 与分支", self.coordinator)
         self.assertIn(".ghost-agent-workflow/result.json", self.goal_contract)
-        self.assertIn("supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap", self.coordinator)
+        self.assertIn("supervisor ack <goal-dir> <action-id> <thread> <host> bootstrap", self.coordinator)
         self.assertIn("禁止 `fork_thread`", self.coordinator)
         self.assertIn("最多 100 字", self.worker)
         self.assertIn("用户可见文本不显示 `result_ref`", self.supervisor)
         self.assertIn("调用 `get_goal`", self.supervisor)
         self.assertIn("调用 `create_goal`", self.supervisor)
-        self.assertIn("每个 Goal turn 只执行一次 `supervisor-next`", self.supervisor)
-        self.assertIn("同一 `task/attempt`", self.supervisor)
-        self.assertIn("禁止因此调用 `update_goal(status=blocked)`", self.supervisor)
+        self.assertIn("只重新执行 `supervisor next`", self.supervisor)
+        self.assertIn("同一时间不得存在两个 Supervisor Goal", self.supervisor)
+        self.assertIn("只有同一个真实 runtime/权限阻塞", self.supervisor)
         self.assertIn("`latestTurn.status`", self.supervisor)
-        self.assertIn("禁止传入 `thread.status.type`", self.supervisor)
-        self.assertIn("所有 wait action 都必须成功 ack", self.supervisor)
+        self.assertIn("禁止传 `thread.status.type`", self.supervisor)
+        self.assertIn("全部 ack 成功后", self.supervisor)
         self.assertIn("timeoutMs=120000", self.supervisor)
-        self.assertIn("累计十次", self.supervisor)
+        self.assertIn("累计十轮", self.supervisor)
         self.assertIn("read_thread", self.supervisor)
-        self.assertIn("`goal_objective`", self.supervisor)
         self.assertIn("`status_document`", self.supervisor)
         self.assertIn("supervisor_notify", self.worker)
         self.assertIn("send_message_to_thread", self.worker)
         self.assertIn("supervisor-resume", self.coordinator)
-        self.assertIn("Main 不负责重新唤醒 Supervisor", self.supervisor)
-        self.assertIn("只关注 `<goal-dir>` 下 `.ghost-agent-workflow`", self.supervisor)
+        self.assertIn("当前项目 `.ghost-agent-workflow`", self.supervisor)
         self.assertNotIn("插件缓存", self.supervisor)
         self.assertNotIn("runtime_ref", self.supervisor)
         self.assertNotIn("runtime_ref", self.coordinator)
@@ -174,18 +175,19 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("codex_native", combined)
         self.assertIn("Quick 不创建原生 Goal", self.goal_contract)
         self.assertIn("不映射为 blocked", self.goal_contract)
-        self.assertIn("Supervisor 必须在自己的线程内创建原生 Goal", self.coordinator)
-        self.assertIn("Supervisor 独立创建自己的原生 Goal", self.goal_contract)
-        self.assertIn("goal_action", self.goal_contract)
-        self.assertIn("无 active 任务时为 `stop`", self.goal_contract)
-        self.assertIn("旧 Goal 已 complete", self.supervisor)
+        self.assertIn("Supervisor 在自己的线程内按需创建原生 Goal", self.coordinator)
+        self.assertIn("按需创建原生 Goal", self.goal_contract)
+        self.assertIn("create|wait|notify|stop", self.goal_contract)
+        self.assertIn("没有 active 任务时才允许 `stop`", self.goal_contract)
+        self.assertIn("同一时间不得存在两个 Supervisor Goal", self.supervisor)
         self.assertIn("update_goal(status=complete)", self.supervisor)
 
     def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
         self.assertIn("聊天不是状态源", combined)
-        self.assertIn("workflow start-dag <当前 DAG worktree> <development-key>", combined)
-        self.assertIn("supervisor-next <goal-dir> --limit 8", combined)
+        self.assertIn("workflow start-dag <当前 DAG worktree> <相同 development-key>", combined)
+        self.assertIn("workflow step <goal-dir>", combined)
+        self.assertIn("supervisor next <goal-dir>", combined)
         self.assertIn("成功验收后立即删除当前临时文件", combined)
 
     def test_expected_skill_directories_are_present(self) -> None:
@@ -304,7 +306,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.4\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.5\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

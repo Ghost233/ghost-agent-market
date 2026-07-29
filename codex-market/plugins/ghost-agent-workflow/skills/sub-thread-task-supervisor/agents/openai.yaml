@@ -1,7 +1,7 @@
 interface:
   display_name: "DAG 任务监督"
-  short_description: "在原生 Goal 内静默监督 Main 已登记的最多八个执行线程。"
-  default_prompt: "使用 $sub-thread-task-supervisor，按脚本 action 静默等待并通知当前 DAG 执行线程。"
+  short_description: "按需启动原生 Goal，脚本化监督最多八个执行线程。"
+  default_prompt: "使用 $sub-thread-task-supervisor，按脚本有限 action 静默监督当前 DAG 执行线程。"
 
 policy:
   allow_implicit_invocation: false

@@ -8,7 +8,7 @@ Codex 推荐入口只有这一行：
 使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
 ```
 
-业务 DAG 默认使用 `standalone_thread`，不要求用户启动原生 `/goal`。启动前必须由用户明确选择模式；Quick 由 Main 串行执行 Owner 与显式 Review；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，Supervisor 使用 `gpt-5.6-luna/medium` 并在自己的原生 Goal 内持续监督最多 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
+业务 DAG 默认使用 `standalone_thread`，不要求用户启动原生 `/goal`。启动前必须由用户明确选择模式；Quick 由 Main 串行执行 Owner 与显式 Review；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，Supervisor 使用 `gpt-5.6-luna/medium` 和脚本驱动的按需原生 Goal 监督最多 8 个 ready 线程，没有 active 任务就 complete。当前 Goal 建立后统一用 `workflow step <goal-dir>` 恢复。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
 
 DAG 使用 `workflow start-dag <workspace> <development-key>`，由脚本生成 `ga/<key>/main` 与 `ga/<key>/<owner_id>`。原始工作区不切换分支并允许并行提交；最终合并基于原始分支最新 HEAD，冲突时不清理任何现场。
 

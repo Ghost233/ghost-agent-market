@@ -54,7 +54,7 @@ codexManifest.keywords = [...new Set([
   "task-supervisor",
 ])];
 codexManifest.interface.shortDescription = "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。";
-codexManifest.interface.longDescription = "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 在原生 Goal 内持续监督最多八个真实 ready 线程。";
+codexManifest.interface.longDescription = "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 通过脚本按需启动原生 Goal，监督最多八个真实 ready 线程。";
 codexManifest.interface.defaultPrompt[0] = "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。";
 if (!codexManifest.interface.defaultPrompt.some((prompt) => prompt.includes("$setup-sub-thread-workflow"))) {
   codexManifest.interface.defaultPrompt.push("使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与八路并行配置。");
@@ -141,17 +141,17 @@ for (const relativePath of [
 const supervisorMetadata = [
   {
     path: "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-task-supervisor/agents/openai.yaml",
-    shortDescription: "在原生 Goal 内静默监督 Main 已登记的最多八个执行线程。",
+    shortDescription: "按需启动原生 Goal，脚本化监督最多八个执行线程。",
   },
   {
     path: "claude-code-market/skills/sub-thread-task-supervisor/agents/openai.yaml",
-    shortDescription: "在宿主长期线程内静默监督 Main 已登记的最多八个执行线程。",
+    shortDescription: "按需启动监督 turn，脚本化监督最多八个执行线程。",
   },
 ];
 for (const { path: relativePath, shortDescription } of supervisorMetadata) {
   const absolutePath = join(root, relativePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `interface:\n  display_name: "DAG 任务监督"\n  short_description: "${shortDescription}"\n  default_prompt: "使用 $sub-thread-task-supervisor，按脚本 action 静默等待并通知当前 DAG 执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`, "utf8");
+  writeFileSync(absolutePath, `interface:\n  display_name: "DAG 任务监督"\n  short_description: "${shortDescription}"\n  default_prompt: "使用 $sub-thread-task-supervisor，按脚本有限 action 静默监督当前 DAG 执行线程。"\n\npolicy:\n  allow_implicit_invocation: false\n`, "utf8");
 }
 
 process.stdout.write(

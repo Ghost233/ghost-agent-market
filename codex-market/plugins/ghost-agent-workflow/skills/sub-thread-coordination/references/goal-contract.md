@@ -4,7 +4,7 @@
 
 Workflow 与 Task 的状态、停止原因和下一处理动作统一遵循 [生命周期契约](lifecycle-contract.md)。调度动作、Owner 执行阶段、线程宿主状态和 Worker 结果不得混入生命周期状态。
 
-Codex Quick 不创建原生 Goal。业务 DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。DAG Supervisor 独立创建自己的原生 Goal，只负责持续轮询 `.ghost-agent-workflow`；等待 Owner、Review 或 Main 不映射为 blocked。
+Codex Quick 不创建原生 Goal。业务 DAG 默认使用 `standalone_thread`；用户明确启动原生 Goal 时才使用 `codex_native`，并在本地 `result.json` 完成后桥接。DAG Supervisor 在自己的线程内按脚本状态按需创建原生 Goal，只轮询 `.ghost-agent-workflow`；等待 Owner、Review 或 Main 不映射为 blocked。
 
 ## Quick
 
@@ -17,9 +17,9 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 → workflow start-dag <workspace> <development-key> 创建 ga/<key>/main 并返回 handoff
 → 宿主以该分支创建 DAG worktree 和新 Main
 → 新 Main 用相同 key 再次 start-dag，认领分支并创建 Goal
-→ 新 Main 登记自身并立即创建 Supervisor 原生 Goal
+→ 新 Main 登记自身并立即创建 Supervisor 线程
 → Main 用 create_thread 创建 Planner、Planner Reviewer 及后续执行线程
-→ Supervisor Goal 持续等待 Main 已登记的线程并通知 Main
+→ Supervisor 有 active 任务时按需创建 Goal，等待已登记线程并通知 Main
 → 原始会话停止
 ```
 
@@ -27,9 +27,11 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 
 Supervisor 必须早于 Planner 启动；Main 创建线程但不等待。除 Owner 使用专属分支外，Supervisor、Planner 与 Reviewer 都从 DAG 分支创建独立干净 worktree，禁止 fork Main；它们只通过绝对 Goal 目录和领域脚本访问共享状态。Planner 只生成最小顶层图；初始 child 被拒绝。runtime 必须先检查 required effects、schema、依赖和固定 gate，Planner Reviewer 才审查最终 Plan digest。父节点不能直接完成时再由 Composite Planner 展开子图；Implementation Review 是显式 DAG 节点。
 
-Supervisor 的普通 wait 固定为 120 秒，回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。连续十轮无 cursor 变化后才允许一次 `read_thread` 深入检查，并由脚本根据 `latestTurn.status + thread.status.type` 生成有限结论交给 Main。每次 `supervisor-next` 还返回有限 `goal_action`：有 active create/wait 时为 `continue`，无 active 任务时为 `stop`；Supervisor 只按该值保持或结束本轮原生 Goal。
+Supervisor 的普通 wait 固定为 120 秒，回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。连续十轮无 cursor 变化后才允许一次 `read_thread` 深入检查，并由 `supervisor inspect` 根据 `latestTurn.status + thread.status.type` 生成有限结论交给 Main。公开的 `supervisor next` 只返回 `create|wait|notify|stop`；`stop` 必须再由 `supervisor stop` 确认后 complete 当前原生 Goal。
 
-任务未完成时 `supervisor-next` 必须返回 `create`、`wait`、`stalled`、`notify` 或 `main_action` 中至少一种确定性动作。running task 已有 Result 时交给 Main 执行 `workflow step/owner-finish`；没有 Result 且原线程为 idle、watch 缺失或旧 `attention_notified` 时，重新派发到原线程。只有任务全部完成或 Goal 已非 active 才允许空 action。
+任务未完成时 `supervisor next` 必须返回 `create`、`wait` 或 `notify` 中一种确定性动作。running task 已有 Result 时通过 `notify` 交给 Main 执行 `workflow step/owner-finish`；没有 Result且原线程为 idle、watch 缺失或旧 `attention_notified` 时，重新派发到原线程。只有没有 active 任务时才允许 `stop`，禁止 `unknown`。
+
+`workflow start-dag` 只用于首次创建或认领 DAG worktree。当前 Goal 已存在后，Main 的恢复、Owner 同步后的继续和 Supervisor 的 Main 通知统一使用 `workflow step <goal-dir>`，不得再次传递 DAG worktree 绝对路径调用 `start-dag`。
 
 ## Owner 集成
 
