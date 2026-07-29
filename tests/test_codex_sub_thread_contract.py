@@ -92,6 +92,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("`latestTurn.status`", self.supervisor)
         self.assertIn("禁止传入 `thread.status.type`", self.supervisor)
         self.assertIn("所有 wait action 都必须成功 ack", self.supervisor)
+        self.assertIn("timeoutMs=120000", self.supervisor)
+        self.assertIn("累计十次", self.supervisor)
+        self.assertIn("read_thread", self.supervisor)
+        self.assertIn("`goal_objective`", self.supervisor)
+        self.assertIn("`status_document`", self.supervisor)
+        self.assertIn("supervisor_notify", self.worker)
+        self.assertIn("send_message_to_thread", self.worker)
+        self.assertIn("supervisor-resume", self.coordinator)
         self.assertIn("Main 不负责重新唤醒 Supervisor", self.supervisor)
         self.assertIn("只关注 `<goal-dir>` 下 `.ghost-agent-workflow`", self.supervisor)
         self.assertNotIn("插件缓存", self.supervisor)
@@ -292,7 +300,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.2\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.3\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

@@ -2230,6 +2230,15 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertEqual(initialized["model"], "gpt-supervisor-live")
             self.assertEqual(initialized["effort"], "low")
+            self.assertIn("连续 10 轮", initialized["goal_objective"])
+            self.assertEqual(
+                initialized["status_document"],
+                str(workflow_dir / "supervision.md"),
+            )
+            self.assertIn(
+                "执行并交付：用最小 DAG 完成状态模块调整",
+                (workflow_dir / "supervision.md").read_text(encoding="utf-8"),
+            )
             self.assertIsNone(initialized["preferred_thread"])
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
             self.assertIn("get_goal", initialized["dispatch"])
@@ -2434,14 +2443,39 @@ class GoalDagCliTests(unittest.TestCase):
                 "supervisor-ack", workflow_dir, planner["action_id"],
                 "planner-thread-old", "local",
             )
-            for _ in range(4):
+            for _ in range(11):
+                waiting = self.run_json("supervisor-next", workflow_dir)["wait"][0]
+                self.assertEqual(waiting["timeout_ms"], 120000)
+                self.run_json(
+                    "supervisor-ack", workflow_dir, waiting["action_id"],
+                    "same-cursor", "running",
+                )
+            stalled = self.run_json("supervisor-next", workflow_dir)["stalled"][0]
+            self.assertEqual(stalled["unchanged_waits"], 10)
+            self.assertEqual(stalled["inspection_turn_limit"], 3)
+            inspected = self.run_json(
+                "supervisor-ack", workflow_dir, stalled["action_id"],
+                "running", "active",
+            )
+            self.assertEqual(inspected["status"], "inspection_reported")
+            self.assertEqual(inspected["conclusion"], "active_without_progress")
+            self.assertIn("请 Main 决定", inspected["report"])
+            resumed = self.run_json(
+                "supervisor-resume", workflow_dir, "planner", 1,
+            )
+            self.assertTrue(resumed["control"])
+            self.assertEqual(resumed["status"], "resumed")
+            for _ in range(10):
                 waiting = self.run_json("supervisor-next", workflow_dir)["wait"][0]
                 self.run_json(
                     "supervisor-ack", workflow_dir, waiting["action_id"],
                     "same-cursor", "running",
                 )
             stalled = self.run_json("supervisor-next", workflow_dir)["stalled"][0]
-            self.run_json("supervisor-ack", workflow_dir, stalled["action_id"])
+            self.run_json(
+                "supervisor-ack", workflow_dir, stalled["action_id"],
+                "running", "active",
+            )
             recovered = self.run_json(
                 "supervisor-recover", workflow_dir, "planner", 1, "用户确认关闭旧规划线程",
             )
@@ -2506,6 +2540,8 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(initialized["contract"], "SUPERVISOR_INIT_V1")
             self.assertEqual(initialized["model"], "gpt-5.6-luna")
             self.assertEqual(initialized["effort"], "medium")
+            self.assertIn("连续 10 轮", initialized["goal_objective"])
+            self.assertEqual(initialized["status_document"], str(root / "supervision.md"))
             self.assertIsNone(initialized["preferred_thread"])
             self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
             self.assertIn("get_goal", initialized["dispatch"])
@@ -2591,6 +2627,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(wait_action["thread"], "worker-thread")
             self.assertEqual(wait_action["cursor"], None)
             self.assertEqual(wait_action["run"], create["run"])
+            self.assertEqual(wait_action["timeout_ms"], 120000)
 
             observed = self.run_json(
                 "supervisor-ack",
@@ -2639,6 +2676,16 @@ class GoalDagCliTests(unittest.TestCase):
             self.run_json(
                 "worker", "verify", root, create["run"], "state-unit",
             )
+            (root / "routes.json").write_text(
+                json.dumps({
+                    "contract": "WORKFLOW_ROUTES_V1",
+                    "main": {"thread": "main-thread", "host": "local"},
+                    "planner": None,
+                    "planner_reviewer": None,
+                    "supervisor": {"thread": "supervisor-thread", "host": "local"},
+                }, indent=2) + "\n",
+                encoding="utf-8",
+            )
             submitted = subprocess.run(
                 ["node", str(CODEX_SCRIPT), "worker-complete", str(root), create["run"]],
                 input="完成当前任务并通过定向验证",
@@ -2647,6 +2694,15 @@ class GoalDagCliTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(submitted.returncode, 0, submitted.stderr)
+            worker_receipt = json.loads(submitted.stdout)
+            self.assertEqual(
+                worker_receipt["supervisor_notify"]["thread"],
+                "supervisor-thread",
+            )
+            self.assertIn("supervisor-next", worker_receipt["supervisor_notify"]["message"])
+            supervision = (root / "supervision.md").read_text(encoding="utf-8")
+            self.assertIn("抽离页面状态类型", supervision)
+            self.assertIn("result_submitted", supervision)
             resumed_wait = self.run_json("supervisor-next", root)["wait"][0]
             self.run_json(
                 "supervisor-ack", root, resumed_wait["action_id"],
@@ -2776,7 +2832,7 @@ class GoalDagCliTests(unittest.TestCase):
                 "supervisor-record", root, "observed", action["task_id"], 1,
                 "cursor-1", "running",
             )
-            for expected in range(1, 4):
+            for expected in range(1, 11):
                 observed = self.run_json(
                     "supervisor-record", root, "observed", action["task_id"], 1,
                     "cursor-1", "running",
@@ -2785,9 +2841,15 @@ class GoalDagCliTests(unittest.TestCase):
             stalled = self.run_json("supervisor-next", root)
             self.assertEqual(stalled["wait"], [])
             self.assertEqual(stalled["stalled"][0]["task"], action["task_id"])
-            self.run_json(
-                "supervisor-record", root, "stalled-notified", action["task_id"], 1
+            self.assertEqual(stalled["stalled"][0]["unchanged_waits"], 10)
+            self.assertEqual(stalled["stalled"][0]["inspection_turn_limit"], 3)
+            inspected = self.run_json(
+                "supervisor-ack", root, stalled["stalled"][0]["action_id"],
+                "running", "idle",
             )
+            self.assertEqual(inspected["status"], "inspection_reported")
+            self.assertEqual(inspected["conclusion"], "idle_without_progress")
+            self.assertIn("连续 10 轮", inspected["report"])
             quiet = self.run_json("supervisor-next", root)
             self.assertEqual(quiet["wait"], [])
             self.assertEqual(quiet["stalled"], [])

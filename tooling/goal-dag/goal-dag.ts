@@ -62,6 +62,9 @@ type NativeSyncStatus = "not_started" | "not_required" | "pending" | "confirmed"
 type WorkflowMode = "quick" | "dag";
 
 const SUPERVISOR_CONTROL_TASKS = new Set(["planner", "planner-reviewer"]);
+const SUPERVISOR_WAIT_TIMEOUT_MS = 120_000;
+const SUPERVISOR_INSPECTION_WAIT_LIMIT = 10;
+const SUPERVISOR_INSPECTION_TURN_LIMIT = 3;
 
 type WorkflowDefinitionV1 = {
   contract: "WORKFLOW_V1";
@@ -12593,11 +12596,58 @@ const SUPERVISOR_RUNNING_TURN_STATES = new Set([
   "running",
 ]);
 
+const SUPERVISOR_ACTIVE_THREAD_STATES = new Set([
+  "active",
+  "inProgress",
+  "in_progress",
+  "pending",
+  "running",
+  "waiting",
+]);
+
 function normalizeSupervisorWaitStatus(turnStatusArgument: string): string {
   const turnStatus = requireString(turnStatusArgument, "latest turn status");
   if (SUPERVISOR_NOTIFY_STATES.has(turnStatus)) return turnStatus;
   if (SUPERVISOR_RUNNING_TURN_STATES.has(turnStatus)) return "running";
   fail(`latest turn status is invalid: ${turnStatus}`);
+}
+
+function normalizeSupervisorInspection(
+  turnStatusArgument: string,
+  threadStatusArgument: string,
+): { status: string; conclusion: string } {
+  const turnStatus = normalizeSupervisorWaitStatus(turnStatusArgument);
+  const threadStatus = requireString(threadStatusArgument, "thread status type");
+  if (turnStatus !== "running") {
+    return {
+      status: turnStatus,
+      conclusion: turnStatus === "needs_attention" ? "needs_attention" : "thread_ended",
+    };
+  }
+  if (threadStatus === "needs_attention") {
+    return { status: "needs_attention", conclusion: "needs_attention" };
+  }
+  if (SUPERVISOR_TERMINAL_STATES.has(threadStatus)) {
+    return { status: threadStatus, conclusion: "thread_ended" };
+  }
+  if (threadStatus === "idle") {
+    return { status: "stalled", conclusion: "idle_without_progress" };
+  }
+  if (SUPERVISOR_ACTIVE_THREAD_STATES.has(threadStatus)) {
+    return { status: "stalled", conclusion: "active_without_progress" };
+  }
+  fail(`thread status type is invalid: ${threadStatus}`);
+}
+
+function supervisorInspectionReport(title: string, conclusion: string): string {
+  const conclusions: Record<string, string> = {
+    thread_ended: "线程已经结束",
+    needs_attention: "线程正在等待用户处理",
+    active_without_progress: "线程仍在执行，但连续轮询没有 cursor 变化",
+    idle_without_progress: "线程处于 idle，且连续轮询没有 cursor 变化",
+  };
+  const detail = conclusions[conclusion] ?? fail(`inspection conclusion is invalid: ${conclusion}`);
+  return `${title} 已连续 ${SUPERVISOR_INSPECTION_WAIT_LIMIT} 轮无进度；脚本深入检查结论：${detail}。请 Main 决定继续等待、恢复或关闭重建。`;
 }
 
 type SupervisorActionKind = "create" | "wait" | "stalled" | "notify";
@@ -12678,6 +12728,136 @@ function supervisorPaths(goalDirectoryArgument: string): {
     if (!existsSync(path)) fail(`supervisor runtime file is missing: ${path}`);
   }
   return { goalDirectory, planPath, statePath, threadsPath };
+}
+
+function supervisionDocumentPath(goalDirectory: string): string {
+  return join(goalDirectory, "supervision.md");
+}
+
+function supervisorGoalObjective(goal: GoalContract): string {
+  return [
+    `监督 DAG Goal ${goal.goal_id}（${compactThreadSummary(goal.objective)}）`,
+    "跟踪 Main 通过 runtime 登记的 Planner、Planner Reviewer、Owner 与 Implementation Review",
+    "接收执行线程的主动结束通知",
+    `每次最多等待 ${SUPERVISOR_WAIT_TIMEOUT_MS / 1_000} 秒`,
+    `连续 ${SUPERVISOR_INSPECTION_WAIT_LIMIT} 轮无 cursor 变化时深入检查线程并把脚本结论交给 Main`,
+    "仅在 runtime 报告 DAG completed 后结束",
+  ].join("；");
+}
+
+function markdownTableCell(value: string): string {
+  return value.replaceAll("|", "\\|").replace(/[\r\n]+/gu, " ").trim();
+}
+
+function refreshSupervisionDocument(goalDirectoryArgument: string): string {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goalPath = join(goalDirectory, "goal.json");
+  if (!existsSync(goalPath)) fail(`goal.json is missing: ${goalPath}`);
+  const goal = parseGoal(readJson(goalPath));
+  const routesPath = workflowRoutesPath(goalDirectory);
+  const routes = existsSync(routesPath)
+    ? parseWorkflowRoutes(readJson(routesPath))
+    : {
+      contract: "WORKFLOW_ROUTES_V1",
+      main: null,
+      planner: null,
+      planner_reviewer: null,
+      supervisor: null,
+    } as WorkflowRoutesV1;
+  const threadsPath = join(goalDirectory, "threads.json");
+  const registry = existsSync(threadsPath)
+    ? readThreadRegistry(threadsPath, goal.goal_id)
+    : null;
+  const registeredThreads = registry === null
+    ? {}
+    : requireRecord(registry.threads, "thread registry.threads");
+  const threadStatus = (threadId: string): string => {
+    const match = Object.values(registeredThreads).find((value) =>
+      requireRecord(value, "thread registry thread").thread_id === threadId
+    );
+    return match === undefined
+      ? "registered"
+      : requireString(requireRecord(match, "thread registry thread").status, "thread status");
+  };
+  const rows: Array<{
+    role: string;
+    title: string;
+    objective: string;
+    thread: string;
+    status: string;
+    attempt: string;
+  }> = [];
+  const addRoute = (
+    role: "main" | "planner" | "planner_reviewer" | "supervisor",
+    label: string,
+    title: string,
+    objective: string,
+  ): void => {
+    const route = routes[role];
+    if (route === null) return;
+    rows.push({
+      role: label,
+      title,
+      objective,
+      thread: route.thread,
+      status: role === "main" ? "active" : threadStatus(route.thread),
+      attempt: "-",
+    });
+  };
+  const titles = goalThreadTitles(goal);
+  addRoute("main", "Main", titles.main, `执行并交付：${goal.objective}`);
+  addRoute("supervisor", "Supervisor", titles.supervisor, supervisorGoalObjective(goal));
+  addRoute("planner", "Planner", titles.planner, "为当前 Goal 生成最小可执行 DAG");
+  addRoute(
+    "planner_reviewer",
+    "Planner Reviewer",
+    titles.planner_reviewer,
+    "审查 DAG 的并行度、复杂度与拆分粒度",
+  );
+
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  if (existsSync(planPath) && existsSync(statePath)) {
+    const { plan, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+    for (const task of plan.tasks) {
+      const taskState = state.tasks[task.id];
+      if (
+        taskState.attempt === 0 && taskState.executor_id === null &&
+        taskState.result_path === null && taskState.result_ref === null
+      ) continue;
+      const resultSubmitted = taskState.result_path !== null && existsSync(taskState.result_path);
+      rows.push({
+        role: task.role === "review" ? "Implementation Review" : "Owner",
+        title: threadTitle(task),
+        objective: task.task,
+        thread: taskState.executor_id ?? "-",
+        status: resultSubmitted && taskState.status === "running"
+          ? "running / result_submitted"
+          : taskState.status,
+        attempt: String(taskState.attempt),
+      });
+    }
+  }
+
+  const lines = [
+    "# Supervisor 当前目标",
+    "",
+    `- Goal：${goal.goal_id}`,
+    `- 监督目标：${supervisorGoalObjective(goal)}`,
+    `- 更新时间：${new Date().toISOString()}`,
+    "",
+    "| 角色 | 标题 | 明确目标 | Thread | 状态 | Attempt |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows.map((row) =>
+      `| ${markdownTableCell(row.role)} | ${markdownTableCell(row.title)} | ${markdownTableCell(row.objective)} | ${markdownTableCell(row.thread)} | ${markdownTableCell(row.status)} | ${markdownTableCell(row.attempt)} |`
+    ),
+    "",
+    "此文件仅保存当前投影，由 runtime 脚本原子更新；不得由模型编辑。",
+    "",
+  ];
+  const path = supervisionDocumentPath(goalDirectory);
+  writeTextAtomic(path, lines.join("\n"));
+  return path;
 }
 
 function readThreadRegistry(path: string, goalId: string): Record<string, unknown> {
@@ -12938,7 +13118,7 @@ function supervisorControlNext(
         watch.unchanged_waits,
         "control watch.unchanged_waits",
       );
-      if (status === "running" && unchangedWaits >= 3) {
+      if (status === "running" && unchangedWaits >= SUPERVISOR_INSPECTION_WAIT_LIMIT) {
         return {
           kind: "actions",
           payload: {
@@ -12947,6 +13127,7 @@ function supervisorControlNext(
               action_id: supervisorActionId("stalled", taskId, attempt),
               ...compact,
               unchanged_waits: unchangedWaits,
+              inspection_turn_limit: SUPERVISOR_INSPECTION_TURN_LIMIT,
             }],
           },
         };
@@ -12960,6 +13141,7 @@ function supervisorControlNext(
               action_id: supervisorActionId("wait", taskId, attempt),
               ...compact,
               cursor: requireNullableString(thread.cursor, "control thread cursor"),
+              timeout_ms: SUPERVISOR_WAIT_TIMEOUT_MS,
             }],
           },
         };
@@ -13071,6 +13253,7 @@ function supervisorControlNext(
 
 function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: string): void {
   const goalDirectory = resolve(goalDirectoryArgument);
+  refreshSupervisionDocument(goalDirectory);
   const limit = limitArgument === undefined
     ? MAX_PARALLEL_THREADS
     : requireParallelCount(Number(limitArgument), "supervisor limit");
@@ -13227,11 +13410,16 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
         watch.unchanged_waits,
         "thread registry watch.unchanged_waits",
       );
-      if (status === "running" && unchangedWaits >= 3 && stalledActions.length < limit) {
+      if (
+        status === "running" &&
+        unchangedWaits >= SUPERVISOR_INSPECTION_WAIT_LIMIT &&
+        stalledActions.length < limit
+      ) {
         stalledActions.push({
           action_id: supervisorActionId("stalled", taskId, attempt),
           ...compact,
           unchanged_waits: unchangedWaits,
+          inspection_turn_limit: SUPERVISOR_INSPECTION_TURN_LIMIT,
         });
       } else if (status === "running" && waitActions.length < limit) {
         waitActions.push({
@@ -13239,6 +13427,7 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
           ...compact,
           run: taskRunId(taskId, taskState),
           cursor: requireNullableString(thread.cursor, "thread registry thread.cursor"),
+          timeout_ms: SUPERVISOR_WAIT_TIMEOUT_MS,
         });
       } else if (SUPERVISOR_NOTIFY_STATES.has(status) && notifications.length < limit) {
         const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
@@ -13535,23 +13724,38 @@ function supervisorRecordCommand(
     }
 
     if (event === "stalled-notified") {
-      if (args.length !== 2) fail("supervisor-record stalled-notified requires <task> <attempt>");
-      const [taskId, attemptArgument] = args;
+      if (args.length !== 4) {
+        fail("supervisor-record stalled-notified requires <task> <attempt> <latest_turn_status|-> <thread_status_type>");
+      }
+      const [taskId, attemptArgument, turnStatusArgument, threadStatusArgument] = args;
       const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
       const watch = watches.find((candidate) =>
         candidate.task_id === taskId && candidate.attempt === attempt
       );
       if (watch === undefined) fail(`supervisor watch is missing for ${taskId} attempt ${attempt}`);
-      if (requireNonNegativeInteger(watch.unchanged_waits, "unchanged_waits") < 3) {
+      if (
+        requireNonNegativeInteger(watch.unchanged_waits, "unchanged_waits") <
+          SUPERVISOR_INSPECTION_WAIT_LIMIT
+      ) {
         fail("thread has not reached the stalled threshold");
       }
       const threadKeyValue = requireString(watch.thread_key, "thread key");
       const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
       if (thread.status !== "running") fail(`thread cannot become stalled from ${String(thread.status)}`);
-      thread.status = "stalled";
+      const inspection = normalizeSupervisorInspection(turnStatusArgument, threadStatusArgument);
+      thread.status = inspection.status;
       validateThreadRegistry(registry);
       writeJson(threadsPath, registry);
-      return { status: "stalled_notified", task: taskId, attempt };
+      const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
+        fail(`unknown watched task: ${taskId}`);
+      return {
+        status: "inspection_reported",
+        task: taskId,
+        attempt,
+        conclusion: inspection.conclusion,
+        report: supervisorInspectionReport(threadTitle(task), inspection.conclusion),
+        main: mainRoute,
+      };
     }
 
     if (event === "notified") {
@@ -13701,15 +13905,30 @@ function supervisorControlRecord(
       };
     }
     if (action.kind === "stalled") {
-      if (args.length !== 0) fail("control stalled acknowledgement takes no extra arguments");
-      if (requireNonNegativeInteger(watch.unchanged_waits, "control unchanged_waits") < 3) {
+      if (args.length !== 2) {
+        fail("control stalled acknowledgement requires <latest_turn_status|-> <thread_status_type>");
+      }
+      if (
+        requireNonNegativeInteger(watch.unchanged_waits, "control unchanged_waits") <
+          SUPERVISOR_INSPECTION_WAIT_LIMIT
+      ) {
         fail("control thread has not reached the stalled threshold");
       }
       if (thread.status !== "running") fail("control thread is not running");
-      thread.status = "stalled";
+      const inspection = normalizeSupervisorInspection(args[0], args[1]);
+      thread.status = inspection.status;
       validateThreadRegistry(registry);
       writeJson(threadsPath, registry);
-      return { status: "stalled_notified", control: true, task: action.task };
+      const goalTitle = goalThreadTitles(goal)[action.task === "planner" ? "planner" : "planner_reviewer"];
+      return {
+        status: "inspection_reported",
+        control: true,
+        task: action.task,
+        attempt: action.attempt,
+        conclusion: inspection.conclusion,
+        report: supervisorInspectionReport(goalTitle, inspection.conclusion),
+        main: supervisorMainRoute(registry),
+      };
     }
     if (args.length !== 0) fail("control notify acknowledgement takes no extra arguments");
     if (!SUPERVISOR_NOTIFY_STATES.has(String(thread.status))) {
@@ -13736,6 +13955,7 @@ function supervisorAckCommand(
   }
   if (isSupervisorControlTask(action.task)) {
     const receipt = supervisorControlRecord(goalDirectoryArgument, action, args);
+    refreshSupervisionDocument(goalDirectoryArgument);
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
     return;
   }
@@ -13764,13 +13984,17 @@ function supervisorAckCommand(
       args[1],
     ]);
   } else if (action.kind === "stalled") {
-    if (args.length !== 0) fail("stalled acknowledgement takes no extra arguments");
+    if (args.length !== 2) {
+      fail("stalled acknowledgement requires <latest_turn_status|-> <thread_status_type>");
+    }
     receipt = runSelfJson([
       "supervisor-record",
       resolve(goalDirectoryArgument),
       "stalled-notified",
       action.task,
       String(action.attempt),
+      args[0],
+      args[1],
     ]);
   } else {
     if (args.length !== 0) fail("notify acknowledgement takes no extra arguments");
@@ -13782,6 +14006,7 @@ function supervisorAckCommand(
       String(action.attempt),
     ]);
   }
+  refreshSupervisionDocument(goalDirectoryArgument);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
@@ -15013,6 +15238,7 @@ function workflowThreadCommand(
     writeJson(path, current);
     return current;
   });
+  if (loaded.workflow.mode === "dag") refreshSupervisionDocument(loaded.directory);
   process.stdout.write(`${JSON.stringify({
     contract: "WORKFLOW_THREAD_RECEIPT_V1",
     status: "recorded",
@@ -15655,6 +15881,41 @@ function workerVerifyCommand(
   })}\n`);
 }
 
+function workerSupervisorRoute(
+  goalDirectory: string,
+): { thread: string; host: string } | null {
+  const preferred = preferredWorkflowThread(goalDirectory, "supervisor");
+  if (preferred !== null) {
+    return {
+      thread: requireString(preferred.thread_id, "Supervisor thread id"),
+      host: requireString(preferred.host_id, "Supervisor host id"),
+    };
+  }
+  const definitionPath = workflowDefinitionPath(goalDirectory);
+  if (
+    existsSync(definitionPath) &&
+    parseWorkflowDefinition(readJson(definitionPath), definitionPath).mode === "dag"
+  ) fail("DAG Worker cannot submit without a registered Supervisor route");
+  return null;
+}
+
+function workerReceiptWithSupervisor(
+  goalDirectory: string,
+  receipt: Record<string, unknown>,
+  route: { thread: string; host: string } | null,
+  status: string,
+): Record<string, unknown> {
+  refreshSupervisionDocument(goalDirectory);
+  if (route === null) return receipt;
+  return {
+    ...receipt,
+    supervisor_notify: {
+      ...route,
+      message: `执行线程已通过脚本提交 ${status}；请立即继续现有 Supervisor Goal 并运行 supervisor-next。`,
+    },
+  };
+}
+
 function workerOutcomeCommand(
   goalDirectoryArgument: string,
   runIdArgument: string,
@@ -15671,6 +15932,7 @@ function workerOutcomeCommand(
   const summary = compactUserSummary(readPlainSemanticInput("worker summary"));
   const run = taskForRun(goalDirectoryArgument, runIdArgument);
   if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const supervisorRoute = workerSupervisorRoute(run.goalDirectory);
   const evidence = status === "completed"
     ? run.task.verification_ids.map((id) => readWorkerVerification(
       workerVerificationPath(run.goalDirectory, run.task.id, id, false),
@@ -15706,7 +15968,12 @@ function workerOutcomeCommand(
       ...(reviewUpgradeReason === undefined ? {} : { review_upgrade: reviewUpgradeReason }),
     },
   );
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+  process.stdout.write(`${JSON.stringify(workerReceiptWithSupervisor(
+    run.goalDirectory,
+    receipt,
+    supervisorRoute,
+    status,
+  ))}\n`);
 }
 
 function workerRiskOutcomeCommand(
@@ -15738,6 +16005,7 @@ function workerScopeRequestCommand(
   const reason = readPlainSemanticInput("scope request reason");
   const run = taskForRun(goalDirectoryArgument, runIdArgument);
   if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const supervisorRoute = workerSupervisorRoute(run.goalDirectory);
   const receipt = runSelfJson(
     [
       "result-submit",
@@ -15758,13 +16026,19 @@ function workerScopeRequestCommand(
       scope: { paths, reason },
     },
   );
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+  process.stdout.write(`${JSON.stringify(workerReceiptWithSupervisor(
+    run.goalDirectory,
+    receipt,
+    supervisorRoute,
+    "needs_repair",
+  ))}\n`);
 }
 
 function workerSubgraphCommand(goalDirectoryArgument: string, runIdArgument: string): void {
   const reason = readPlainSemanticInput("subgraph reason");
   const run = taskForRun(goalDirectoryArgument, runIdArgument);
   if (run.taskState.status !== "running") fail(`run ${runIdArgument} is not running`);
+  const supervisorRoute = workerSupervisorRoute(run.goalDirectory);
   const receipt = runSelfJson([
     "subgraph-request",
     run.planPath,
@@ -15773,7 +16047,12 @@ function workerSubgraphCommand(goalDirectoryArgument: string, runIdArgument: str
     requireString(run.taskState.reservation_token, "reservation token"),
     reason,
   ]);
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+  process.stdout.write(`${JSON.stringify(workerReceiptWithSupervisor(
+    run.goalDirectory,
+    receipt,
+    supervisorRoute,
+    "subgraph_requested",
+  ))}\n`);
 }
 
 function workerRequestDagCommand(goalDirectoryArgument: string, runIdArgument: string): void {
@@ -17017,20 +17296,59 @@ function ownerPauseCurrentCommand(goalDirectoryArgument: string): void {
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
-function supervisorResumeCommand(goalDirectoryArgument: string, runIdArgument: string): void {
-  const run = taskForRun(goalDirectoryArgument, runIdArgument);
-  const receipt = runSelfJson([
-    "supervisor-record",
-    resolve(goalDirectoryArgument),
-    "resumed",
-    run.task.id,
-    String(run.taskState.attempt),
-  ]);
+function supervisorResumeCommand(
+  goalDirectoryArgument: string,
+  targetArgument: string,
+  attemptArgument?: string,
+): void {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  let taskId: string;
+  let attempt: number;
+  if (attemptArgument === undefined) {
+    const run = taskForRun(goalDirectory, targetArgument);
+    taskId = run.task.id;
+    attempt = run.taskState.attempt;
+  } else {
+    taskId = requireIdentifier(targetArgument, "task_id");
+    attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
+  }
+  let receipt: Record<string, unknown>;
+  if (isSupervisorControlTask(taskId)) {
+    const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+    const threadsPath = join(goalDirectory, "threads.json");
+    receipt = withStateLock(threadsPath, () => {
+      const registry = readThreadRegistry(threadsPath, goal.goal_id);
+      const watches = registry.watches as Record<string, unknown>[];
+      const watch = watches.find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      ) ?? fail(`Supervisor control watch is missing: ${taskId}`);
+      const threadKeyValue = requireString(watch.thread_key, "control thread key");
+      const threads = requireRecord(registry.threads, "thread registry.threads");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      if (thread.status !== "stalled") fail(`control thread cannot resume from ${String(thread.status)}`);
+      thread.status = "running";
+      watch.unchanged_waits = 0;
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return { status: "resumed", control: true, task: taskId, attempt };
+    });
+  } else {
+    receipt = runSelfJson([
+      "supervisor-record",
+      goalDirectory,
+      "resumed",
+      taskId,
+      String(attempt),
+    ]);
+  }
+  refreshSupervisionDocument(goalDirectory);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
 function supervisorDispatchPrompt(goalDirectory: string): string {
   const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  const goalObjective = supervisorGoalObjective(goal);
+  const statusDocument = supervisionDocumentPath(goalDirectory);
   const nextCommand = [
     "node",
     fileURLToPath(import.meta.url),
@@ -17040,13 +17358,15 @@ function supervisorDispatchPrompt(goalDirectory: string): string {
     String(MAX_PARALLEL_THREADS),
   ].map((value) => JSON.stringify(value)).join(" ");
   const platformInstruction = EXPECTED_PLATFORM === "codex"
-    ? "首次运行先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，目标为持续监督这个 Goal 目录直到脚本报告 DAG completed。每个 Goal turn 只执行一次 supervisor-next 投影；普通等待只能结束当前 turn，不得结束或阻塞 Goal。"
+    ? `首次运行先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，objective 必须逐字使用：${goalObjective}。不得概括或改写。每个 Goal turn 只执行一次 supervisor-next 投影；普通等待只能结束当前 turn，不得结束或阻塞 Goal。`
     : "本平台没有 Codex 原生 Goal；在当前长期线程内保持持续监督循环，普通等待不得结束监督 turn。";
   return [
     "$sub-thread-task-supervisor",
     "",
     `Goal 目录：${goalDirectory}`,
     `线程标题：${goalThreadTitles(goal).supervisor}`,
+    `监督目标：${goalObjective}`,
+    `当前目标文档：${statusDocument}`,
     "",
     platformInstruction,
     `立即运行：${nextCommand}`,
@@ -17078,12 +17398,15 @@ function supervisorInitCommand(
       starting_branch: readDagWorktrees(goalDirectory).dag.branch,
     }
     : { environment: "local" };
+  const statusDocument = refreshSupervisionDocument(goalDirectory);
   process.stdout.write(`${JSON.stringify({
     contract: "SUPERVISOR_INIT_V1",
     status: registry.status,
     thread_title: goalThreadTitles(goal).supervisor,
     model: profile.model,
     effort: profile.reasoning_effort,
+    goal_objective: supervisorGoalObjective(goal),
+    status_document: statusDocument,
     target,
     preferred_thread: preferredWorkflowThread(goalDirectory, "supervisor"),
     dispatch: supervisorDispatchPrompt(goalDirectory),
@@ -17887,8 +18210,8 @@ function main(argv: string[]): void {
   if (command === "supervisor-ack" && args.length >= 2) {
     return supervisorAckCommand(args[0], args[1], args.slice(2));
   }
-  if (command === "supervisor-resume" && args.length === 2) {
-    return supervisorResumeCommand(args[0], args[1]);
+  if (command === "supervisor-resume" && (args.length === 2 || args.length === 3)) {
+    return supervisorResumeCommand(args[0], args[1], args[2]);
   }
   if (command === "supervisor-recover-run" && args.length === 2) {
     return supervisorRecoverRunCommand(args[0], args[1]);

@@ -116,6 +116,9 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "supervisor-ack",
                 "action id 是不透明值",
                 "wait_threads",
+                "timeoutMs=120000",
+                "read_thread",
+                "累计十次",
                 "`latestTurn.status`",
                 "禁止传入 `thread.status.type`",
                 "--limit 8",
@@ -130,6 +133,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 self.assertIn(required, supervisor)
             self.assertIn("不得调用低层 `supervisor-record`", supervisor)
             self.assertIn("owner_sync_required", supervisor)
+            self.assertIn("supervisor-resume", self.skill(platform, "sub-thread-coordination"))
             self.assertIn("Supervisor 不创建或复用线程", supervisor)
             self.assertIn("独立 worktree", supervisor)
             self.assertIn("Main 不负责重新唤醒 Supervisor", supervisor)
@@ -138,6 +142,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertNotIn("插件缓存", supervisor)
             self.assertNotIn("runtime_ref", supervisor)
             self.assertIn("上下文压缩或恢复后", supervisor)
+            self.assertIn("`goal_objective`", supervisor)
+            self.assertIn("`status_document`", supervisor)
 
     def test_supervisor_goal_mode_is_platform_explicit(self) -> None:
         codex = self.skill("codex", "sub-thread-task-supervisor")
@@ -190,6 +196,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 self.assertIn(required, combined)
             self.assertIn("构造 Binding/Result", reference)
             self.assertIn("禁止调用 `result-submit`", worker)
+            self.assertIn("supervisor_notify", worker)
+            self.assertIn("send_message_to_thread", worker)
 
     def test_planner_is_the_only_structured_semantic_exception(self) -> None:
         for platform in PLATFORMS:

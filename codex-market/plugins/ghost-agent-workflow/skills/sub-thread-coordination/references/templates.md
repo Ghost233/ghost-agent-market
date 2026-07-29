@@ -26,7 +26,7 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <相同 development-key>
 
 新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `ga/<key>/main`。认领成功后，先处理 `main_route_required`，再处理 `supervisor_init_required`。Supervisor 必须早于 Planner 创建。恢复或推进仍只运行同一命令；Dashboard 和 native ack 只按收据执行。
 
-Main 不调用 `wait_threads`。Supervisor 在自己的原生 Goal 内持续运行 `supervisor-next`；Main 只逐字执行 Supervisor 发来的 create/main_action，建立 watch 后结束 turn，不再唤醒 Supervisor。
+Main 不调用 `wait_threads`。Supervisor 在自己的原生 Goal 内持续运行 `supervisor-next`；Main 只逐字执行 Supervisor 发来的 create/main_action，建立 watch 后结束 turn，不再周期唤醒 Supervisor。Worker 结果动作会按脚本收据主动唤醒 Supervisor。
 
 ## Supervisor
 
@@ -44,7 +44,9 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 - 新 Owner worktree：Main 完成分支同步后，用 `create_thread` 按 action branch 创建全新线程，并以 `supervisor-ack ... bootstrap` 登记 watch；Supervisor 只等待 bootstrap。结束后 Main 重新投影、复用同一线程完成普通 create ack 和正式 dispatch。
 - 已有 Owner：复用原线程/worktree；每个新 run 先由 Main 显式执行 `owner-sync`。
 - integration repair：复用原 Owner，禁止再次同步或新建 worktree。
-- wait：按 thread/host 匹配 `wait_threads` poll，只把 `poll.cursor` 与 `poll.latestTurn.status` 交给 `supervisor-ack`；禁止使用 `poll.thread.status.type`。notify/stalled 仍只传脚本要求的标量，不读取 Result 或 DAG。
+- wait：固定使用 120 秒，按 thread/host 匹配 `wait_threads` poll，只把 `poll.cursor` 与 `poll.latestTurn.status` 交给 `supervisor-ack`；普通 wait 禁止使用 `poll.thread.status.type`。
+- stalled：连续十轮无 cursor 变化后，Supervisor 用 `read_thread` 做一次深入检查，只把 `latestTurn.status` 与 `thread.status.type` 交给 ack；脚本生成有限结论和 Main 报告，Supervisor 不自行诊断。Main 选择继续等待时只调用 `supervisor-resume <goal-dir> <task-id> <attempt>`。
+- notify：只传脚本要求的标量，不读取 Result 或 DAG。
 - main_action：把脚本 dispatch 原样发送给 Main 后结束当前 Goal turn，但不结束 Goal；最终交付和清理只能由 Main 执行。
 
 控制线程 stalled/failed/cancelled 或未生成有效结果时，Main 等待用户确认关闭旧线程，再调用 `supervisor-recover <goal-dir> <planner|planner-reviewer> <attempt> <reason>`。脚本原子清除旧 route/watch；Supervisor 下一轮自行创建新 action。
@@ -52,6 +54,8 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 ## Owner 完成
 
 Worker `complete` 后 task 仍为 running。新 Main 下一次 `start-dag` 内部执行 `owner-finish`。只有脚本合并和集成验证通过才完成；失败时返回 Supervisor repair 动作，由原 Owner 原地修复。
+
+Worker 每个 DAG 结果动作成功后，必须逐字发送收据中的 `supervisor_notify.message`；Main 不参与等待或转发。
 
 若 Worker 返回 `blocked/failed/needs_repair`，`owner-finish` 只接受终态并交给 Main，不合并 Owner 分支。task scope 内的 Git submodule 由 `owner-sync/owner-finish` 自动初始化、提交和同步，任何模型线程都不直接操作。
 

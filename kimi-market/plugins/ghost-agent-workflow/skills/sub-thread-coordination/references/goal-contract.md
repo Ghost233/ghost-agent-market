@@ -27,7 +27,7 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 
 Supervisor 必须早于 Planner 启动；Main 创建线程但不等待。除 Owner 使用专属分支外，Supervisor、Planner 与 Reviewer 都从 DAG 分支创建独立干净 worktree，禁止 fork Main；它们只通过绝对 Goal 目录和领域脚本访问共享状态。Planner 只生成最小顶层图；初始 child 被拒绝。runtime 必须先检查 required effects、schema、依赖和固定 gate，Planner Reviewer 才审查最终 Plan digest。父节点不能直接完成时再由 Composite Planner 展开子图；Implementation Review 是显式 DAG 节点。
 
-Supervisor 的 wait 回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。
+Supervisor 的普通 wait 固定为 120 秒，回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。连续十轮无 cursor 变化后才允许一次 `read_thread` 深入检查，并由脚本根据 `latestTurn.status + thread.status.type` 生成有限结论交给 Main。
 
 ## Owner 集成
 
@@ -52,6 +52,7 @@ Owner 分支固定为 `ga/<key>/<owner_id>`，完整名称由脚本生成。下�
 
 - Quick：当前 workflow 状态、Owner 当前上下文、最终结果。
 - DAG 运行中：DAG worktree 内的当前 Plan/State、`progress.json`、`events.jsonl`、worktree 路由和最终结果。
+- DAG 监督：`supervision.md` 保存 Main 已启动目标的当前 objective、线程与状态；只由 runtime 覆盖更新，不保存历史。
 - DAG 成功交付后：原始工作区 `.ghost-agent-workflow/result.json` 与 `.ghost-agent-workflow/events.jsonl`；执行状态随 DAG worktree 删除。
 
 事务恢复文件成功后立即清理。禁止 attempt、Review、evidence、recovery 和聊天 history。

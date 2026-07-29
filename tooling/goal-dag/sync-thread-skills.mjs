@@ -140,7 +140,7 @@ for (const target of targets) {
     )
     .replace(
       /## 原生 Goal\n\n[\s\S]*?\n## 脚本循环/u,
-      "Supervisor 立即进入持续监督循环。普通等待、Main 正在处理 action、线程 running 或无状态变化都不得结束监督 turn。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。\n\n## 脚本循环",
+      "Supervisor 逐字采用 `workflow supervisor-init` 收据的 `goal_objective` 作为持续监督目标并立即进入循环。普通等待、Main 正在处理 action、线程 running 或无状态变化都不得结束监督 turn。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。Main 启动的目标均由 runtime 投影到收据的 `status_document`；该文件只保存当前状态，Supervisor 不编辑或解析原始 JSON。\n\n## 脚本循环",
     )
     .replace(
       "每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后立即让出当前 turn；下一次 continuation 再读取本地状态：",
