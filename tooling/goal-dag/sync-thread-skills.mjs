@@ -62,12 +62,12 @@ for (const target of targets) {
         "本平台固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。",
       )
       .replace(
-        "- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，逐字使用收据的 target 以 `create_thread` 创建独立 worktree 的唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建，并立即创建自己的原生 Goal。登记后 Supervisor 持续运行 `supervisor-next`；Main 不等待，也不负责周期唤醒。",
-        "- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，逐字使用收据的 target 以宿主长期 `create_thread` 创建独立 worktree 的唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建并持续运行监督循环。登记后 Main 不等待，也不负责周期唤醒。",
+        "- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，逐字使用收据的 target 以 `create_thread` 创建独立 worktree 的唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建，并以收据的 `goal_objective` 原样创建自己的原生 Goal。收据的 `status_document` 由脚本保存所有 Main 已启动目标及当前状态。登记后 Supervisor 持续运行 `supervisor-next`；Main 不等待，也不负责周期唤醒。",
+        "- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，逐字使用收据的 target 以宿主长期 `create_thread` 创建独立 worktree 的唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建，并以收据的 `goal_objective` 原样启动监督 turn。收据的 `status_document` 由脚本保存所有 Main 已启动目标及当前状态。登记后 Main 不等待，也不负责周期唤醒。",
       )
       .replace(
-        "- `supervisor_required`：已登记 Supervisor 的原生 Goal 会自行轮询；Main 不再调用 `supervisor-next`、发送普通监督 dispatch 或重新唤醒。只有 Supervisor 发来的 create/main_action 才由 Main 处理。",
-        "- `supervisor_required`：已登记 Supervisor 会自行轮询；Main 不再调用 `supervisor-next`、发送普通监督 dispatch 或重新唤醒。只有 Supervisor 发来的 create/main_action 才由 Main 处理。",
+        "- `supervisor_required`：逐字把脚本收据的 dispatch 发送给已登记 Supervisor。Supervisor 会复用未完成 Goal；如果上一批任务结束时 Goal 已停止，则新建本轮 Goal。Worker 完成后也按脚本收据主动通知它。Main 不调用 `supervisor-next` 或等待；只有 Supervisor 发来的 create/main_action 才由 Main 处理。",
+        "- `supervisor_required`：逐字把脚本收据的 dispatch 发送给已登记 Supervisor。Supervisor 会复用未结束监督 turn；如果上一批任务已停止，则启动本轮监督 turn。Worker 完成后也按脚本收据主动通知它。Main 不调用 `supervisor-next` 或等待；只有 Supervisor 发来的 create/main_action 才由 Main 处理。",
       )
       .replace(
         "# 子线程工作流协调器\n",
@@ -93,6 +93,10 @@ for (const target of targets) {
       .replace(
         "→ Supervisor Goal 持续等待 Main 已登记的线程并通知 Main",
         "→ Supervisor 只等待 Main 已登记的线程并通知 Main",
+      )
+      .replace(
+        "Supervisor 只按该值保持或结束本轮原生 Goal",
+        "Supervisor 只按该值继续或结束当前监督 turn",
       ),
   );
 
@@ -104,20 +108,24 @@ for (const target of targets) {
     join(target.root, "sub-thread-coordination/references/templates.md"),
     templatesSource
       .replace(
-        "Main 不调用 `wait_threads`。Supervisor 在自己的原生 Goal 内持续运行 `supervisor-next`；Main 只逐字执行 Supervisor 发来的 create/main_action，建立 watch 后结束 turn，不再唤醒 Supervisor。",
-        "Main 不调用 `wait_threads`。Supervisor 在宿主长期线程内持续运行 `supervisor-next`；Main 只逐字执行 Supervisor 发来的 create/main_action，建立 watch 后结束 turn，不再唤醒 Supervisor。",
+        "Main 不调用 `wait_threads`。Supervisor 只在脚本报告存在 active 任务时运行原生 Goal；`goal_action: stop` 后立即结束本轮 Goal。Main 遇到 `supervisor_required` 时逐字发送脚本 dispatch，新一批 active 任务会创建新 Goal。Worker 结果动作也会按脚本收据主动唤醒 Supervisor。",
+        "Main 不调用 `wait_threads`。Supervisor 只在脚本报告存在 active 任务时运行宿主长期监督 turn；`goal_action: stop` 后结束本轮监督。Main 遇到 `supervisor_required` 时逐字发送脚本 dispatch，新一批 active 任务会启动新监督 turn。Worker 结果动作也会按脚本收据主动唤醒 Supervisor。",
       )
       .replace(
-        "Supervisor 首次创建原生 Goal；每个 Goal turn 只投影一次，丢失上下文后仍只运行：",
-        "Supervisor 丢失上下文后只运行：",
+        "Supervisor 每批 active 任务创建或复用原生 Goal；每个 Goal turn 只投影一次，丢失上下文后仍只运行：",
+        "Supervisor 每批 active 任务启动或复用持续监督 turn；每轮只投影一次，丢失上下文后仍只运行：",
       )
       .replace(
         "create：Supervisor 不执行，只把脚本 action 的必要字段和 prompt 发送给 Main；main_action 只发送脚本 dispatch。Main 负责确定性调度，Supervisor Goal 保持 active。",
-        "create：Supervisor 不执行，只把脚本 action 的必要字段和 prompt 发送给 Main；main_action 只发送脚本 dispatch。Main 负责确定性调度，Supervisor 持续监督。",
+        "create：Supervisor 不执行，只把脚本 action 的必要字段和 prompt 发送给 Main；main_action 只发送脚本 dispatch。Main 负责确定性调度，Supervisor 按 `goal_action` 继续或结束监督。",
       )
       .replace(
-        "main_action：把脚本 dispatch 原样发送给 Main 后结束当前 Goal turn，但不结束 Goal；最终交付和清理只能由 Main 执行。",
-        "main_action：把脚本 dispatch 原样发送给 Main 后继续监督；最终交付和清理只能由 Main 执行。",
+        "main_action：把脚本 dispatch 原样发送给 Main；最终交付和清理只能由 Main 执行。随后仍只按 `goal_action` 保持或结束本次 Goal。",
+        "main_action：把脚本 dispatch 原样发送给 Main；最终交付和清理只能由 Main 执行。随后仍只按 `goal_action` 继续或结束当前监督 turn。",
+      )
+      .replace(
+        "goal_action：`continue` 保持本次 Goal；`stop` 表示没有 active 任务，处理完当前 action 后立即 complete 本次 Goal。不得由模型自行判断。",
+        "goal_action：`continue` 继续当前监督 turn；`stop` 表示没有 active 任务，处理完当前 action 后结束本轮监督。不得由模型自行判断。",
       ),
   );
 
@@ -140,11 +148,11 @@ for (const target of targets) {
     )
     .replace(
       /## 原生 Goal\n\n[\s\S]*?\n## 脚本循环/u,
-      "Supervisor 逐字采用 `workflow supervisor-init` 收据的 `goal_objective` 作为持续监督目标并立即进入循环。普通等待、Main 正在处理 action、线程 running 或无状态变化都不得结束监督 turn。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。Main 启动的目标均由 runtime 投影到收据的 `status_document`；该文件只保存当前状态，Supervisor 不编辑或解析原始 JSON。\n\n## 脚本循环",
+      "Supervisor 逐字采用 `workflow supervisor-init` 收据的 `goal_objective` 作为监督目标并立即进入当前 active 批次。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。Main 启动的目标均由 runtime 投影到收据的 `status_document`；该文件只保存当前状态，Supervisor 不编辑或解析原始 JSON。\n\n## 脚本循环",
     )
     .replace(
-      "每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后立即让出当前 turn；下一次 continuation 再读取本地状态：",
-      "每轮只处理脚本返回的紧凑 action：",
+      "每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后必须读取脚本的 `goal_action`：`continue` 保持 Goal active 并让出当前 turn；`stop` 表示已无 active 任务，处理完本轮 action 后立即调用 `update_goal(status=complete)`。不得自行推断 active 状态。",
+      "每轮只执行一次 `supervisor-next` 并处理紧凑 action；`goal_action: continue` 继续监督，`goal_action: stop` 表示没有 active 任务并结束当前监督 turn。不得自行推断 active 状态。",
     )
     .replace(
       "若脚本违反互斥约束，只向 Main 报告一次 CLI 契约错误并保持 Goal active，不猜测该执行哪个动作。重复出现 `create` 或非终态 `main_action`，无论多少轮都不算阻塞，禁止因此调用 `update_goal(status=blocked)`。",
@@ -152,9 +160,17 @@ for (const target of targets) {
     )
     .replaceAll("用对应 action id ack 后让出当前 turn", "用对应 action id ack 后继续监督")
     .replaceAll("然后让当前 Goal turn 结束但保持 Goal active", "然后继续监督")
+    .replace("立即停止当前 turn 并保持 Goal active", "立即停止当前 turn；下一次仍按脚本状态继续监督")
     .replace("成功后 ack 并让出当前 turn", "成功后 ack 并继续监督")
-    .replace("空 action：不产生消息，不结束 Goal；下一次 Goal continuation 重新运行 `supervisor-next`。", "空 action：不产生消息，继续运行 `supervisor-next`。")
-    .replace("发送最终机器通知后调用 `update_goal(status=complete)`，结束 Supervisor。", "发送最终机器通知后结束 Supervisor。");
+    .replace(
+      "空 action：只允许在任务全部完成或 Goal 已非 active 时出现，并且 `goal_action` 必须为 `stop`。Goal active 且仍有未完成任务时若所有 action 为空，视为 CLI 契约错误，只通知 Main，不得空转或猜测。",
+      "空 action：只允许在任务全部完成或监督已非 active 时出现，并且 `goal_action` 必须为 `stop`。监督 active 且仍有未完成任务时若所有 action 为空，视为 CLI 契约错误，只通知 Main，不得空转或猜测。",
+    )
+    .replace(
+      "收到该消息后，如果旧 Goal 已 complete，则按收据 objective 创建新 Goal；随后执行一次 `supervisor-next`。",
+      "收到该消息后，如果上一监督 turn 已结束，则启动新监督 turn；随后执行一次 `supervisor-next`。",
+    )
+    .replace("发送最终机器通知后调用 `update_goal(status=complete)`，结束本次 Supervisor Goal。", "发送最终机器通知后结束当前监督 turn。");
   write(
     join(target.root, "sub-thread-task-supervisor/SKILL.md"),
     platformSupervisor,

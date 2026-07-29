@@ -1746,11 +1746,16 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(action["task_id"], "T1")
 
             projected_sync = self.run_json("supervisor-next", goal_dir)
+            self.assertEqual(projected_sync["goal_action"], "stop")
             self.assertEqual(
                 projected_sync["main_action"]["action"],
                 "owner_sync_required",
             )
             self.assertEqual(projected_sync["main_action"]["owner"], "state-domain")
+            self.assertIn(
+                "新 active 批次创建 Goal",
+                projected_sync["main_action"]["dispatch"],
+            )
             owner_branch = "ga/owner_sync/state-domain"
             self.assertNotIn(
                 owner_branch,
@@ -1906,6 +1911,8 @@ class GoalDagCliTests(unittest.TestCase):
                 second_change = owner_worktree / "src/page/worktree.ts"
                 second_change.parent.mkdir(parents=True, exist_ok=True)
                 second_change.write_text("export const retry = true;\n", encoding="utf-8")
+                outside_scope = owner_worktree / "outside-scope.txt"
+                outside_scope.write_text("must be rejected\n", encoding="utf-8")
                 self.run_json(
                     "worker", "verify", goal_dir, second_sync["run"], "page-unit",
                 )
@@ -1932,6 +1939,7 @@ class GoalDagCliTests(unittest.TestCase):
                 )
                 self.assertNotEqual(rejected_finish.returncode, 0)
                 self.assertIn("continue in the same Owner worktree", rejected_finish.stderr)
+                self.assertIn("outside task scope", rejected_finish.stderr)
                 self.assertFalse((workspace_root / "src/page/worktree.ts").exists())
                 self.assertEqual(
                     subprocess.run(
@@ -1955,6 +1963,7 @@ class GoalDagCliTests(unittest.TestCase):
                 )
                 self.assertIn("上次集成失败", repair_ack["dispatch"])
 
+                outside_scope.unlink()
                 integration_ok = owner_worktree / "src/page/integration-ok"
                 integration_ok.write_text("ready\n", encoding="utf-8")
                 self.run_json(
@@ -2262,6 +2271,7 @@ class GoalDagCliTests(unittest.TestCase):
                 text=True,
             )
             planner_actions = self.run_json("supervisor-next", workflow_dir)
+            self.assertEqual(planner_actions["goal_action"], "continue")
             self.assertEqual(len(planner_actions["create"]), 1)
             planner = planner_actions["create"][0]
             self.assertTrue(planner["control"])
@@ -2312,7 +2322,9 @@ class GoalDagCliTests(unittest.TestCase):
                 },
                 "planner-submit", workflow_dir, "initial",
             )
-            planner_wait = self.run_json("supervisor-next", workflow_dir)["wait"][0]
+            planner_wait_actions = self.run_json("supervisor-next", workflow_dir)
+            self.assertEqual(planner_wait_actions["goal_action"], "continue")
+            planner_wait = planner_wait_actions["wait"][0]
             self.assertEqual(planner_wait["task"], "planner")
             self.run_json(
                 "supervisor-ack", workflow_dir, planner_wait["action_id"],
@@ -2328,6 +2340,7 @@ class GoalDagCliTests(unittest.TestCase):
                 text=True,
             )
             review_actions = self.run_json("supervisor-next", workflow_dir)
+            self.assertEqual(review_actions["goal_action"], "continue")
             self.assertEqual(len(review_actions["create"]), 1)
             review = review_actions["create"][0]
             self.assertTrue(review["control"])
@@ -2361,8 +2374,10 @@ class GoalDagCliTests(unittest.TestCase):
                 "review-cursor", "completed",
             )
             main_notice = self.run_json("supervisor-next", workflow_dir)
+            self.assertEqual(main_notice["goal_action"], "stop")
             self.assertEqual(main_notice["main_action"]["action"], "dashboard_start_required")
             self.assertIn("$sub-thread-coordination", main_notice["main_action"]["dispatch"])
+            self.assertIn("新 active 批次创建 Goal", main_notice["main_action"]["dispatch"])
             dashboard = self.run_json("workflow", "step", workflow_dir)
             self.assertEqual(dashboard["action"], "dashboard_start_required")
             self.assertTrue((workflow_dir / "state.json").exists())
@@ -2465,6 +2480,17 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertTrue(resumed["control"])
             self.assertEqual(resumed["status"], "resumed")
+            self.assertEqual(
+                resumed["thread_notify"],
+                {
+                    "thread": "planner-thread-old",
+                    "host": "local",
+                    "message": resumed["thread_notify"]["message"],
+                },
+            )
+            self.assertIn("$parallel-task-planner", resumed["thread_notify"]["message"])
+            self.assertEqual(resumed["supervisor_notify"]["thread"], "supervisor-thread")
+            self.assertIn("supervisor-next", resumed["supervisor_notify"]["message"])
             for _ in range(10):
                 waiting = self.run_json("supervisor-next", workflow_dir)["wait"][0]
                 self.run_json(
@@ -2530,6 +2556,74 @@ class GoalDagCliTests(unittest.TestCase):
                 "planner",
             )
 
+    def test_active_goal_never_returns_empty_supervisor_action(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            self.initialize(goal_path, plan_path)
+            self.run_json("supervisor-init", root, "main-thread", "local")
+            projected = self.run_json("supervisor-next", root, "--limit", 8)
+            self.assertTrue(
+                projected.get("main_action") is not None or any(
+                    projected[key] for key in ("create", "wait", "stalled", "notify")
+                ),
+                projected,
+            )
+
+    def test_failed_verification_stops_task_and_notifies_supervisor(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            verification = next(
+                item for item in plan["verifications"] if item["id"] == "state-unit"
+            )
+            verification["run"] = ["node", "-e", "process.exit(7)"]
+            plan_path.write_text(
+                json.dumps(plan, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            coverage_path = Path(plan["coverage_path"])
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            coverage["plan_digest"] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+            coverage_path.write_text(
+                json.dumps(coverage, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            state_path = self.initialize(goal_path, plan_path)
+            action = self.reserve_one(plan_path, state_path)
+            self.run_json("supervisor-init", root, "main-thread", "local")
+            created = self.run_json(
+                "supervisor-record", root, "created", action["task_id"], 1,
+                "worker-thread", "local",
+            )
+            (root / "routes.json").write_text(
+                json.dumps({
+                    "contract": "WORKFLOW_ROUTES_V1",
+                    "main": {"thread": "main-thread", "host": "local"},
+                    "planner": None,
+                    "planner_reviewer": None,
+                    "supervisor": {"thread": "supervisor-thread", "host": "local"},
+                }, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            failed = self.run_json(
+                "worker", "verify", root, created["run"], "state-unit",
+            )
+            self.assertEqual(failed["status"], "failed")
+            self.assertEqual(failed["task_status"], "stopped")
+            self.assertEqual(failed["task_action"], "repair_task")
+            self.assertEqual(failed["supervisor_notify"]["thread"], "supervisor-thread")
+            self.assertIn("supervisor-next", failed["supervisor_notify"]["message"])
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            task_state = state["tasks"][action["task_id"]]
+            self.assertEqual(task_state["status"], "stopped")
+            self.assertEqual(task_state["reason"], "task_failed")
+            self.assertEqual(task_state["action"], "repair_task")
+            next_action = self.run_json("supervisor-next", root)
+            self.assertTrue(
+                next_action.get("main_action") is not None or any(
+                    next_action[key] for key in ("create", "wait", "stalled", "notify")
+                ),
+                next_action,
+            )
+
     def test_supervisor_commands_return_bounded_actions_and_persist_observations(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
             state_path = self.initialize(goal_path, plan_path)
@@ -2553,8 +2647,10 @@ class GoalDagCliTests(unittest.TestCase):
 
             pending = self.run_json("supervisor-next", root, "--limit", 8)
             self.assertEqual(
-                set(pending), {"main", "create", "wait", "stalled", "notify"}
+                set(pending),
+                {"main", "goal_action", "create", "wait", "stalled", "notify"},
             )
+            self.assertEqual(pending["goal_action"], "continue")
             self.assertEqual(pending["main"], {"thread": "main-thread", "host": "local"})
             self.assertEqual(len(pending["create"]), 1)
             create = pending["create"][0]
@@ -2619,6 +2715,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
 
             watching = self.run_json("supervisor-next", root)
+            self.assertEqual(watching["goal_action"], "continue")
             self.assertEqual(watching["create"], [])
             self.assertEqual(watching["notify"], [])
             self.assertEqual(len(watching["wait"]), 1)
@@ -2638,6 +2735,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertTrue(observed["terminal"])
             terminal = self.run_json("supervisor-next", root)
+            self.assertEqual(terminal["goal_action"], "stop")
             self.assertEqual(terminal["wait"], [])
             self.assertEqual(len(terminal["notify"]), 1)
             notify_action = terminal["notify"][0]
@@ -2652,8 +2750,11 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(attention["status"], "attention_notified")
             self.assertEqual(attention["reason"], "missing_result")
             quiet = self.run_json("supervisor-next", root)
+            self.assertEqual(quiet["goal_action"], "continue")
             self.assertEqual(quiet["wait"], [])
             self.assertEqual(quiet["notify"], [])
+            self.assertEqual(len(quiet["create"]), 1)
+            self.assertEqual(quiet["create"][0]["thread"], "worker-thread")
             registry = json.loads(threads_path.read_text(encoding="utf-8"))
             self.assertEqual(len(registry["watches"]), 1)
             self.assertEqual(
@@ -2661,7 +2762,26 @@ class GoalDagCliTests(unittest.TestCase):
                 "attention_notified",
             )
 
-            self.run_json("supervisor-resume", root, create["run"])
+            (root / "routes.json").write_text(
+                json.dumps({
+                    "contract": "WORKFLOW_ROUTES_V1",
+                    "main": {"thread": "main-thread", "host": "local"},
+                    "planner": None,
+                    "planner_reviewer": None,
+                    "supervisor": {"thread": "supervisor-thread", "host": "local"},
+                }, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            resumed = self.run_json("supervisor-resume", root, create["run"])
+            self.assertEqual(
+                resumed["thread_notify"]["thread"],
+                "worker-thread",
+            )
+            self.assertEqual(resumed["thread_notify"]["host"], "local")
+            self.assertIn("$sub-thread-goal-worker", resumed["thread_notify"]["message"])
+            self.assertIn(create["run"], resumed["thread_notify"]["message"])
+            self.assertEqual(resumed["supervisor_notify"]["thread"], "supervisor-thread")
+            self.assertIn("supervisor-next", resumed["supervisor_notify"]["message"])
             rejected_argv = subprocess.run(
                 [
                     "node", str(CODEX_SCRIPT), "worker", "verify", str(root),
@@ -2703,24 +2823,15 @@ class GoalDagCliTests(unittest.TestCase):
             supervision = (root / "supervision.md").read_text(encoding="utf-8")
             self.assertIn("抽离页面状态类型", supervision)
             self.assertIn("result_submitted", supervision)
-            resumed_wait = self.run_json("supervisor-next", root)["wait"][0]
-            self.run_json(
-                "supervisor-ack", root, resumed_wait["action_id"],
-                "cursor-2", "completed",
+            advanced = self.run_json("supervisor-next", root)
+            accepted_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(accepted_state["tasks"][action["task_id"]]["status"], "completed")
+            self.assertTrue(
+                advanced.get("main_action") is not None or any(
+                    advanced[key] for key in ("create", "wait", "stalled", "notify")
+                ),
+                advanced,
             )
-            completed_notice = self.run_json("supervisor-next", root)["notify"][0]
-            self.assertIsNotNone(completed_notice["result_ref"])
-            self.run_json("supervisor-ack", root, completed_notice["action_id"])
-
-            self.assertEqual(
-                self.run_json("workflow-step", root)["action"],
-                "dashboard_start_required",
-            )
-            self.run_json("workflow", "dashboard", root, "failed")
-            step = self.run_json("workflow-step", root)
-            self.assertTrue(step["completed_tasks"][0]["user_message"].startswith(
-                create["title"] + "任务完成："
-            ))
             compact_finish = self.run_json(
                 "finish", plan_path, state_path, action["task_id"],
                 action["reservation_token"], action["binding"]["refs"]["result"],
@@ -2738,10 +2849,10 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(registry["watches"], [])
             self.assertEqual(
                 registry["threads"][next(iter(registry["threads"]))]["cursor"],
-                "cursor-2",
+                "cursor-1",
             )
 
-            reused = self.run_json("supervisor-next", root)
+            reused = advanced
             reused_create = next(
                 item for item in reused["create"] if item["thread"] == "worker-thread"
             )
@@ -2756,7 +2867,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(rebound["status"], "created")
             rebound_wait = self.run_json("supervisor-next", root)["wait"]
             reused_wait = next(item for item in rebound_wait if item["thread"] == "worker-thread")
-            self.assertEqual(reused_wait["cursor"], "cursor-2")
+            self.assertEqual(reused_wait["cursor"], "cursor-1")
 
     def test_result_submit_writes_full_result_and_returns_compact_receipt(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
@@ -2869,7 +2980,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertEqual(repeated["removed_watches"], 0)
 
-    def test_supervisor_uses_validated_sanitized_result_summary(self) -> None:
+    def test_supervisor_accepts_result_before_routing_next_action(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
             state_path = self.initialize(goal_path, plan_path)
             self.run_json(
@@ -2905,11 +3016,18 @@ class GoalDagCliTests(unittest.TestCase):
                 "supervisor-record", root, "observed", action["task_id"], 1,
                 "cursor-final", "failed",
             )
-            notice = self.run_json("supervisor-next", root)["notify"][0]
-            self.assertEqual(notice["result_ref"], str(result_path))
-            self.assertNotIn("\n", notice["summary"])
-            self.assertLessEqual(len(notice["summary"]), 100)
-            self.assertTrue(notice["summary"].endswith("…"))
+            projected = self.run_json("supervisor-next", root)
+            next_state = json.loads(state_path.read_text(encoding="utf-8"))
+            task_state = next_state["tasks"][action["task_id"]]
+            self.assertEqual(task_state["status"], "stopped")
+            self.assertEqual(task_state["reason"], "task_failed")
+            self.assertTrue(Path(task_state["result_ref"]).is_file())
+            self.assertTrue(
+                projected.get("main_action") is not None or any(
+                    projected[key] for key in ("create", "wait", "stalled", "notify")
+                ),
+                projected,
+            )
 
     def test_goal_create_expands_short_input_without_handwritten_contract_fields(self) -> None:
         with self.workspace() as (_, goal_path, _):

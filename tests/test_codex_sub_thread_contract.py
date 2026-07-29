@@ -176,6 +176,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("不映射为 blocked", self.goal_contract)
         self.assertIn("Supervisor 必须在自己的线程内创建原生 Goal", self.coordinator)
         self.assertIn("Supervisor 独立创建自己的原生 Goal", self.goal_contract)
+        self.assertIn("goal_action", self.goal_contract)
+        self.assertIn("无 active 任务时为 `stop`", self.goal_contract)
+        self.assertIn("旧 Goal 已 complete", self.supervisor)
+        self.assertIn("update_goal(status=complete)", self.supervisor)
 
     def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
@@ -300,7 +304,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.3\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.4\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

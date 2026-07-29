@@ -74,11 +74,11 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 - Planner、Planner Reviewer、Owner 与 Implementation Review 全部由 Main 逐字执行 `supervisor-next` 的 create action；只允许 `create_thread` 或复用已登记线程。Main ack 并发送正式 dispatch 后，把已有 watch 交给 Supervisor 等待，Main 自己绝不调用 `wait_threads`。
 - `planner_required`、`planner_revision_required` 和 `planner_review_required` 如果意外投影到 Main，只能确认 Supervisor route 存在；不得由 Main 执行或重复唤醒 Supervisor。
 - `dashboard_start_required`：Plan 激活后由新 Main 启动 Dashboard，回执失败不阻断业务。
-- `supervisor_required`：已登记 Supervisor 的原生 Goal 会自行轮询，Worker 完成后也会按脚本收据主动通知它；Main 不再调用 `supervisor-next`、发送普通监督 dispatch 或重新唤醒。只有 Supervisor 发来的 create/main_action 才由 Main 处理。
-- `owner_sync_required`：只执行收据指定的 `workflow owner-sync`。成功后由 Supervisor 下一轮自行发现变化；该 Git 写操作不得藏在 `supervisor-next` 或 `supervisor-ack` 中。
+- `supervisor_required`：逐字把脚本收据的 dispatch 发送给已登记 Supervisor。Supervisor 会复用未完成 Goal；如果上一批任务结束时 Goal 已停止，则新建本轮 Goal。Worker 完成后也按脚本收据主动通知它。Main 不调用 `supervisor-next` 或等待；只有 Supervisor 发来的 create/main_action 才由 Main 处理。
+- `owner_sync_required`：只执行收据指定的 `workflow owner-sync`。成功后重新运行 `workflow start-dag` 投影下一动作；若返回 `supervisor_required`，逐字把 dispatch 发送给 Supervisor，由它为新 active 批次创建 Goal。该 Git 写操作不得藏在 `supervisor-next` 或 `supervisor-ack` 中。
 - Runtime 只接受当前 Plan 与 verification 契约；旧契约直接拒绝，不得猜测字段、命令或手写 JSON。
 - 新 Owner 的 create action 若为 `sync_status: worktree_required`：Main 用 `create_thread` 启动 action prompt，取得正式 threadId 后立即调用 `supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap` 登记 bootstrap watch；Main 不等待。bootstrap 结束后 Supervisor 自行投影下一动作，Main 按其通知复用同一线程执行普通 create ack 并发送正式 Worker dispatch。
-- Planner、Planner Reviewer 或普通任务连续十轮无进度时，Supervisor 会发送脚本生成的深入检查报告、task 和 attempt；Main 等待用户决定。继续等待时调用 `supervisor-resume <goal-dir> <task-id> <attempt>`；用户确认关闭旧线程后调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`。异常结束或未生成有效结果也按同一用户决策边界处理。脚本原子更新 watch/route/status，不得手写。
+- Planner、Planner Reviewer 或普通任务连续十轮无进度时，Supervisor 会发送脚本生成的深入检查报告、task 和 attempt；Main 等待用户决定。继续运行时只调用 `supervisor-resume <goal-dir> <task-id> <attempt>`，再把收据的 `thread_notify` 与可选 `supervisor_notify` 逐字发送给对应线程；不得重新创建线程、run、attempt 或 worktree。用户确认关闭旧线程后才调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`。异常结束或未生成有效结果也按同一用户决策边界处理。脚本原子更新 watch/route/status，不得手写。
 - `owner_action_required`：报告 Owner 变化并等待用户决定。
 - `native_completion_required`：只执行收据指定的原生 Goal 桥接。
 - `completed`：脚本已合并回原始分支、保存最终结果和 DAG 日志，并删除全部 Owner/DAG worktree 与分支；Main 才报告最终结果并停止。

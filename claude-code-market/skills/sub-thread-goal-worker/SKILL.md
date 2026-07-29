@@ -30,7 +30,7 @@ Work 只修改 Binding writable scope。每个绑定验证都通过脚本执行�
 goal-dag.mjs worker verify <workflow-dir> <run-id> <verification-id>
 ```
 
-DAG verification 的 argv 已由 Plan/Binding 绑定，runtime 按 id 执行。Worker 只逐字使用 Binding 中的 verification id，禁止追加命令参数、拼 shell 命令或把完整命令当作 id。Quick 的 `quick-check` 仍按脚本收据提供 argv。验证会在当前绑定的 Owner worktree 执行；缺失或失败时完成动作被拒绝。
+DAG verification 的 argv 已由 Plan/Binding 绑定，runtime 按 id 执行。Worker 只逐字使用 Binding 中的 verification id，禁止追加命令参数、拼 shell 命令或把完整命令当作 id。Quick 的 `quick-check` 仍按脚本收据提供 argv。DAG 验证失败时 runtime 直接提交失败结果、把 task 收敛为 `task_failed/repair_task` 并返回 `supervisor_notify`；Worker 发送该通知后停止，不得再补调用 `worker fail`。
 
 ## 结果动作
 
@@ -49,6 +49,6 @@ goal-dag.mjs worker request-dag <workflow-dir> <run-id>
 
 `request-dag` 在 Quick 中验收安全边界后单向升级；在 DAG 父节点中请求 Composite Planner 展开内部子图。DAG 风险与 scope 固定动作见 [动作表](references/templates.md)。
 
-DAG 的 `complete/block/fail/complete-risk/request-scope/request-dag` 成功后，runtime 收据必须包含 `supervisor_notify`。立即使用 `send_message_to_thread`，把其中的 `message` 逐字发送到指定 `thread + host`，不得概括、追加 Result 或在当前聊天复述。发送失败时不得重跑结果命令，因为结果已经落盘；只向 Main 报告简短通知失败，Supervisor 的 120 秒轮询仍可恢复。Quick 不返回也不发送该通知。
+DAG 的失败 `verify` 或 `complete/block/fail/complete-risk/request-scope/request-dag` 成功后，runtime 收据必须包含 `supervisor_notify`。立即使用 `send_message_to_thread`，把其中的 `message` 逐字发送到指定 `thread + host`，不得概括、追加 Result 或在当前聊天复述。发送失败时不得重跑结果命令，因为结果已经落盘；只向 Main 报告简短通知失败，Supervisor 的 120 秒轮询仍可恢复。Quick 不返回也不发送该通知。
 
 禁止调用 `result-submit` 或 `finish`；禁止手写 Result/JSON、保存 evidence/history 或自行启动 Review。stdout 只作机器收据。

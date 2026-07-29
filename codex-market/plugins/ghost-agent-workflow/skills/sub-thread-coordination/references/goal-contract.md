@@ -27,7 +27,9 @@ Quick 是原地串行模式：始终使用启动时的当前工作区和当前�
 
 Supervisor 必须早于 Planner 启动；Main 创建线程但不等待。除 Owner 使用专属分支外，Supervisor、Planner 与 Reviewer 都从 DAG 分支创建独立干净 worktree，禁止 fork Main；它们只通过绝对 Goal 目录和领域脚本访问共享状态。Planner 只生成最小顶层图；初始 child 被拒绝。runtime 必须先检查 required effects、schema、依赖和固定 gate，Planner Reviewer 才审查最终 Plan digest。父节点不能直接完成时再由 Composite Planner 展开子图；Implementation Review 是显式 DAG 节点。
 
-Supervisor 的普通 wait 固定为 120 秒，回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。连续十轮无 cursor 变化后才允许一次 `read_thread` 深入检查，并由脚本根据 `latestTurn.status + thread.status.type` 生成有限结论交给 Main。
+Supervisor 的普通 wait 固定为 120 秒，回执只绑定匹配 poll 的 cursor 与 `latestTurn.status`；runtime 将宿主状态归一化为有限状态。`thread.status.type: idle` 不是任务终态，不得用于推进 DAG。连续十轮无 cursor 变化后才允许一次 `read_thread` 深入检查，并由脚本根据 `latestTurn.status + thread.status.type` 生成有限结论交给 Main。每次 `supervisor-next` 还返回有限 `goal_action`：有 active create/wait 时为 `continue`，无 active 任务时为 `stop`；Supervisor 只按该值保持或结束本轮原生 Goal。
+
+任务未完成时 `supervisor-next` 必须返回 `create`、`wait`、`stalled`、`notify` 或 `main_action` 中至少一种确定性动作。running task 已有 Result 时交给 Main 执行 `workflow step/owner-finish`；没有 Result 且原线程为 idle、watch 缺失或旧 `attention_notified` 时，重新派发到原线程。只有任务全部完成或 Goal 已非 active 才允许空 action。
 
 ## Owner 集成
 

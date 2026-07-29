@@ -125,6 +125,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "create_thread",
                 "禁止 `fork_thread`",
                 "main_action",
+                "goal_action",
                 "Planner 或 Planner Reviewer 正常结束不通知 Main",
                 "不得再次 `owner-sync`",
                 "禁止 Orca",
@@ -144,18 +145,27 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("上下文压缩或恢复后", supervisor)
             self.assertIn("`goal_objective`", supervisor)
             self.assertIn("`status_document`", supervisor)
+            self.assertIn("仍有未完成任务", supervisor)
+            self.assertIn("所有 action 为空", supervisor)
+            coordinator = self.skill(platform, "sub-thread-coordination")
+            self.assertIn("`thread_notify`", coordinator)
+            self.assertIn("`supervisor_notify`", coordinator)
 
     def test_supervisor_goal_mode_is_platform_explicit(self) -> None:
         codex = self.skill("codex", "sub-thread-task-supervisor")
         self.assertIn("调用 `get_goal`", codex)
         self.assertIn("调用 `create_goal`", codex)
         self.assertIn("Goal active", codex)
+        self.assertIn("旧 Goal 已 complete", codex)
+        self.assertIn("`update_goal(status=complete)`", codex)
+        self.assertIn("已无 active 任务", codex)
         self.assertNotIn("runtime_ref", codex)
 
         for platform in ("claude", "kimi"):
             supervisor = self.skill(platform, "sub-thread-task-supervisor")
             self.assertIn("不提供 Codex 原生 Goal 工具", supervisor)
             self.assertIn("持续监督 turn", supervisor)
+            self.assertIn("`goal_action: stop`", supervisor)
 
     def test_dag_and_owner_worktrees_are_script_owned(self) -> None:
         for platform in PLATFORMS:
@@ -198,6 +208,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             self.assertIn("禁止调用 `result-submit`", worker)
             self.assertIn("supervisor_notify", worker)
             self.assertIn("send_message_to_thread", worker)
+            self.assertIn("task_failed/repair_task", worker)
+            self.assertIn("不得再补调用 `worker fail`", worker)
 
     def test_planner_is_the_only_structured_semantic_exception(self) -> None:
         for platform in PLATFORMS:

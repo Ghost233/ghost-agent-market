@@ -12741,7 +12741,8 @@ function supervisorGoalObjective(goal: GoalContract): string {
     "接收执行线程的主动结束通知",
     `每次最多等待 ${SUPERVISOR_WAIT_TIMEOUT_MS / 1_000} 秒`,
     `连续 ${SUPERVISOR_INSPECTION_WAIT_LIMIT} 轮无 cursor 变化时深入检查线程并把脚本结论交给 Main`,
-    "仅在 runtime 报告 DAG completed 后结束",
+    "仅在 runtime 返回 goal_action=continue 时保持本次 Goal active",
+    "runtime 返回 goal_action=stop 表示没有 active 任务，立即结束本次 Goal；后续新任务到来时重新创建 Goal",
   ].join("；");
 }
 
@@ -12980,7 +12981,7 @@ function supervisorMainRoute(registry: Record<string, unknown>): {
 }
 
 function emptySupervisorPayload(main: { thread: string; host: string }): Record<string, unknown> {
-  return { main, create: [], wait: [], stalled: [], notify: [] };
+  return { main, goal_action: "stop", create: [], wait: [], stalled: [], notify: [] };
 }
 
 function supervisorControlPrompt(
@@ -13022,13 +13023,12 @@ function supervisorControlAttempt(
   return taskId === "planner" ? revision + 1 : revision;
 }
 
-function supervisorMainResumePrompt(goalDirectory: string): string {
-  let command: string[];
+function supervisorMainResumeCommand(goalDirectory: string): string[] {
   if (existsSync(dagWorktreesPath(goalDirectory))) {
     const worktrees = readDagWorktrees(goalDirectory);
     const developmentKey = developmentKeyFromDagBranch(worktrees.dag.branch) ??
       fail(`invalid DAG integration branch: ${worktrees.dag.branch}`);
-    command = [
+    return [
       "node",
       fileURLToPath(import.meta.url),
       "workflow",
@@ -13036,15 +13036,19 @@ function supervisorMainResumePrompt(goalDirectory: string): string {
       worktrees.dag.path,
       developmentKey,
     ];
-  } else {
-    command = ["node", fileURLToPath(import.meta.url), "workflow", "step", goalDirectory];
   }
+  return ["node", fileURLToPath(import.meta.url), "workflow", "step", goalDirectory];
+}
+
+function supervisorMainResumePrompt(goalDirectory: string): string {
+  const command = supervisorMainResumeCommand(goalDirectory);
   return [
     "$sub-thread-coordination",
     "",
     "Supervisor 检测到需要 Main 处理的确定性动作。",
     `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}，逐字执行脚本收据。`,
-    "完成主控动作后直接结束当前 turn；Supervisor 会自行继续轮询，不要调用 wait_threads 或重新唤醒 Supervisor。",
+    "执行收据动作后再次运行同一命令投影下一动作；若返回 supervisor_required，逐字发送其 dispatch，让 Supervisor 为新 active 批次创建 Goal。",
+    "不要调用 wait_threads；若返回 completed、owner_action_required 或 native_completion_required，只按对应收据处理。",
   ].join("\n");
 }
 
@@ -13057,12 +13061,14 @@ function supervisorOwnerSyncPrompt(goalDirectory: string, ownerId: string): stri
     goalDirectory,
     ownerId,
   ];
+  const resumeCommand = supervisorMainResumeCommand(goalDirectory);
   return [
     "$sub-thread-coordination",
     "",
     "Supervisor 检测到 Owner worktree 需要同步。",
     `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}。`,
-    "成功后直接结束当前 turn；Supervisor 会自行继续轮询，不要调用 wait_threads 或重新唤醒 Supervisor。",
+    `成功后运行 ${resumeCommand.map((value) => JSON.stringify(value)).join(" ")} 投影下一动作。`,
+    "若返回 supervisor_required，逐字发送其 dispatch，让 Supervisor 为新 active 批次创建 Goal；不要调用 wait_threads。",
   ].join("\n");
 }
 
@@ -13137,6 +13143,7 @@ function supervisorControlNext(
           kind: "actions",
           payload: {
             ...emptySupervisorPayload(main),
+            goal_action: "continue",
             wait: [{
               action_id: supervisorActionId("wait", taskId, attempt),
               ...compact,
@@ -13212,6 +13219,7 @@ function supervisorControlNext(
       const preferred = preferredWorkflowThread(goalDirectory, role);
       return {
         ...emptySupervisorPayload(main),
+        goal_action: "continue",
         create: [{
           action_id: supervisorActionId("create", taskId, attempt),
           task: taskId,
@@ -13263,7 +13271,9 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     return;
   }
   const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectory);
-  const payload = withStateLock(statePath, () => withStateLock(threadsPath, () => {
+  const computePayload = (): Record<string, unknown> => withStateLock(
+    statePath,
+    () => withStateLock(threadsPath, () => {
     const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
       allowSourceDrift: true,
     });
@@ -13271,7 +13281,24 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
       digestFile(goal.source.path) === goal.source.digest;
     const registry = readThreadRegistry(threadsPath, plan.goal_id);
     const threads = requireRecord(registry.threads, "thread registry.threads");
-    const watches = registry.watches as Record<string, unknown>[];
+    const originalWatches = registry.watches as Record<string, unknown>[];
+    const watches = originalWatches.filter((watch) => {
+      const taskId = String(watch.task_id);
+      const taskState = state.tasks[taskId];
+      return taskState === undefined || taskState.status === "running";
+    });
+    if (watches.length !== originalWatches.length) {
+      registry.watches = watches;
+      const activeThreadKeys = new Set(watches.map((watch) => String(watch.thread_key)));
+      for (const removed of originalWatches.filter((watch) => !watches.includes(watch))) {
+        const threadKeyValue = requireString(removed.thread_key, "completed watch.thread_key");
+        if (activeThreadKeys.has(threadKeyValue)) continue;
+        const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+        thread.status = "idle";
+      }
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+    }
     const main = requireRecord(registry.main, "thread registry.main");
     const mainRoute = {
       thread: requireString(main.thread_id, "thread registry.main.thread_id"),
@@ -13309,17 +13336,32 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     for (const task of plan.tasks) {
       if (create.length >= limit) break;
       const taskState = state.tasks[task.id];
-      const watched = watches.some((watch) =>
+      const activeWatch = watches.find((watch) =>
         watch.task_id === task.id && watch.attempt === taskState.attempt
       );
-      if (watched) continue;
+      const watchedThread = activeWatch === undefined
+        ? null
+        : requireRecord(
+          threads[requireString(activeWatch.thread_key, "active watch.thread_key")],
+          `thread registry watched thread for ${task.id}`,
+        );
+      const watchedThreadStatus = watchedThread === null
+        ? null
+        : requireString(watchedThread.status, `thread registry watched status for ${task.id}`);
+      const resultReady = taskState.status === "running" && taskState.result_path !== null &&
+        existsSync(taskState.result_path);
+      const resumeRunning = taskState.status === "running" && taskState.executor_id !== null &&
+        !resultReady;
+      const redispatchWatchedThread = resumeRunning &&
+        (watchedThreadStatus === "idle" || watchedThreadStatus === "attention_notified");
+      if (activeWatch !== undefined && !redispatchWatchedThread) continue;
       const integrationRepair = isOwnerIntegrationRepair(
         goalDirectory,
         task,
         taskState,
       );
       if (
-        (!isClaimedTask(taskState) && !integrationRepair) ||
+        (!isClaimedTask(taskState) && !integrationRepair && !resumeRunning) ||
         task.owner_id === null
       ) continue;
       if (!sourceCurrent) continue;
@@ -13332,7 +13374,7 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
       const reusableThread = subjectState.bound_executor_id === null
         ? null
         : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
-      const reusableStatuses = integrationRepair
+      const reusableStatuses = integrationRepair || resumeRunning
         ? new Set(["idle", "running", "completed", "failed", "cancelled", "archived", "attention_notified"])
         : new Set(["idle", "running"]);
       const registered = canonicalThread !== null && reusableStatuses.has(String(canonicalThread.status))
@@ -13340,9 +13382,10 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
         : reusableThread !== null && reusableStatuses.has(String(reusableThread.thread.status))
         ? reusableThread.thread
         : null;
-      if (subjectState.bound_executor_id !== null && registered === null) {
+      if (subjectState.bound_executor_id !== null && registered === null && !resumeRunning) {
         fail(`bound executor ${subjectState.bound_executor_id} is missing from thread registry`);
       }
+      if (resumeRunning && registered === null) continue;
       const profile = runtimeProfileForTask(goal, task);
       const title = threadTitle(task, subject);
       const ownerSync = !integrationRepair && task.role === "work" && task.owner_id !== null &&
@@ -13395,9 +13438,12 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
       const attempt = requirePositiveInteger(watch.attempt, "thread registry watch.attempt");
       const taskState = state.tasks[taskId];
       if (taskState === undefined || taskState.attempt !== attempt) continue;
+      if (taskState.status !== "running") continue;
+      if (taskState.result_path !== null && existsSync(taskState.result_path)) continue;
       const threadKeyValue = requireString(watch.thread_key, "thread registry watch.thread_key");
       const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
       const status = requireString(thread.status, `thread registry.threads.${threadKeyValue}.status`);
+      if (status === "idle" || status === "attention_notified") continue;
       const compact = {
         task: taskId,
         attempt,
@@ -13450,12 +13496,99 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     }
     return {
       main: mainRoute,
+      goal_action: create.length > 0 || waitActions.length > 0 ? "continue" : "stop",
       create,
       wait: waitActions,
       stalled: stalledActions,
       notify: notifications,
     };
   }));
+  let payload = computePayload();
+  const hasAction = (value: Record<string, unknown>): boolean =>
+    ["create", "wait", "stalled", "notify"].some((key) =>
+      Array.isArray(value[key]) && (value[key] as unknown[]).length > 0
+    ) || value.main_action !== undefined;
+  if (!hasAction(payload)) {
+    let step: Record<string, unknown>;
+    if (existsSync(workflowDefinitionPath(goalDirectory))) {
+      step = runSelfJson(["workflow", "step", goalDirectory, "--defer-delivery"]);
+    } else {
+      const loaded = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+      const resultReadyTask = loaded.plan.tasks.find((task) => {
+        const taskState = loaded.state.tasks[task.id];
+        return taskState.status === "running" && taskState.result_path !== null &&
+          existsSync(taskState.result_path);
+      });
+      if (resultReadyTask !== undefined) {
+        const taskState = loaded.state.tasks[resultReadyTask.id];
+        try {
+          if (
+            resultReadyTask.role === "work" && resultReadyTask.owner_id !== null &&
+            existsSync(dagWorktreesPath(goalDirectory))
+          ) {
+            runSelfJson([
+              "workflow", "owner-finish", goalDirectory,
+              taskRunId(resultReadyTask.id, taskState),
+            ]);
+          } else {
+            runSelfJson([
+              "finish",
+              planPath,
+              statePath,
+              resultReadyTask.id,
+              requireString(taskState.reservation_token, "reservation token"),
+              requireString(taskState.result_path, "task result path"),
+              "--compact",
+            ]);
+          }
+        } catch {
+          // owner-finish records the repair state before returning failure.
+        }
+        payload = computePayload();
+      }
+      if (hasAction(payload)) {
+        process.stdout.write(`${JSON.stringify(payload)}\n`);
+        return;
+      }
+      const reconciled = runSelfJson(["reconcile", planPath, statePath, "--compact"]);
+      if (reconciled.next_action === "execute") {
+        runSelfJson(["reserve", planPath, statePath, "--compact"]);
+        step = { action: "supervisor_required" };
+      } else {
+        step = {
+          action: "user_action_required",
+          reason: reconciled.reason ?? reconciled.next_action ?? "runtime_failed",
+        };
+      }
+    }
+    const action = requireString(step.action, "empty Supervisor workflow action");
+    if (action === "supervisor_required") payload = computePayload();
+    else {
+      payload.main_action = {
+        action,
+        summary: compactUserSummary(String(step.reason ?? action)),
+        dispatch: supervisorMainResumePrompt(goalDirectory),
+        ...(step.result_ref === undefined ? {} : {
+          result_ref: requireString(step.result_ref, "workflow step result_ref"),
+        }),
+      };
+    }
+  }
+  if (!hasAction(payload)) {
+    payload.main_action = {
+      action: "user_action_required",
+      reason: "runtime_failed",
+      required_action: "retry_runtime",
+      summary: "任务尚未完成，但 runtime 未能生成下一步动作",
+      dispatch: [
+        "$sub-thread-coordination",
+        "",
+        "runtime 无法为未完成任务生成下一步动作。",
+        `Goal 目录：${goalDirectory}`,
+        "向用户报告 runtime_failed；不得等待、猜测状态或创建新线程。",
+      ].join("\n"),
+    };
+  }
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -15873,6 +16006,58 @@ function workerVerifyCommand(
     stderr: compactOutput(execution.error?.message ?? execution.stderr),
     finished_at: new Date().toISOString(),
   });
+  if (status === "failed" && !quick) {
+    const run = taskForRun(goalDirectory, runId);
+    const supervisorRoute = workerSupervisorRoute(run.goalDirectory);
+    runSelfJson(
+      [
+        "result-submit",
+        run.planPath,
+        run.statePath,
+        run.task.id,
+        requireString(run.taskState.reservation_token, "reservation token"),
+      ],
+      {
+        contract: "TASK_RESULT_INPUT_V2",
+        status: "failed",
+        summary: `验证 ${verificationId} 失败；日志：${path}`,
+        evidence: run.task.verification_ids.map((id) => ({
+          id,
+          outcome: id === verificationId ? "failed" : "not_run",
+          summary: id === verificationId ? `${id} failed` : `${id} not run`,
+          ...(id === verificationId ? { artifact: path } : {}),
+        })),
+        blocking: [`verification failed: ${verificationId}`],
+      },
+    );
+    const finished = run.task.role === "work" && run.task.owner_id !== null &&
+        existsSync(dagWorktreesPath(run.goalDirectory))
+      ? runSelfJson(["workflow", "owner-finish", run.goalDirectory, runId])
+      : runSelfJson([
+        "finish",
+        run.planPath,
+        run.statePath,
+        run.task.id,
+        requireString(run.taskState.reservation_token, "reservation token"),
+        requireString(run.taskState.result_path, "task result path"),
+        "--compact",
+      ]);
+    process.stdout.write(`${JSON.stringify(workerReceiptWithSupervisor(
+      run.goalDirectory,
+      {
+        contract: "WORKER_VERIFICATION_RECEIPT_V1",
+        status,
+        verification_id: verificationId,
+        log_ref: path,
+        task_status: "stopped",
+        task_action: "repair_task",
+        result_ref: finished.result_ref,
+      },
+      supervisorRoute,
+      "failed",
+    ))}\n`);
+    return;
+  }
   process.stdout.write(`${JSON.stringify({
     contract: "WORKER_VERIFICATION_RECEIPT_V1",
     status,
@@ -15911,7 +16096,7 @@ function workerReceiptWithSupervisor(
     ...receipt,
     supervisor_notify: {
       ...route,
-      message: `执行线程已通过脚本提交 ${status}；请立即继续现有 Supervisor Goal 并运行 supervisor-next。`,
+      message: `执行线程已通过脚本提交 ${status}；请按当前 goal_action 模式启动或复用本批监督，并立即运行 supervisor-next。`,
     },
   };
 }
@@ -16946,50 +17131,55 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
     })}\n`);
     return;
   }
-  const worktrees = readDagWorktrees(run.goalDirectory);
-  const ownerWorktree = worktrees.owners[run.task.owner_id];
-  if (ownerWorktree?.path === null || ownerWorktree?.path === undefined) {
-    fail(`Owner ${run.task.owner_id} worktree is not registered`);
-  }
-  if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its branch");
-  if (gitBranch(ownerWorktree.path) !== ownerWorktree.branch) fail("Owner worktree left its branch");
-  assertCleanGitWorktree(worktrees.dag.path, "DAG worktree before Owner integration");
-  const ownerControlChanges = [...gitAllStatusMap(ownerWorktree.path).keys()]
-    .filter(isRuntimeWorkspacePath);
-  if (ownerControlChanges.length > 0) {
-    fail(`Owner changed script-managed workflow files: ${ownerControlChanges.join(", ")}`);
-  }
-  const dagBefore = gitHead(worktrees.dag.path);
-  const changedBeforeCommit = gitChangedPathsSince(ownerWorktree.path, ownerWorktree.synced_dag_head);
-  const authorized = effectiveWritablePaths(run.task, run.taskState);
-  const outsideScope = changedBeforeCommit.filter(
-    (path) => !authorized.some((pattern) => pathMatchesPattern(path, pattern)),
-  );
-  if (outsideScope.length > 0) {
-    fail(`Owner changes are outside task scope: ${outsideScope.join(", ")}`);
-  }
-
   const errorLog = ownerFinishErrorPath(run.goalDirectory, run.task.owner_id);
   const integrationPath = ownerIntegrationPath(run.goalDirectory, runIdArgument);
   const temporaryWorktree = join(
     tmpdir(),
     `ghost-agent-workflow-merge-${digestJson({ goal: run.goal.goal_id, run: runIdArgument }).slice(0, 16)}`,
   );
+  let worktrees: DagWorktreesV1 | null = null;
+  let dagBefore: string | null = null;
   let dagAdvanced = false;
   try {
-    const committedGitlinks = commitOwnerGitlinks(ownerWorktree.path, run.task, run.taskState);
-    const pendingChanges = [...gitStatusMap(ownerWorktree.path).keys()];
+    worktrees = readDagWorktrees(run.goalDirectory);
+    const ownerWorktree = worktrees.owners[run.task.owner_id];
+    if (ownerWorktree?.path === null || ownerWorktree?.path === undefined) {
+      fail(`Owner ${run.task.owner_id} worktree is not registered`);
+    }
+    const ownerPath = ownerWorktree.path;
+    if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) {
+      fail("DAG worktree left its branch");
+    }
+    if (gitBranch(ownerPath) !== ownerWorktree.branch) fail("Owner worktree left its branch");
+    assertCleanGitWorktree(worktrees.dag.path, "DAG worktree before Owner integration");
+    const ownerControlChanges = [...gitAllStatusMap(ownerPath).keys()]
+      .filter(isRuntimeWorkspacePath);
+    if (ownerControlChanges.length > 0) {
+      fail(`Owner changed script-managed workflow files: ${ownerControlChanges.join(", ")}`);
+    }
+    dagBefore = gitHead(worktrees.dag.path);
+    const changedBeforeCommit = gitChangedPathsSince(ownerPath, ownerWorktree.synced_dag_head);
+    const authorized = effectiveWritablePaths(run.task, run.taskState);
+    const outsideScope = changedBeforeCommit.filter(
+      (path) => !authorized.some((pattern) => pathMatchesPattern(path, pattern)),
+    );
+    if (outsideScope.length > 0) {
+      fail(`Owner changes are outside task scope: ${outsideScope.join(", ")}`);
+    }
+
+    const committedGitlinks = commitOwnerGitlinks(ownerPath, run.task, run.taskState);
+    const pendingChanges = [...gitStatusMap(ownerPath).keys()];
     if (pendingChanges.length > 0) {
-      gitOutput(ownerWorktree.path, ["add", "--all", "--", ...pendingChanges], "Owner change staging");
+      gitOutput(ownerPath, ["add", "--all", "--", ...pendingChanges], "Owner change staging");
       gitOutput(
-        ownerWorktree.path,
+        ownerPath,
         ["commit", "-m", `task(${run.task.id}): ${run.task.title}`],
         "Owner task commit",
       );
     }
-    const ownerHead = gitHead(ownerWorktree.path);
+    const ownerHead = gitHead(ownerPath);
     const changedFiles = gitOutput(
-      ownerWorktree.path,
+      ownerPath,
       ["diff", "--name-only", "-z", `${ownerWorktree.synced_dag_head}..${ownerHead}`, "--"],
       "Owner committed path scan",
     ).split("\0").filter(Boolean).map(normalizePathPattern).sort(compareStableStrings);
@@ -17016,7 +17206,7 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
     if (!merged.ok) fail(`Owner merge conflict: ${merged.stderr.trim()}`);
     for (const entry of relevantTaskGitlinks(temporaryWorktree, run.task, run.taskState)) {
       const sourceRoot = committedGitlinks.some((candidate) => candidate.path === entry.path)
-        ? ownerWorktree.path
+        ? ownerPath
         : worktrees.dag.path;
       ensureGitlinkCheckout(temporaryWorktree, sourceRoot, entry, "temporary integration");
     }
@@ -17027,7 +17217,7 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
     dagAdvanced = true;
     for (const entry of relevantTaskGitlinks(worktrees.dag.path, run.task, run.taskState)) {
       const sourceRoot = committedGitlinks.some((candidate) => candidate.path === entry.path)
-        ? ownerWorktree.path
+        ? ownerPath
         : worktrees.original.path;
       ensureGitlinkCheckout(worktrees.dag.path, sourceRoot, entry, "DAG integration");
     }
@@ -17067,7 +17257,7 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
       result_ref: receipt.result_ref,
     })}\n`);
   } catch (error) {
-    if (dagAdvanced) {
+    if (dagAdvanced && worktrees !== null && dagBefore !== null) {
       gitOutput(worktrees.dag.path, ["reset", "--hard", dagBefore], "DAG integration rollback");
       syncTaskGitlinks(
         worktrees.dag.path,
@@ -17083,7 +17273,9 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
     writeTextAtomic(errorLog, `${message}\n`);
     fail(`Owner integration failed; continue in the same Owner worktree: ${message}; log: ${errorLog}`);
   } finally {
-    gitAttempt(worktrees.dag.path, ["worktree", "remove", "--force", temporaryWorktree]);
+    if (worktrees !== null) {
+      gitAttempt(worktrees.dag.path, ["worktree", "remove", "--force", temporaryWorktree]);
+    }
     rmSync(temporaryWorktree, { recursive: true, force: true });
   }
 }
@@ -17313,6 +17505,8 @@ function supervisorResumeCommand(
     attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
   }
   let receipt: Record<string, unknown>;
+  let threadTarget: { thread: string; host: string };
+  let threadDispatch: string;
   if (isSupervisorControlTask(taskId)) {
     const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
     const threadsPath = join(goalDirectory, "threads.json");
@@ -17330,8 +17524,26 @@ function supervisorResumeCommand(
       watch.unchanged_waits = 0;
       validateThreadRegistry(registry);
       writeJson(threadsPath, registry);
-      return { status: "resumed", control: true, task: taskId, attempt };
+      return {
+        status: "resumed",
+        control: true,
+        task: taskId,
+        attempt,
+        target: {
+          thread: requireString(thread.thread_id, "control thread id"),
+          host: requireString(thread.host_id, "control thread host"),
+        },
+      };
     });
+    threadTarget = requireRecord(receipt.target, "control resume target") as {
+      thread: string;
+      host: string;
+    };
+    const step = runSelfJson(["workflow", "step", goalDirectory, "--defer-delivery"]);
+    const title = taskId === "planner"
+      ? goalThreadTitles(goal).planner
+      : goalThreadTitles(goal).planner_reviewer;
+    threadDispatch = supervisorControlPrompt(goalDirectory, step, taskId, title);
   } else {
     receipt = runSelfJson([
       "supervisor-record",
@@ -17340,9 +17552,66 @@ function supervisorResumeCommand(
       taskId,
       String(attempt),
     ]);
+    const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectory);
+    const resumed = withStateLock(statePath, () => withStateLock(threadsPath, () => {
+      const { plan, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+      const task = plan.tasks.find((candidate) => candidate.id === taskId) ??
+        fail(`unknown resumed task: ${taskId}`);
+      const taskState = state.tasks[taskId];
+      if (taskState.attempt !== attempt || taskState.status !== "running") {
+        fail(`resumed task state is invalid: ${taskId}`);
+      }
+      const registry = readThreadRegistry(threadsPath, plan.goal_id);
+      const watch = (registry.watches as Record<string, unknown>[]).find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      ) ?? fail(`supervisor watch is missing for resumed task ${taskId}`);
+      const threadKeyValue = requireString(watch.thread_key, "resumed thread key");
+      const thread = requireRecord(
+        requireRecord(registry.threads, "thread registry.threads")[threadKeyValue],
+        `thread registry.threads.${threadKeyValue}`,
+      );
+      return {
+        run: taskRunId(taskId, taskState),
+        title: threadTitle(task),
+        target: {
+          thread: requireString(thread.thread_id, "resumed thread id"),
+          host: requireString(thread.host_id, "resumed thread host"),
+        },
+      };
+    }));
+    threadTarget = resumed.target;
+    const openCommand = [
+      "node",
+      fileURLToPath(import.meta.url),
+      "worker",
+      "open",
+      goalDirectory,
+      resumed.run,
+    ].map((value) => JSON.stringify(value)).join(" ");
+    threadDispatch = [
+      "$sub-thread-goal-worker",
+      "",
+      `继续现有任务：${resumed.title}`,
+      `先运行 ${openCommand} 重新读取当前 Binding，然后从上次停止的位置继续。`,
+      "复用现有线程、run 和 worktree；不得重新实施已完成内容、重新同步 Owner 或创建新 attempt。",
+    ].join("\n");
   }
   refreshSupervisionDocument(goalDirectory);
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+  const supervisorRoute = preferredWorkflowThread(goalDirectory, "supervisor");
+  process.stdout.write(`${JSON.stringify({
+    ...receipt,
+    thread_notify: {
+      ...threadTarget,
+      message: threadDispatch,
+    },
+    ...(supervisorRoute === null ? {} : {
+      supervisor_notify: {
+        thread: supervisorRoute.thread_id,
+        host: supervisorRoute.host_id,
+        message: supervisorDispatchPrompt(goalDirectory),
+      },
+    }),
+  })}\n`);
 }
 
 function supervisorDispatchPrompt(goalDirectory: string): string {
@@ -17358,8 +17627,8 @@ function supervisorDispatchPrompt(goalDirectory: string): string {
     String(MAX_PARALLEL_THREADS),
   ].map((value) => JSON.stringify(value)).join(" ");
   const platformInstruction = EXPECTED_PLATFORM === "codex"
-    ? `首次运行先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，objective 必须逐字使用：${goalObjective}。不得概括或改写。每个 Goal turn 只执行一次 supervisor-next 投影；普通等待只能结束当前 turn，不得结束或阻塞 Goal。`
-    : "本平台没有 Codex 原生 Goal；在当前长期线程内保持持续监督循环，普通等待不得结束监督 turn。";
+    ? `每次收到 dispatch 先用 get_goal 检查；没有未完成 Goal 时调用 create_goal，objective 必须逐字使用：${goalObjective}。不得概括或改写。每个 Goal turn 只执行一次 supervisor-next 投影；只按脚本 goal_action 决定保持或结束 Goal。`
+    : "本平台没有 Codex 原生 Goal；只在脚本 goal_action=continue 时保持监督循环，goal_action=stop 时结束当前监督 turn。";
   return [
     "$sub-thread-task-supervisor",
     "",

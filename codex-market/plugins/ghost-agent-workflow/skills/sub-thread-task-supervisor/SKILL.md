@@ -11,15 +11,15 @@ Main 必须逐字使用 `workflow supervisor-init` 返回的 target 和 dispatch
 
 ## 原生 Goal
 
-首次运行时：
+每次收到 Supervisor dispatch 时：
 
 1. 设置脚本给出的线程标题。
-2. 调用 `get_goal`；不存在未完成 Goal 时，调用 `create_goal`，其 objective 必须逐字使用 `workflow supervisor-init` 收据的 `goal_objective`，不得概括或改写，也不设置 token budget。
+2. 调用 `get_goal`；不存在未完成 Goal 时，调用 `create_goal`，其 objective 必须逐字使用 `workflow supervisor-init` 收据的 `goal_objective`，不得概括或改写，也不设置 token budget。旧 Goal 已 complete 时必须新建本轮 Goal。
 3. 立即进入监督循环。
 
-已有未完成 Goal 时禁止重复创建。普通等待、Main 正在处理 action、线程 running 或无状态变化都不是 blocked。只有同一个真实 runtime/权限阻塞连续三个 Goal turn 未变化时才可标记 blocked；脚本报告 DAG `completed` 后才标记 complete。
+已有未完成 Goal 时禁止重复创建。普通等待、Main 正在处理 action、线程 running 或无状态变化都不是 blocked。只有同一个真实 runtime/权限阻塞连续三个 Goal turn 未变化时才可标记 blocked。
 
-Goal 只负责持续唤醒。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。
+Goal 只负责当前 active 任务批次。上下文压缩或恢复后，不从聊天重建状态，直接重新执行 `supervisor-next`。
 
 Main 启动的 Main、Planner、Planner Reviewer、Owner、Implementation Review 与 Supervisor 目标，均由 runtime 投影到收据给出的 `status_document`。该文件只保存当前状态，由脚本原子更新；Supervisor 不编辑它，也不通过读取原始 JSON 恢复状态。
 
@@ -34,7 +34,7 @@ goal-dag.mjs supervisor-ack <goal-dir> <action-id> [脚本要求的宿主标量]
 
 action id 是不透明值。不得调用低层 `supervisor-record`，不得读取或编辑原始 JSON，不得手写参数、状态或结果。禁止 Orca、`$orchestration` 和 subagent。
 
-每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后立即让出当前 turn；下一次 continuation 再读取本地状态：
+每个 Goal turn 只执行一次 `supervisor-next`，处理该次紧凑 action 后必须读取脚本的 `goal_action`：`continue` 保持 Goal active 并让出当前 turn；`stop` 表示已无 active 任务，处理完本轮 action 后立即调用 `update_goal(status=complete)`。不得自行推断 active 状态。
 
 同一 `task/attempt` 在一次收据中只能属于 `create`、`wait`、`stalled`、`notify` 之一；若脚本违反互斥约束，只向 Main 报告一次 CLI 契约错误并保持 Goal active，不猜测该执行哪个动作。重复出现 `create` 或非终态 `main_action`，无论多少轮都不算阻塞，禁止因此调用 `update_goal(status=blocked)`。
 
@@ -45,12 +45,12 @@ action id 是不透明值。不得调用低层 `supervisor-record`，不得读�
 - `main_action.action: owner_sync_required`：只通知 Main 执行显式 `workflow owner-sync`；Supervisor 不运行 Git，不创建、同步、提交或合并分支/worktree。
 - `notify`：只把脚本提供的 task/thread/status/result_ref/summary 发给 Main，成功后 ack 并让出当前 turn。用户可见文本不显示 `result_ref`。
 - `stalled`：只会在脚本累计十次无 cursor 变化后出现。使用 `read_thread` 对 action 指定的 thread/host 做一次深入检查，只读取 action 的 `inspection_turn_limit` 指定的最近 turn；然后逐字把 `latestTurn.status`（缺失用 `-`）与 `thread.status.type` 传给 `supervisor-ack <goal-dir> <action-id> <latestTurn.status|-> <thread.status.type>`。只有深入检查允许传 `thread.status.type`。runtime 归一化有限结论；Supervisor 只把收据的 `task`、`attempt` 和 `report` 发给 Main，不自行判断是否在运行、卡死或该如何恢复，不关闭、不 reclaim，等待 Main 决定。
-- 空 action：不产生消息，不结束 Goal；下一次 Goal continuation 重新运行 `supervisor-next`。
-- `main_action.action: completed`：发送最终机器通知后调用 `update_goal(status=complete)`，结束 Supervisor。
+- 空 action：只允许在任务全部完成或 Goal 已非 active 时出现，并且 `goal_action` 必须为 `stop`。Goal active 且仍有未完成任务时若所有 action 为空，视为 CLI 契约错误，只通知 Main，不得空转或猜测。
+- `main_action.action: completed`：发送最终机器通知后调用 `update_goal(status=complete)`，结束本次 Supervisor Goal。
 
 Planner 或 Planner Reviewer 正常结束不通知 Main，脚本自动推进。异常结束、缺少有效结果、Owner bootstrap、Owner 终态与集成修复全部按脚本 action 转发，不解析、不概括、不猜测恢复策略。`owner-finish` 失败时必须复用原 Owner 线程和 worktree，不得再次 `owner-sync`。
 
-执行线程会在结果动作成功后，把 runtime 收据中的 `supervisor_notify.message` 主动发送到本 Supervisor。收到该消息只表示应立即继续现有 Goal 并执行一次 `supervisor-next`；不得把消息本身当作终态、结果或状态源。
+执行线程会在结果动作成功后，把 runtime 收据中的 `supervisor_notify.message` 主动发送到本 Supervisor。收到该消息后，如果旧 Goal 已 complete，则按收据 objective 创建新 Goal；随后执行一次 `supervisor-next`。不得把消息本身当作终态、结果或状态源。
 
 任何 CLI 失败都只向 Main 报告简短错误和日志路径，不定位或修改脚本实现。Supervisor 只关注 `<goal-dir>` 下 `.ghost-agent-workflow` 的脚本投影。
 
