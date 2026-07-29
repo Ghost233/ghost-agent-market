@@ -27,10 +27,10 @@ goal-dag.mjs worker open <workflow-dir> <run-id>
 Work 只修改 Binding writable scope。每个绑定验证都通过脚本执行一次：
 
 ```text
-goal-dag.mjs worker verify <workflow-dir> <run-id> <verification-id> <command> [arg...]
+goal-dag.mjs worker verify <workflow-dir> <run-id> <verification-id>
 ```
 
-命令按 argv 传入，不用 shell 字符串。验证会在当前绑定的 Owner worktree 执行；缺失或失败时完成动作被拒绝。
+DAG verification 的 argv 已由 Plan/Binding 绑定，runtime 按 id 执行。Worker 只逐字使用 Binding 中的 verification id，禁止追加命令参数、拼 shell 命令或把完整命令当作 id。Quick 的 `quick-check` 仍按脚本收据提供 argv。验证会在当前绑定的 Owner worktree 执行；缺失或失败时完成动作被拒绝。
 
 ## 结果动作
 

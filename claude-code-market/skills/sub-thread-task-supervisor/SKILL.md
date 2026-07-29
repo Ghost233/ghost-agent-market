@@ -35,6 +35,10 @@ Supervisor 不创建或复用线程。Main 只能调用 `create_thread`，禁止
 
 Worker 线程结束只表示“线程已结束”。新 Main 调用 `start-dag` 后，脚本会对 Owner 执行 `owner-finish`；只有 Owner 分支成功合并到 DAG 且集成验证通过，task 才完成。
 
+Owner 的 `blocked/failed/needs_repair` 结果由 `owner-finish` 直接验收并路由 Main，不进入集成，也不生成 repair create action。Supervisor 只通知一次，不得因没有后续 create/wait 动作而猜测或重试。
+
 若 `owner-finish` 失败，新 Main 会再次唤醒 Supervisor。下一次 `supervisor-next` 返回原 Owner 的 repair create action；Main 必须 ack 并把 repair dispatch 发回同一线程，不得再次 `owner-sync`。禁止创建新 attempt、线程或 worktree。
+
+验证契约迁移后的 create action 必须复用收据中的原 thread、run 和 Owner worktree；只转发更新后的 Binding 让 Worker 继续验证，不得新建线程、重新实施或 reclaim attempt。
 
 八个是上限，不是目标。Supervisor 不创建线程、不实施、不 Review、不验收、不概括结果、不决定恢复策略；无状态变化不产生用户消息。Main 不调用 `wait_threads`，只有 Supervisor 负责等待。

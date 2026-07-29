@@ -23,6 +23,7 @@ Planner 运行在从 DAG 分支创建的独立干净 worktree。Goal 目录位�
 - 业务和 Implementation Review task 只归属 approved Owner；机械 gate 由 runtime 脚本生成。
 - Review 是显式 `role: review` 节点；机械验收不是 Review。
 - work 只绑定定向验证；共享全仓验证使用 verify 节点。
+- 验证命令只在顶层 `verifications: [{id, run}]` 中声明；`id` 必须是短标识符，`run` 必须是 argv 数组。task 的 `verify` 只能引用这些 id，严禁把完整命令写进 `verify`。
 - 只修改受影响闭包；无关 running 分支不等待、不替换。
 
 ## Review
@@ -53,6 +54,8 @@ Planner 是唯一仍可提交结构化语义输入的角色，因为 task 目标
 - Reviewer 要求修改：最多一次 `planner-submit <goal-dir> revise`。
 - 局部变化：`planner-submit <goal-dir> delta`。
 - 子图：`planner-submit <goal-dir> subgraph <run-id>`。
+
+Delta 或子图新增验证时必须同时提交最小 `verifications` 定义；已有 id 只引用，不重复定义。argv 直接作为字符串数组交给脚本，不拼 shell 字符串。
 
 初始或 revise 提交若脚本报告 required effects 未覆盖，必须在当前 Planner turn 修正语义输入后重新提交；不得等待 Reviewer，也不得把缺口留到 Plan 激活后的 `needs_delta`。
 

@@ -77,6 +77,7 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 - `dashboard_start_required`：Plan 激活后由新 Main 启动 Dashboard，回执失败不阻断业务。
 - `supervisor_required`：Main 先调用 `supervisor-next`。有 create/main_action 时由 Main 处理；只有 wait/notify/stalled 时才把监督 dispatch 发送给已登记 Supervisor并结束。Main 不等待。
 - `owner_sync_required`：只执行收据指定的 `workflow owner-sync`。成功后重新唤醒 Supervisor；该 Git 写操作不得藏在 `supervisor-next` 或 `supervisor-ack` 中。
+- 旧活动 Goal 若包含命令字符串 verification id，`start-dag` 会自动调用一次脚本迁移；也可显式执行 `workflow migrate-verifications <goal-dir>`。迁移必须保留原 task attempt、run、线程、Owner worktree 和未提交修改，并复用原线程只继续验证。
 - 新 Owner 的 create action 若为 `sync_status: worktree_required`：Main 用 `create_thread` 启动 action prompt，取得正式 threadId 后立即调用 `supervisor-ack <goal-dir> <action-id> <thread> <host> bootstrap` 登记 bootstrap watch，再唤醒 Supervisor；Main 不等待。bootstrap 结束后 Main 重新调用 `supervisor-next`，复用同一线程执行普通 create ack 并发送正式 Worker dispatch。
 - Planner、Planner Reviewer 或普通任务疑似挂死、异常结束或未生成有效结果时，Main 先报告并等待用户决定。用户确认关闭旧线程后，Main 调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`；脚本清除旧 watch，控制线程同时清除旧 route，随后重新唤醒 Supervisor。不得手写 route、watch 或状态。
 - `owner_action_required`：报告 Owner 变化并等待用户决定。
@@ -100,6 +101,8 @@ owner-sync：Owner 分支快进到最新 DAG 分支
 ```
 
 每轮开始前必须 `owner-sync`。下游只读取已合并到 DAG 分支的代码。合并冲突或集成验证失败时，task 保持 running、DAG HEAD 不变、结果候选清除；Supervisor 必须唤醒原 Owner 在原 worktree 修复，禁止新建 Owner 线程或 worktree，也禁止重新同步覆盖修复分支。
+
+`owner-sync` 还会按 task writable scope 初始化所需 Git submodule；Worker 不手动执行 submodule/Git 命令。`owner-finish` 由脚本提交 submodule 与父仓库指针，并把已集成 submodule 同步到 DAG。Owner 返回 `blocked/failed/needs_repair` 时不合并分支，脚本直接验收终态并路由 Main，不得反复调用 `owner-finish`。
 
 Goal 完成后，脚本在原始工作区仍处于启动分支且干净的前提下，把 DAG 分支合并到原始分支的最新 HEAD；DAG 期间原始分支新增的提交不得被覆盖。随后把最终结果和 `events.jsonl` 固定保存到原始工作区的 `.ghost-agent-workflow/`，最后删除全部 Owner worktree/分支和 DAG worktree/分支。任何分支尚未合并、worktree 不干净或最终合并冲突时都停止清理并保留现场，不得声称交付完成。
 

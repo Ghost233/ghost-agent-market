@@ -6,7 +6,7 @@ DAG Work 的工作目录由 `owner-sync` 固定为 Owner 专属 worktree。Worke
 
 | 意图 | 公共命令 | stdin |
 |---|---|---|
-| 执行绑定验证 | `worker verify <dir> <run> <verification-id> <command> [arg...]` | 无 |
+| 执行 DAG 绑定验证 | `worker verify <dir> <run> <verification-id>` | 无 |
 | 完成 | `worker complete` | 百字内摘要 |
 | 真实阻塞 | `worker block` | blocker |
 | 执行失败 | `worker fail` | 失败原因 |

@@ -331,6 +331,11 @@ type TaskDefinition = {
   subgraph: TaskSubgraph | null;
 };
 
+type VerificationDefinition = {
+  id: string;
+  run: string[];
+};
+
 type Plan = {
   contract: "DAG_PLAN_V5";
   planner: "parallel-task-planner";
@@ -348,6 +353,7 @@ type Plan = {
   coverage_path: string;
   owners: OwnerDefinition[];
   runtime_actors: RuntimeActorDefinition[];
+  verifications: VerificationDefinition[];
   tasks: TaskDefinition[];
   safety: {
     status: SafetyStatus;
@@ -2510,7 +2516,10 @@ function parseTask(value: unknown, index: number): TaskDefinition {
       source.verification_ids,
       `tasks[${index}].verification_ids`,
       false,
-    ),
+    ).map((verificationId, verificationIndex) => requireIdentifier(
+      verificationId,
+      `tasks[${index}].verification_ids[${verificationIndex}]`,
+    )),
     satisfies_goal_gates: requireStringArray(
       source.satisfies_goal_gates,
       `tasks[${index}].satisfies_goal_gates`,
@@ -2597,6 +2606,25 @@ function parsePlanInputItem(value: unknown, index: number): RequiredPlanItem {
     required_effects: effects as CoverageEffect[],
   };
 }
+
+function parseVerificationDefinition(value: unknown, index: number): VerificationDefinition {
+  const source = requireRecord(value, `verifications[${index}]`);
+  requireExactKeys(source, ["id", "run"], `verifications[${index}]`);
+  const run = requireStringArray(source.run, `verifications[${index}].run`, false);
+  if (run.some((argument) => argument.includes("\0") || argument.includes("\n") || argument.includes("\r"))) {
+    fail(`verifications[${index}].run contains an invalid control character`);
+  }
+  return {
+    id: requireIdentifier(source.id, `verifications[${index}].id`),
+    run,
+  };
+}
+
+const SCRIPT_VERIFICATION_IDS = new Set([
+  SOURCE_COVERAGE_GATE_ID,
+  DIFF_SCOPE_GATE_ID,
+  COMMIT_READINESS_GATE_ID,
+]);
 
 function expandPlanInputTask(
   value: unknown,
@@ -2847,7 +2875,7 @@ function buildPlanDraft(
   const goal = parseGoal(readJson(goalPath));
   requireAllowedKeys(
     input,
-    ["contract", "items", "tasks", "safety", "safety_reasons"],
+    ["contract", "items", "verifications", "tasks", "safety", "safety_reasons"],
     "plan input",
   );
   if (!Array.isArray(input.items) || input.items.length === 0) {
@@ -2856,7 +2884,12 @@ function buildPlanDraft(
   if (!Array.isArray(input.tasks) || input.tasks.length === 0) {
     fail("plan input.tasks must be a non-empty array");
   }
+  if (!Array.isArray(input.verifications)) {
+    fail("plan input.verifications must be an array");
+  }
   const items = input.items.map(parsePlanInputItem);
+  const verifications = input.verifications.map(parseVerificationDefinition);
+  ensureUnique(verifications.map((verification) => verification.id), "verification definition id");
   const semanticTasks = input.tasks.map((value, index) => expandPlanInputTask(value, index));
   const prematureChildren = semanticTasks.filter((task) => task.parent_task_id !== null);
   if (prematureChildren.length > 0) {
@@ -2899,6 +2932,7 @@ function buildPlanDraft(
     coverage_path: join(dirname(planPath), "coverage.json"),
     owners,
     runtime_actors: fixedRuntimeActors(),
+    verifications,
     tasks,
     safety: {
       status: safetyStatus,
@@ -3021,6 +3055,10 @@ function buildPlannerReviewContext(planPath: string, plan: Plan): Record<string,
     plan_ref: planPath,
     plan_digest: digestFile(planPath),
     revision: plan.revision,
+    mechanical: {
+      verification_contract: "pass",
+      verification_count: plan.verifications.length,
+    },
     metrics: plannerReviewMetrics(plan, config.parallel),
     tasks: plan.tasks.map((task) => ({
       id: task.id,
@@ -3357,6 +3395,9 @@ function parsePlan(
   if (!Array.isArray(source.runtime_actors) || source.runtime_actors.length === 0) {
     fail("runtime_actors must be a non-empty array");
   }
+  if (!Array.isArray(source.verifications)) {
+    fail("plan.verifications must be an array; run workflow migrate-verifications for a legacy Goal");
+  }
   if (!Array.isArray(source.tasks) || source.tasks.length === 0) {
     fail("tasks must be a non-empty array");
   }
@@ -3385,6 +3426,7 @@ function parsePlan(
     coverage_path: resolve(coveragePath),
     owners: source.owners.map(parseOwner),
     runtime_actors: source.runtime_actors.map(parseRuntimeActor),
+    verifications: source.verifications.map(parseVerificationDefinition),
     tasks: source.tasks.map(parseTask),
     safety: {
       status: safety.status as SafetyStatus,
@@ -3618,6 +3660,15 @@ function validateGraph(
   }
   ensureUnique(plan.owners.map((owner) => owner.id), "owner id");
   ensureUnique(plan.runtime_actors.map((actor) => actor.id), "runtime actor id");
+  ensureUnique(plan.verifications.map((verification) => verification.id), "verification definition id");
+  const verificationById = new Map(
+    plan.verifications.map((verification) => [verification.id, verification]),
+  );
+  for (const verification of plan.verifications) {
+    if (SCRIPT_VERIFICATION_IDS.has(verification.id)) {
+      fail(`script-managed verification id cannot define argv: ${verification.id}`);
+    }
+  }
   ensureUnique(executionSubjects(plan).map((subject) => subject.id), "execution subject id");
   const actorIds = new Set(plan.runtime_actors.map((actor) => actor.id));
   for (const actorId of RUNTIME_ACTOR_IDS) {
@@ -3648,6 +3699,12 @@ function validateGraph(
     ensureUnique(task.depends_on, `dependency in task ${task.id}`);
     ensureUnique(task.resource_locks, `resource lock in task ${task.id}`);
     ensureUnique(task.verification_ids, `verification id in task ${task.id}`);
+    for (const verificationId of task.verification_ids) {
+      if (SCRIPT_VERIFICATION_IDS.has(verificationId)) continue;
+      if (!verificationById.has(verificationId)) {
+        fail(`task ${task.id} references undefined verification: ${verificationId}`);
+      }
+    }
     ensureUnique(task.satisfies_goal_gates, `goal gate in task ${task.id}`);
     const fixedAuditCount = [
       DIFF_SCOPE_GATE_ID,
@@ -3695,6 +3752,12 @@ function validateGraph(
       if (!task.verification_ids.includes(gateId)) {
         fail(`task ${task.id} goal gate must also appear in verification_ids: ${gateId}`);
       }
+    }
+  }
+  const referencedVerificationIds = new Set(plan.tasks.flatMap((task) => task.verification_ids));
+  for (const verification of plan.verifications) {
+    if (!referencedVerificationIds.has(verification.id)) {
+      fail(`verification definition is unused: ${verification.id}`);
     }
   }
   const coveredGates = new Set(plan.tasks.flatMap((task) => task.satisfies_goal_gates));
@@ -5616,6 +5679,17 @@ function threadProfileReceipt(
   return { model: profile.model, effort: profile.reasoning_effort };
 }
 
+function taskVerificationDefinitions(
+  plan: Plan,
+  task: TaskDefinition,
+): VerificationDefinition[] {
+  const byId = new Map(plan.verifications.map((verification) => [verification.id, verification]));
+  return task.verification_ids
+    .filter((verificationId) => !SCRIPT_VERIFICATION_IDS.has(verificationId))
+    .map((verificationId) => byId.get(verificationId) ??
+      fail(`task ${task.id} references undefined verification: ${verificationId}`));
+}
+
 function taskBinding(
   planPath: string,
   plan: Plan,
@@ -5698,7 +5772,7 @@ function taskBinding(
       role: task.role,
       work: task.task,
       done: task.done_when,
-      verify: task.verification_ids,
+      verify: taskVerificationDefinitions(plan, task),
       items: task.plan_item_ids,
       risk: task.risk_level,
       dependencies: dependencyInputsForTask(plan, state, task),
@@ -8189,6 +8263,7 @@ function parseDelta(value: unknown): {
   base_plan_digest: string;
   revision: number;
   add_owners: OwnerDefinition[];
+  add_verifications: VerificationDefinition[];
   add_tasks: TaskDefinition[];
   repairs: Array<{ task_id: string; replacement_task_id: string }>;
   source_dispositions: Array<{
@@ -8217,6 +8292,8 @@ function parseDelta(value: unknown): {
   const source = requireRecord(value, "delta");
   if (source.contract !== "DAG_DELTA_V1") fail("delta contract must equal DAG_DELTA_V1");
   if (!Array.isArray(source.add_owners)) fail("delta.add_owners must be an array");
+  const rawAddVerifications = source.add_verifications ?? [];
+  if (!Array.isArray(rawAddVerifications)) fail("delta.add_verifications must be an array");
   if (!Array.isArray(source.add_tasks)) fail("delta.add_tasks must be an array");
   if (!Array.isArray(source.repairs)) fail("delta.repairs must be an array");
   if (!Array.isArray(source.source_dispositions)) {
@@ -8329,6 +8406,7 @@ function parseDelta(value: unknown): {
     base_plan_digest: requireString(source.base_plan_digest, "delta.base_plan_digest"),
     revision: requirePositiveInteger(source.revision, "delta.revision"),
     add_owners: source.add_owners.map(parseOwner),
+    add_verifications: rawAddVerifications.map(parseVerificationDefinition),
     add_tasks: source.add_tasks.map(parseTask),
     repairs: source.repairs.map((value, index) => {
       const repair = requireRecord(value, `delta.repairs[${index}]`);
@@ -8395,6 +8473,7 @@ function expandDeltaInput(
   if (value.contract !== "DAG_DELTA_INPUT_V1") return value;
   requireAllowedKeys(value, [
     "contract",
+    "verifications",
     "tasks",
     "repairs",
     "source",
@@ -8407,6 +8486,9 @@ function expandDeltaInput(
   const rawTasks = value.tasks ?? [];
   if (!Array.isArray(rawTasks)) fail("delta input.tasks must be an array");
   const addTasks = rawTasks.map((task, index) => expandPlanInputTask(task, index));
+  const rawVerifications = value.verifications ?? [];
+  if (!Array.isArray(rawVerifications)) fail("delta input.verifications must be an array");
+  const addVerifications = rawVerifications.map(parseVerificationDefinition);
   const rawRepairs = value.repairs ?? [];
   if (!Array.isArray(rawRepairs)) fail("delta input.repairs must be an array");
   const repairs = rawRepairs.map((entry, index) => {
@@ -8513,6 +8595,7 @@ function expandDeltaInput(
     base_plan_digest: state.plan_digest,
     revision: plan.revision + 1,
     add_owners: [],
+    add_verifications: addVerifications,
     add_tasks: addTasks,
     repairs,
     source_dispositions: sourceDispositions,
@@ -8644,11 +8727,23 @@ function applyDeltaCommand(
       fail("non-refresh delta cannot change required_plan_items");
     }
     ensureUnique(delta.add_owners.map((owner) => owner.id), "delta owner id");
+    ensureUnique(
+      delta.add_verifications.map((verification) => verification.id),
+      "delta verification id",
+    );
     ensureUnique(delta.add_tasks.map((task) => task.id), "delta task id");
     const existingOwnerIds = new Set(plan.owners.map((owner) => owner.id));
+    const existingVerificationIds = new Set(
+      plan.verifications.map((verification) => verification.id),
+    );
     const existingTaskIds = new Set(plan.tasks.map((task) => task.id));
     for (const owner of delta.add_owners) {
       if (existingOwnerIds.has(owner.id)) fail(`delta owner already exists: ${owner.id}`);
+    }
+    for (const verification of delta.add_verifications) {
+      if (existingVerificationIds.has(verification.id)) {
+        fail(`delta verification already exists: ${verification.id}`);
+      }
     }
     for (const task of delta.add_tasks) {
       if (existingTaskIds.has(task.id)) fail(`delta task already exists: ${task.id}`);
@@ -8873,6 +8968,7 @@ function applyDeltaCommand(
       ...plan,
       revision: delta.revision,
       owners: transitionedOwners,
+      verifications: [...plan.verifications, ...delta.add_verifications],
       tasks: [...transitionedTasks, ...transitionedAddedTasks],
       safety: delta.safety,
     };
@@ -11472,6 +11568,7 @@ type TaskSubgraphExpansion = {
   request_digest: string;
   reason: string;
   completion_policy: "all_required";
+  verifications: VerificationDefinition[];
   children: TaskDefinition[];
   entry_task_ids: string[];
   exit_task_ids: string[];
@@ -11549,6 +11646,11 @@ function parseTaskSubgraphExpansion(value: unknown): TaskSubgraphExpansion {
     request_digest: requireString(source.request_digest, "task subgraph expansion.request_digest"),
     reason: requireString(source.reason, "task subgraph expansion.reason"),
     completion_policy: "all_required",
+    verifications: source.verifications === undefined
+      ? []
+      : Array.isArray(source.verifications)
+        ? source.verifications.map(parseVerificationDefinition)
+        : fail("task subgraph expansion.verifications must be an array"),
     children: source.children.map(parseTask),
     entry_task_ids: requireStringArray(
       source.entry_task_ids,
@@ -11585,7 +11687,7 @@ function expandTaskSubgraphInput(
   if (value.contract !== "TASK_SUBGRAPH_INPUT_V1") return value;
   requireAllowedKeys(
     value,
-    ["contract", "children", "entry", "exit", "safety", "safety_reasons"],
+    ["contract", "verifications", "children", "entry", "exit", "safety", "safety_reasons"],
     "task subgraph input",
   );
   if (parent.role !== "work" || parent.owner_id === null) {
@@ -11598,6 +11700,11 @@ function expandTaskSubgraphInput(
     parent_task_id: parent.id,
     owner_id: parent.owner_id,
   }));
+  const verifications = value.verifications === undefined
+    ? []
+    : Array.isArray(value.verifications)
+      ? value.verifications.map(parseVerificationDefinition)
+      : fail("task subgraph input.verifications must be an array");
   const safetyStatus = (value.safety ?? plan.safety.status) as SafetyStatus;
   if (!new Set<SafetyStatus>(["parallel_safe", "sequential_only", "needs_user_review"]).has(
     safetyStatus,
@@ -11612,6 +11719,7 @@ function expandTaskSubgraphInput(
     request_digest: digestFile(requestPath),
     reason: request.reason,
     completion_policy: "all_required",
+    verifications,
     children,
     entry_task_ids: requireStringArray(value.entry, "task subgraph input.entry", false),
     exit_task_ids: requireStringArray(value.exit, "task subgraph input.exit", false),
@@ -11801,6 +11909,7 @@ function expandSubgraphCommand(
     const nextPlan: Plan = {
       ...plan,
       revision: expansion.revision,
+      verifications: [...plan.verifications, ...expansion.verifications],
       tasks: plan.tasks.map((task) => task.id === parent.id ? expandedParent : task)
         .concat(expansion.children),
       safety: expansion.safety,
@@ -12714,7 +12823,12 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
         task,
         taskState,
       );
-      if ((taskState.status !== "reserved" && !integrationRepair) || task.owner_id === null) continue;
+      const verificationResume = taskState.status === "running" &&
+        existsSync(verificationMigrationResumePath(goalDirectory, task.id));
+      if (
+        (taskState.status !== "reserved" && !integrationRepair && !verificationResume) ||
+        task.owner_id === null
+      ) continue;
       if (!sourceCurrent) continue;
       const subject = subjectForTask(plan, task);
       const subjectState = subjectStateForTask(state, task);
@@ -12725,7 +12839,7 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
       const reusableThread = subjectState.bound_executor_id === null
         ? null
         : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
-      const reusableStatuses = integrationRepair
+      const reusableStatuses = integrationRepair || verificationResume
         ? new Set(["idle", "running", "completed", "failed", "cancelled", "archived", "attention_notified"])
         : new Set(["idle", "running"]);
       const registered = canonicalThread !== null && reusableStatuses.has(String(canonicalThread.status))
@@ -12750,7 +12864,9 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
         title,
         model: profile.model,
         thinking: profile.reasoning_effort,
-        prompt: integrationRepair
+        prompt: verificationResume
+          ? "验证契约已由脚本迁移；复用当前 run、线程和 Owner worktree，重新读取 Binding 后只执行验证，不得重新实施任务。"
+          : integrationRepair
           ? `继续使用现有 Owner worktree 修复集成失败；不得重新创建线程或 worktree。`
           : ownerSync === null ? [
           `请先把当前线程标题逐字设置为：${title}`,
@@ -12958,6 +13074,9 @@ function supervisorRecordCommand(
       }
       const taskState = state.tasks[taskId];
       if (taskState.attempt !== attempt) fail("task attempt mismatch");
+      const verificationResume = existsSync(
+        verificationMigrationResumePath(goalDirectory, taskId),
+      );
       const subject = subjectForTask(plan, task);
       const subjectState = subjectStateForTask(state, task);
       const key = threadKey(planPath, plan, goal, task, subject, subjectState, taskState);
@@ -12967,6 +13086,16 @@ function supervisorRecordCommand(
       const previousCursor = existingRegistration === null
         ? null
         : requireNullableString(existingRegistration.thread.cursor, "thread cursor");
+      if (existingRegistration !== null && existingRegistration.key !== key) {
+        const otherWatch = watches.find((candidate) =>
+          candidate.thread_key === existingRegistration.key &&
+          !(candidate.task_id === taskId && candidate.attempt === attempt)
+        );
+        if (otherWatch !== undefined) {
+          fail(`thread ${actualExecutorId} still owns another active watch`);
+        }
+        delete threads[existingRegistration.key];
+      }
       const bindingRef = taskBindingSnapshotPath(goalDirectory, task, taskState);
       let binding: Record<string, unknown>;
       if (taskState.status === "reserved") {
@@ -13016,6 +13145,9 @@ function supervisorRecordCommand(
         [statePath, state],
         [threadsPath, registry],
       ]);
+      if (verificationResume) {
+        rmSync(verificationMigrationResumePath(goalDirectory, taskId), { force: true });
+      }
       const runId = taskRunId(task.id, taskState);
       const dispatchCommand = [
         "node",
@@ -13035,7 +13167,9 @@ function supervisorRecordCommand(
         thread: actualExecutorId,
         run: runId,
         main: mainRoute,
-        dispatch: repairReason === null
+        dispatch: verificationResume
+          ? `使用 $sub-thread-goal-worker；验证契约已迁移。先运行 ${dispatchCommand} 获取更新后的 Binding，复用当前 run 和 Owner worktree，只继续验证与结果提交，不得重新实施任务。`
+          : repairReason === null
           ? `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取当前 Binding，再执行。`
           : `使用 $sub-thread-goal-worker；上次集成失败：${repairReason}。先运行 ${dispatchCommand} 获取当前 Binding，在同一 Owner worktree 修复后重新验证并提交。`,
         binding_ref: bindingRef,
@@ -15058,6 +15192,190 @@ function workerVerificationPath(
     : join(goalDirectory, "artifacts", "verification", taskId, `${verificationId}.json`);
 }
 
+function verificationMigrationResumePath(goalDirectory: string, taskId: string): string {
+  return join(goalDirectory, "bindings", `${taskId}-verification-migration.json`);
+}
+
+function splitLegacyVerificationCommand(command: string): string[] {
+  const argv: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  const push = (): void => {
+    if (current !== "") argv.push(current);
+    current = "";
+  };
+  for (const character of command) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      else current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      push();
+      continue;
+    }
+    if (/[|&;<>`]/u.test(character)) {
+      fail(`legacy verification command uses unsupported shell syntax: ${command}`);
+    }
+    current += character;
+  }
+  if (escaped || quote !== null) fail(`legacy verification command has incomplete quoting: ${command}`);
+  push();
+  if (argv.length === 0) fail("legacy verification command is empty");
+  return argv;
+}
+
+function workflowMigrateVerificationsCommand(goalDirectoryArgument: string): void {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const coveragePath = join(goalDirectory, "coverage.json");
+  for (const path of [planPath, statePath, coveragePath]) {
+    if (!existsSync(path)) fail(`verification migration requires an active Goal: ${path}`);
+  }
+  const receipt = withStateLock(statePath, () => {
+    const planSource = requireRecord(readJson(planPath), "legacy plan");
+    const taskSources = Array.isArray(planSource.tasks)
+      ? planSource.tasks.map((task, index) => requireRecord(task, `legacy tasks[${index}]`))
+      : fail("legacy plan.tasks must be an array");
+    const existingDefinitions = planSource.verifications === undefined
+      ? []
+      : Array.isArray(planSource.verifications)
+        ? planSource.verifications.map(parseVerificationDefinition)
+        : fail("legacy plan.verifications must be an array");
+    const definitions = new Map(
+      existingDefinitions.map((verification) => [verification.id, verification]),
+    );
+    const commandIds = new Map<string, string>();
+    const mappings: Array<{ from: string; to: string }> = [];
+    const affectedTasks = new Set<string>();
+    for (const taskSource of taskSources) {
+      const taskId = requireIdentifier(taskSource.id, "legacy task id");
+      const legacyIds = requireStringArray(
+        taskSource.verification_ids,
+        `legacy task ${taskId} verification_ids`,
+        false,
+      );
+      taskSource.verification_ids = legacyIds.map((legacyId) => {
+        if (SCRIPT_VERIFICATION_IDS.has(legacyId)) return legacyId;
+        if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u.test(legacyId)) {
+          if (!definitions.has(legacyId)) {
+            fail(`cannot infer argv for legacy verification id: ${legacyId}`);
+          }
+          return legacyId;
+        }
+        const argv = splitLegacyVerificationCommand(legacyId);
+        let id = commandIds.get(legacyId);
+        if (id === undefined) {
+          id = `verify-${digestJson(argv).slice(0, 16)}`;
+          const existing = definitions.get(id);
+          if (existing !== undefined && serializedJson(existing.run) !== serializedJson(argv)) {
+            fail(`verification migration id collision: ${id}`);
+          }
+          definitions.set(id, { id, run: argv });
+          commandIds.set(legacyId, id);
+          mappings.push({ from: legacyId, to: id });
+        }
+        affectedTasks.add(taskId);
+        return id;
+      });
+    }
+    if (mappings.length === 0) {
+      const parsed = parsePlan(planSource, planPath);
+      return {
+        status: "current",
+        plan_digest: digestFile(planPath),
+        verification_count: parsed.plan.verifications.length,
+        mappings: [],
+        resumed_tasks: [],
+      };
+    }
+    planSource.verifications = [...definitions.values()].sort((left, right) =>
+      compareStableStrings(left.id, right.id)
+    );
+    planSource.revision = requirePositiveInteger(planSource.revision, "plan.revision") + 1;
+    const nextPlanDigest = digestJson(planSource);
+    const coverageSource = requireRecord(readJson(coveragePath), "legacy coverage");
+    coverageSource.plan_revision = planSource.revision;
+    coverageSource.plan_digest = nextPlanDigest;
+    const stateSource = requireRecord(readJson(statePath), "legacy state");
+    stateSource.plan_digest = nextPlanDigest;
+    stateSource.revision = planSource.revision;
+    const parsed = parsePlan(planSource, planPath, {
+      coverageValue: coverageSource,
+      expectedPlanDigest: nextPlanDigest,
+    });
+    const parsedState = parseState(stateSource, parsed.plan, planPath, {
+      verifyExecutionArtifacts: false,
+    });
+    const writes: Array<[string, unknown]> = [
+      [planPath, planSource],
+      [coveragePath, coverageSource],
+      [statePath, stateSource],
+    ];
+    const resumedTasks: string[] = [];
+    for (const task of parsed.plan.tasks) {
+      if (!affectedTasks.has(task.id)) continue;
+      const taskState = parsedState.tasks[task.id];
+      if (taskState.status !== "running" || taskState.executor_id === null) continue;
+      const bindingPath = taskBindingSnapshotPath(goalDirectory, task, taskState);
+      if (!existsSync(bindingPath)) fail(`active task binding is missing: ${task.id}`);
+      const binding = requireRecord(readJson(bindingPath), `binding ${task.id}`);
+      const bindingTask = requireRecord(binding.task, `binding ${task.id}.task`);
+      bindingTask.verify = taskVerificationDefinitions(parsed.plan, task);
+      writes.push([bindingPath, binding]);
+      writes.push([verificationMigrationResumePath(goalDirectory, task.id), {
+        contract: "VERIFICATION_MIGRATION_RESUME_V1",
+        task: task.id,
+        attempt: taskState.attempt,
+        run: taskRunId(task.id, taskState),
+      }]);
+      resumedTasks.push(task.id);
+    }
+    writeTransaction(statePath, writes);
+    return {
+      status: "migrated",
+      plan_digest: nextPlanDigest,
+      verification_count: definitions.size,
+      mappings,
+      resumed_tasks: resumedTasks,
+    };
+  });
+  process.stdout.write(`${JSON.stringify({
+    contract: "VERIFICATION_MIGRATION_RECEIPT_V1",
+    ...receipt,
+  })}\n`);
+}
+
+function planNeedsVerificationMigration(value: unknown): boolean {
+  const plan = requireRecord(value, "plan verification migration check");
+  if (!Array.isArray(plan.verifications)) return true;
+  if (!Array.isArray(plan.tasks)) return false;
+  return plan.tasks.some((taskValue) => {
+    const task = requireRecord(taskValue, "plan migration task");
+    if (!Array.isArray(task.verification_ids)) return false;
+    return task.verification_ids.some((verificationId) =>
+      typeof verificationId === "string" &&
+      !SCRIPT_VERIFICATION_IDS.has(verificationId) &&
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u.test(verificationId)
+    );
+  });
+}
+
 function readWorkerVerification(
   path: string,
   runId: string,
@@ -15088,9 +15406,8 @@ function workerVerifyCommand(
   goalDirectoryArgument: string,
   runIdArgument: string,
   verificationIdArgument: string,
-  command: string[],
+  commandArguments: string[],
 ): void {
-  if (command.length === 0) fail("worker verify requires a command argv");
   const goalDirectory = resolve(goalDirectoryArgument);
   const runId = requireString(runIdArgument, "run id");
   const verificationId = requireIdentifier(verificationIdArgument, "verification id");
@@ -15098,6 +15415,7 @@ function workerVerifyCommand(
   let workspace: string;
   let taskId: string;
   let quick = false;
+  let command: string[];
   if (existsSync(definitionPath)) {
     const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
     if (workflow.mode === "quick") {
@@ -15107,6 +15425,8 @@ function workerVerifyCommand(
         fail("quick verification requires the current running work run");
       }
       if (verificationId !== "quick-check") fail("quick verification id must equal quick-check");
+      if (commandArguments.length === 0) fail("quick worker verify requires a command argv");
+      command = commandArguments;
       workspace = workflow.workspace;
       taskId = "QUICK-WORK";
       quick = true;
@@ -15118,6 +15438,12 @@ function workerVerifyCommand(
       if (!run.task.verification_ids.includes(verificationId)) {
         fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
       }
+      if (commandArguments.length > 0) {
+        fail("DAG worker verify accepts only verification-id; argv is bound by the Plan");
+      }
+      command = taskVerificationDefinitions(run.plan, run.task)
+        .find((verification) => verification.id === verificationId)?.run ??
+        fail(`verification argv is not defined: ${verificationId}`);
       workspace = taskExecutionWorkspace(run.goalDirectory, run.goal, run.task);
       taskId = run.task.id;
     }
@@ -15129,6 +15455,12 @@ function workerVerifyCommand(
     if (!run.task.verification_ids.includes(verificationId)) {
       fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
     }
+    if (commandArguments.length > 0) {
+      fail("DAG worker verify accepts only verification-id; argv is bound by the Plan");
+    }
+    command = taskVerificationDefinitions(run.plan, run.task)
+      .find((verification) => verification.id === verificationId)?.run ??
+      fail(`verification argv is not defined: ${verificationId}`);
     workspace = taskExecutionWorkspace(run.goalDirectory, run.goal, run.task);
     taskId = run.task.id;
   }
@@ -15879,6 +16211,114 @@ function ownerBranchName(dagBranch: string, ownerId: string): string {
   return `ga/${developmentKey}/${ownerId}`;
 }
 
+type GitlinkEntry = { path: string; object_id: string };
+
+function gitlinkEntries(worktree: string): GitlinkEntry[] {
+  const entries: GitlinkEntry[] = [];
+  for (const record of gitOutput(worktree, ["ls-files", "--stage", "-z"], "gitlink scan").split("\0")) {
+    if (record === "") continue;
+    const separator = record.indexOf("\t");
+    const match = separator < 0
+      ? null
+      : /^160000 ([0-9a-f]{40}|[0-9a-f]{64}) 0$/u.exec(record.slice(0, separator));
+    if (match === null) continue;
+    entries.push({
+      path: normalizePathPattern(record.slice(separator + 1)),
+      object_id: match[1],
+    });
+  }
+  return entries.sort((left, right) => compareStableStrings(left.path, right.path));
+}
+
+function relevantTaskGitlinks(
+  worktree: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+): GitlinkEntry[] {
+  const writable = effectiveWritablePaths(task, taskState);
+  return gitlinkEntries(worktree).filter((entry) => writable.some((pattern) =>
+    pattern === entry.path || pattern.startsWith(`${entry.path}/`) ||
+    pathMatchesPattern(entry.path, pattern)
+  ));
+}
+
+function isExactGitRoot(path: string): boolean {
+  if (!existsSync(path)) return false;
+  const root = gitAttempt(path, ["rev-parse", "--show-toplevel"]);
+  return root.ok && canonicalFilesystemPath(root.stdout.trim()) === canonicalFilesystemPath(path);
+}
+
+function ensureGitlinkCheckout(
+  targetRoot: string,
+  sourceRoot: string,
+  entry: GitlinkEntry,
+  label: string,
+): void {
+  const target = resolve(targetRoot, entry.path);
+  const source = resolve(sourceRoot, entry.path);
+  if (!isExactGitRoot(source)) fail(`${label} source submodule is unavailable: ${source}`);
+  if (!isExactGitRoot(target)) {
+    if (existsSync(target) && readdirSync(target).length > 0) {
+      fail(`${label} target submodule is not an empty directory: ${target}`);
+    }
+    const cloned = gitAttempt(sourceRoot, ["clone", "--local", "--no-checkout", source, target]);
+    if (!cloned.ok) fail(`${label} submodule clone failed: ${cloned.stderr.trim()}`);
+  }
+  const fetched = gitAttempt(target, ["fetch", "--no-tags", source, entry.object_id]);
+  if (!fetched.ok) fail(`${label} submodule fetch failed: ${fetched.stderr.trim()}`);
+  gitOutput(target, ["checkout", "--detach", entry.object_id], `${label} submodule checkout`);
+  if (gitHead(target) !== entry.object_id) fail(`${label} submodule HEAD mismatch: ${entry.path}`);
+  assertCleanGitWorktree(target, `${label} submodule`);
+}
+
+function syncTaskGitlinks(
+  targetRoot: string,
+  sourceRoot: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+  label: string,
+): GitlinkEntry[] {
+  const entries = relevantTaskGitlinks(targetRoot, task, taskState);
+  for (const entry of entries) ensureGitlinkCheckout(targetRoot, sourceRoot, entry, label);
+  return entries;
+}
+
+function commitOwnerGitlinks(
+  ownerWorktree: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+): GitlinkEntry[] {
+  const authorized = effectiveWritablePaths(task, taskState);
+  const committed: GitlinkEntry[] = [];
+  for (const entry of relevantTaskGitlinks(ownerWorktree, task, taskState)) {
+    const submodule = resolve(ownerWorktree, entry.path);
+    if (!isExactGitRoot(submodule)) fail(`Owner submodule is not initialized: ${entry.path}`);
+    const changed = [...gitStatusMap(submodule).keys()];
+    if (changed.length === 0) continue;
+    const rootedChanges = changed.map((path) => normalizePathPattern(`${entry.path}/${path}`));
+    const outsideScope = rootedChanges.filter((path) =>
+      !authorized.some((pattern) => pathMatchesPattern(path, pattern))
+    );
+    if (outsideScope.length > 0) {
+      fail(`Owner submodule changes are outside task scope: ${outsideScope.join(", ")}`);
+    }
+    gitOutput(submodule, ["add", "--all", "--", ...changed], `Owner ${entry.path} staging`);
+    const userName = gitOutput(ownerWorktree, ["config", "user.name"], "Owner Git user.name").trim();
+    const userEmail = gitOutput(ownerWorktree, ["config", "user.email"], "Owner Git user.email").trim();
+    gitOutput(
+      submodule,
+      [
+        "-c", `user.name=${userName}`,
+        "-c", `user.email=${userEmail}`,
+        "commit", "-m", `task(${task.id}): ${task.title}`,
+      ],
+      `Owner ${entry.path} commit`,
+    );
+    committed.push({ path: entry.path, object_id: gitHead(submodule) });
+  }
+  return committed;
+}
+
 function workflowOwnerSyncCommand(goalDirectoryArgument: string, ownerIdArgument: string): void {
   const goalDirectory = resolve(goalDirectoryArgument);
   const planPath = join(goalDirectory, "plan.json");
@@ -15941,6 +16381,18 @@ function workflowOwnerSyncCommand(goalDirectoryArgument: string, ownerIdArgument
       assertCleanGitWorktree(current.path, `Owner ${ownerId} worktree before sync`);
       const synced = gitAttempt(current.path, ["merge", "--ff-only", worktrees.dag.branch]);
       if (!synced.ok) fail(`Owner ${ownerId} cannot fast-forward from DAG: ${synced.stderr.trim()}`);
+      const relevant = relevantTaskGitlinks(current.path, task, taskState);
+      for (const entry of relevant) {
+        if (!isExactGitRoot(resolve(worktrees.dag.path, entry.path))) {
+          ensureGitlinkCheckout(
+            worktrees.dag.path,
+            worktrees.original.path,
+            entry,
+            `DAG ${ownerId}`,
+          );
+        }
+        ensureGitlinkCheckout(current.path, worktrees.dag.path, entry, `Owner ${ownerId}`);
+      }
       current.synced_dag_head = gitHead(current.path);
       if (current.synced_dag_head !== dagHead) fail(`Owner ${ownerId} did not reach current DAG HEAD`);
     } else {
@@ -16026,7 +16478,27 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
     owner,
     run.taskState,
   );
-  if (candidate.status !== "completed") fail("Owner result must be completed before integration");
+  if (candidate.status !== "completed") {
+    const receipt = runSelfJson([
+      "finish",
+      run.planPath,
+      run.statePath,
+      run.task.id,
+      requireString(run.taskState.reservation_token, "reservation token"),
+      run.taskState.result_path,
+      "--compact",
+    ]);
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_OWNER_FINISH_V1",
+      status: receipt.status,
+      task: run.task.id,
+      owner: run.task.owner_id,
+      changed_files: [],
+      dag_head: gitHead(readDagWorktrees(run.goalDirectory).dag.path),
+      result_ref: receipt.result_ref,
+    })}\n`);
+    return;
+  }
   const worktrees = readDagWorktrees(run.goalDirectory);
   const ownerWorktree = worktrees.owners[run.task.owner_id];
   if (ownerWorktree?.path === null || ownerWorktree?.path === undefined) {
@@ -16058,6 +16530,7 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
   );
   let dagAdvanced = false;
   try {
+    const committedGitlinks = commitOwnerGitlinks(ownerWorktree.path, run.task, run.taskState);
     const pendingChanges = [...gitStatusMap(ownerWorktree.path).keys()];
     if (pendingChanges.length > 0) {
       gitOutput(ownerWorktree.path, ["add", "--all", "--", ...pendingChanges], "Owner change staging");
@@ -16085,13 +16558,32 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
       ["worktree", "add", "--detach", temporaryWorktree, dagBefore],
       "temporary integration worktree creation",
     );
+    syncTaskGitlinks(
+      temporaryWorktree,
+      worktrees.dag.path,
+      run.task,
+      run.taskState,
+      "temporary integration baseline",
+    );
     const merged = gitAttempt(temporaryWorktree, ["merge", "--no-ff", "--no-edit", ownerHead]);
     if (!merged.ok) fail(`Owner merge conflict: ${merged.stderr.trim()}`);
+    for (const entry of relevantTaskGitlinks(temporaryWorktree, run.task, run.taskState)) {
+      const sourceRoot = committedGitlinks.some((candidate) => candidate.path === entry.path)
+        ? ownerWorktree.path
+        : worktrees.dag.path;
+      ensureGitlinkCheckout(temporaryWorktree, sourceRoot, entry, "temporary integration");
+    }
     runOwnerIntegrationChecks(run.goalDirectory, run.task, runIdArgument, temporaryWorktree);
     const integratedHead = gitHead(temporaryWorktree);
     if (gitHead(worktrees.dag.path) !== dagBefore) fail("DAG HEAD changed during Owner integration");
     gitOutput(worktrees.dag.path, ["merge", "--ff-only", integratedHead], "DAG integration fast-forward");
     dagAdvanced = true;
+    for (const entry of relevantTaskGitlinks(worktrees.dag.path, run.task, run.taskState)) {
+      const sourceRoot = committedGitlinks.some((candidate) => candidate.path === entry.path)
+        ? ownerWorktree.path
+        : worktrees.original.path;
+      ensureGitlinkCheckout(worktrees.dag.path, sourceRoot, entry, "DAG integration");
+    }
     writeJson(integrationPath, {
       contract: "OWNER_INTEGRATION_V1",
       run: runIdArgument,
@@ -16130,6 +16622,13 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
   } catch (error) {
     if (dagAdvanced) {
       gitOutput(worktrees.dag.path, ["reset", "--hard", dagBefore], "DAG integration rollback");
+      syncTaskGitlinks(
+        worktrees.dag.path,
+        worktrees.original.path,
+        run.task,
+        run.taskState,
+        "DAG integration rollback",
+      );
     }
     rmSync(integrationPath, { force: true });
     rmSync(run.taskState.result_path, { force: true });
@@ -16142,6 +16641,68 @@ function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument
   }
 }
 
+type OriginalGitlinkUpdate = {
+  path: string;
+  object_id: string;
+  branch: string | null;
+};
+
+function prepareOriginalGitlinks(worktrees: DagWorktreesV1): OriginalGitlinkUpdate[] {
+  const originalByPath = new Map(
+    gitlinkEntries(worktrees.original.path).map((entry) => [entry.path, entry]),
+  );
+  const updates: OriginalGitlinkUpdate[] = [];
+  for (const desired of gitlinkEntries(worktrees.dag.path)) {
+    const dagSubmodule = resolve(worktrees.dag.path, desired.path);
+    if (!isExactGitRoot(dagSubmodule)) continue;
+    const originalEntry = originalByPath.get(desired.path) ??
+      fail(`original branch no longer contains DAG submodule: ${desired.path}`);
+    const originalSubmodule = resolve(worktrees.original.path, desired.path);
+    if (!isExactGitRoot(originalSubmodule)) {
+      ensureGitlinkCheckout(
+        worktrees.original.path,
+        worktrees.dag.path,
+        originalEntry,
+        "original pre-merge",
+      );
+    }
+    assertCleanGitWorktree(originalSubmodule, `original submodule ${desired.path} before final merge`);
+    const fetched = gitAttempt(
+      originalSubmodule,
+      ["fetch", "--no-tags", dagSubmodule, desired.object_id],
+    );
+    if (!fetched.ok) fail(`original submodule fetch failed: ${desired.path}: ${fetched.stderr.trim()}`);
+    const currentHead = gitHead(originalSubmodule);
+    if (!gitAttempt(originalSubmodule, ["merge-base", "--is-ancestor", currentHead, desired.object_id]).ok) {
+      fail(`DAG submodule is not a fast-forward of the original checkout: ${desired.path}`);
+    }
+    updates.push({
+      path: desired.path,
+      object_id: desired.object_id,
+      branch: gitBranchOrNull(originalSubmodule),
+    });
+  }
+  return updates;
+}
+
+function applyOriginalGitlinks(
+  originalRoot: string,
+  updates: OriginalGitlinkUpdate[],
+): void {
+  for (const update of updates) {
+    const submodule = resolve(originalRoot, update.path);
+    if (update.branch === null) {
+      gitOutput(submodule, ["checkout", "--detach", update.object_id], "original submodule checkout");
+    } else {
+      gitOutput(submodule, ["merge", "--ff-only", update.object_id], "original submodule fast-forward");
+    }
+    if (gitHead(submodule) !== update.object_id) {
+      fail(`original submodule HEAD mismatch after final merge: ${update.path}`);
+    }
+  }
+  assertCleanGitWorktree(originalRoot, "original workspace after submodule synchronization");
+}
+
 function mergeDagBackToOriginal(goalDirectory: string): Record<string, unknown> {
   const worktrees = readDagWorktrees(goalDirectory);
   if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its branch");
@@ -16150,8 +16711,10 @@ function mergeDagBackToOriginal(goalDirectory: string): Record<string, unknown> 
   }
   assertCleanGitWorktree(worktrees.dag.path, "DAG worktree before final merge");
   assertCleanGitWorktree(worktrees.original.path, "original workspace before final merge");
+  const gitlinkUpdates = prepareOriginalGitlinks(worktrees);
   const dagHead = gitHead(worktrees.dag.path);
   if (gitAttempt(worktrees.original.path, ["merge-base", "--is-ancestor", dagHead, "HEAD"]).ok) {
+    applyOriginalGitlinks(worktrees.original.path, gitlinkUpdates);
     return { status: "already_merged", original_head: gitHead(worktrees.original.path) };
   }
   const merged = gitAttempt(
@@ -16162,6 +16725,7 @@ function mergeDagBackToOriginal(goalDirectory: string): Record<string, unknown> 
     gitAttempt(worktrees.original.path, ["merge", "--abort"]);
     fail(`final DAG merge failed; resolve in DAG and retry: ${merged.stderr.trim()}`);
   }
+  applyOriginalGitlinks(worktrees.original.path, gitlinkUpdates);
   return { status: "merged", original_head: gitHead(worktrees.original.path) };
 }
 
@@ -16466,6 +17030,9 @@ function workflowStepCommand(goalDirectoryArgument: string, deferDelivery = fals
       ...threadProfileReceipt(goal.workspace.root, "planner"),
     })}\n`);
     return;
+  }
+  if (existsSync(statePath) && planNeedsVerificationMigration(readJson(planPath))) {
+    runSelfJson(["workflow", "migrate-verifications", goalDirectory]);
   }
   if (!existsSync(statePath)) {
     const { plan } = parsePlan(readJson(planPath), planPath);
@@ -16940,6 +17507,9 @@ function main(argv: string[]): void {
   if (command === "workflow" && args[0] === "owner-finish" && args.length === 3) {
     return workflowOwnerFinishCommand(args[1], args[2]);
   }
+  if (command === "workflow" && args[0] === "migrate-verifications" && args.length === 2) {
+    return workflowMigrateVerificationsCommand(args[1]);
+  }
   if (command === "workflow" && args[0] === "step" && args.length === 2) {
     return workflowStepCommand(args[1]);
   }
@@ -16973,7 +17543,7 @@ function main(argv: string[]): void {
   if (command === "worker" && args[0] === "open" && args.length === 3) {
     return workerOpenCommand(args[1], args[2]);
   }
-  if (command === "worker" && args[0] === "verify" && args.length >= 5) {
+  if (command === "worker" && args[0] === "verify" && args.length >= 4) {
     return workerVerifyCommand(args[1], args[2], args[3], args.slice(4));
   }
   if (command === "worker" && args[0] === "complete" && args.length === 3) {
@@ -17184,7 +17754,7 @@ function main(argv: string[]): void {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> <development-key> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | workflow migrate-verifications <goal-dir> | internal runtime commands",
   );
 }
 

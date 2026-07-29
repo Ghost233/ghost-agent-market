@@ -7,10 +7,13 @@ Planner 是唯一允许提交结构化语义 DAG 的模型角色，因为 task �
 只提供：
 
 - `items`：需求 id、说明、source refs、implementation/verification 覆盖；
+- `verifications`：`{id, run}`，其中 id 是短标识符，run 是完整 argv 数组；
 - `tasks`：id、中文 title、Owner、work、after、write、done、verify、items；
 - 默认值确实不适用时才加 risk/review/priority/cost。
 
 初始 tasks 只能是顶层节点，不能带 parent/child。每个节点至少提供上下文隔离、真实并行、职责专业化或独立验证中的一种价值；否则合并。不要为达到配置并行数拆节点。
+
+task 的 `verify` 只列 verification id，例如 `shared-unit`；命令单独声明为 `{"id":"shared-unit","run":["npm","test","--","test/v2/shared"]}`。禁止把命令字符串当作 id，也禁止让 Worker 补 argv。
 
 Review 不是默认隐藏阶段。无需 Review 时使用脚本默认 `none`；需要 Review 时显式加入 `role: review` 节点，并让相关下游依赖该节点。
 
@@ -19,7 +22,7 @@ Review 不是默认隐藏阶段。无需 Review 时使用脚本默认 `none`；�
 ## 局部变化
 
 - Review 升级只给 subject、Review task 和固定 reason；通过 `planner-submit <goal-dir> delta`，runtime 重连下游。
-- 子图只给 children、内部依赖、entry、exit；通过 `planner-submit <goal-dir> subgraph <run-id>`，runtime 保持父节点外部边。
+- 子图只给 verifications、children、内部依赖、entry、exit；通过 `planner-submit <goal-dir> subgraph <run-id>`，runtime 保持父节点外部边。
 - Quick 升级 source 中的已验收输入不是 DAG 节点；初始 Plan 只覆盖剩余工作。
 - Owner delta 只描述 `owner.rebind` 中受影响的 pending task/新 Owner；不要传 validation、approval、Registry digest 或路径。同样走 `planner-submit ... delta`，runtime 读取当前批准状态。
 - source delta 只描述受影响 task 的 carry forward/invalidate；被审结果 invalidate 时对应 Review 一起 invalidate。

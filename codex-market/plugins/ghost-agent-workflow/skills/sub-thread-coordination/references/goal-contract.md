@@ -40,6 +40,8 @@ owner-sync <goal-dir> <owner-id>
 
 `owner-sync` 是每轮任务的前置门禁。Owner 分支可能并行基于同一 DAG HEAD；`owner-finish` 总是在最新 DAG HEAD 上做临时集成，因此冲突或失败不会污染 DAG。失败时保留 Owner 分支、原 worktree 和 running task，清除候选，原 Owner 继续修复。
 
+任务 scope 命中 Git submodule 时，`owner-sync` 从本地 DAG/原始 checkout 初始化对应 submodule，`owner-finish` 自动提交 submodule 修改和父仓库 gitlink；最终交付同步原始 checkout。`blocked/failed/needs_repair` 结果只做机械验收与状态路由，不进入合并流程。
+
 Owner 分支固定为 `ga/<key>/<owner_id>`，完整名称由脚本生成。下游只在前置 task 已合并 DAG 后 ready。Goal finalize 后，脚本把 DAG 分支合并到启动时记录的原始分支的最新 HEAD，再保存最终结果和 DAG 日志，最后删除全部 Owner/DAG worktree 与分支；冲突时保留全部现场，任一步失败都不得声称交付完成。
 
 ## 持久化

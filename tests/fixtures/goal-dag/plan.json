@@ -58,6 +58,36 @@
       "worker_context": "仅运行 commit-readiness 脚本"
     }
   ],
+  "verifications": [
+    {
+      "id": "state-unit",
+      "run": ["node", "-e", "process.exit(0)"]
+    },
+    {
+      "id": "page-unit",
+      "run": [
+        "node",
+        "-e",
+        "const fs=require('fs'),cp=require('child_process');const branch=cp.execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim();process.exit(fs.existsSync('src/page/integration-ok')||branch==='ga/owner_sync/state-domain'?0:1)"
+      ]
+    },
+    {
+      "id": "fixture-test",
+      "run": ["node", "-e", "process.exit(0)"]
+    },
+    {
+      "id": "integration-smoke",
+      "run": ["node", "-e", "process.exit(0)"]
+    },
+    {
+      "id": "state-domain-review",
+      "run": ["node", "-e", "process.exit(0)"]
+    },
+    {
+      "id": "state-fixtures-review",
+      "run": ["node", "-e", "process.exit(0)"]
+    }
+  ],
   "tasks": [
     {
       "id": "T0",

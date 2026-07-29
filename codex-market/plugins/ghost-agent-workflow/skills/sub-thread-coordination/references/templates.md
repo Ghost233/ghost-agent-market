@@ -53,6 +53,8 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 
 Worker `complete` 后 task 仍为 running。新 Main 下一次 `start-dag` 内部执行 `owner-finish`。只有脚本合并和集成验证通过才完成；失败时返回 Supervisor repair 动作，由原 Owner 原地修复。
 
+若 Worker 返回 `blocked/failed/needs_repair`，`owner-finish` 只接受终态并交给 Main，不合并 Owner 分支。task scope 内的 Git submodule 由 `owner-sync/owner-finish` 自动初始化、提交和同步，任何模型线程都不直接操作。
+
 Goal finalize 后脚本自动合并 DAG 分支到原始分支的最新 HEAD，保存最终结果与 DAG 日志，再删除全部 Owner/DAG worktree 和分支。冲突时停止清理并保留完整现场供继续修复。
 
 ## 清理
