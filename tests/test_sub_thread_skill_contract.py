@@ -52,6 +52,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "workflow owner-finish",
                 "必须由用户明确选择",
                 "supervisor_required",
+                "Supervisor 必须早于 Planner",
+                "Main 不直接创建或等待这些线程",
                 "当前会话立即停止",
                 "Main 不调用 `wait_threads`",
                 "Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree",
@@ -59,6 +61,24 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "$parallel-task-planner",
             ):
                 self.assertIn(required, coordinator)
+
+    def test_runtime_scripts_are_immutable_during_workflow_execution(self) -> None:
+        for platform in PLATFORMS:
+            combined = "\n".join((
+                self.skill(platform, "sub-thread-coordination"),
+                self.skill(platform, "parallel-task-planner"),
+                self.skill(platform, "planner-reviewer"),
+                self.skill(platform, "sub-thread-task-supervisor"),
+                self.skill(platform, "sub-thread-goal-worker"),
+            ))
+            for required in (
+                "禁止编辑、复制、替换或绕过",
+                "插件缓存",
+                "/tmp",
+                "runtime 命令失败时立即停止",
+                "临时补丁继续",
+            ):
+                self.assertIn(required, combined)
 
     def test_mode_choice_is_required_and_quick_can_upgrade_one_way(self) -> None:
         for platform in PLATFORMS:
@@ -100,6 +120,9 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "environment: local",
                 "target.environment: worktree",
                 "starting_branch",
+                "control: true",
+                "main_action",
+                "Planner 或 Planner Reviewer 正常结束不会通知 Main",
                 "不得再次 `owner-sync`",
                 "禁止 Orca",
                 "只有 Supervisor 负责等待",

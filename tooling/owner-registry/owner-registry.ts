@@ -101,6 +101,7 @@ const WORKFLOW_GITIGNORE = [
   "owners/*/interfaces/",
   "",
 ].join("\n");
+const GIT_CAPTURE_MAX_BUFFER = 16 * 1024 * 1024;
 
 function fail(message: string): never {
   throw new Error(message);
@@ -393,7 +394,7 @@ function gitFiles(workspaceRoot: string): string[] {
   const result = spawnSync(
     "git",
     ["-C", workspaceRoot, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    { encoding: "utf8" },
+    { encoding: "utf8", maxBuffer: GIT_CAPTURE_MAX_BUFFER },
   );
   if (result.status !== 0) fail(`git file inventory failed: ${result.stderr.trim()}`);
   return unique(
@@ -847,6 +848,40 @@ function initCommand(workspaceArgument: string): void {
   })}\n`);
 }
 
+function setManagedRootsCommand(args: string[]): void {
+  if (args.length < 2) {
+    fail("set-managed-roots requires <workspace> and at least one exact repository path");
+  }
+  const workspaceRoot = resolve(args[0]);
+  const registryPath = join(workspaceRoot, ".ghost-agent-workflow", "owners", "registry.json");
+  const registry = parseRegistry(readJson(registryPath), registryPath, false);
+  if (registry.owners.length !== 0) {
+    fail("managed roots can only be set before initial Owner approval");
+  }
+  if (existsSync(currentChangePaths(workspaceRoot).directory)) {
+    fail("clear the current Owner proposal before changing managed roots");
+  }
+  const managedRoots = unique(args.slice(1).map(normalizePattern), "managed roots").sort();
+  if (managedRoots.some((path) => [...path].some((character) => "*?[]{}".includes(character)))) {
+    fail("set-managed-roots accepts exact repository paths only");
+  }
+  const unchanged = managedRoots.length === registry.managed_roots.length &&
+    managedRoots.every((path, index) => path === registry.managed_roots[index]);
+  if (!unchanged) {
+    registry.managed_roots = managedRoots;
+    registry.revision += 1;
+    registry.updated_at = new Date().toISOString();
+    writeJsonAtomic(registryPath, registry);
+  }
+  process.stdout.write(`${JSON.stringify({
+    status: unchanged ? "unchanged" : "managed_roots_set",
+    registry_ref: registryPath,
+    registry_digest: digestFile(registryPath),
+    revision: registry.revision,
+    managed_root_count: registry.managed_roots.length,
+  })}\n`);
+}
+
 function routeCommand(registryArgument: string, pathArgument: string): void {
   const registryPath = resolve(registryArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath);
@@ -1272,6 +1307,7 @@ function clearCurrentChangeCommand(workspaceArgument: string): void {
 function main(argv: string[]): void {
   const [command, ...args] = argv;
   if (command === "init" && args.length === 1) return initCommand(args[0]);
+  if (command === "set-managed-roots" && args.length >= 2) return setManagedRootsCommand(args);
   if (command === "validate" && args.length === 1) return validateCommand(args[0]);
   if (command === "route" && args.length === 2) return routeCommand(args[0], args[1]);
   if (command === "request-change" && args.length >= 5) return requestChangeCommand(args);
@@ -1296,7 +1332,7 @@ function main(argv: string[]): void {
     return clearCurrentChangeCommand(args[0]);
   }
   fail(
-    "usage: owner-registry.mjs propose <workspace> <operation> <reason> ... | current|approve-current|apply-current|clear-current <workspace> | internal owner commands",
+    "usage: owner-registry.mjs set-managed-roots <workspace> <exact-path>... | propose <workspace> <operation> <reason> ... | current|approve-current|apply-current|clear-current <workspace> | internal owner commands",
   );
 }
 

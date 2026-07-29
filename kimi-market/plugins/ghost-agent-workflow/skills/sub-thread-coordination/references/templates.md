@@ -24,7 +24,7 @@ goal-dag.mjs workflow start-dag <原始工作区> <development-key>
 goal-dag.mjs workflow start-dag <当前 DAG worktree> <相同 development-key>
 ```
 
-新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `ga/<key>/main`。认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
+新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `ga/<key>/main`。认领成功后，先处理 `main_route_required`，再处理 `supervisor_init_required`。Supervisor 必须早于 Planner 创建。恢复或推进仍只运行同一命令；Dashboard 和 native ack 只按收据执行。
 
 Main 不调用 `wait_threads`。创建或唤醒 Supervisor 后立即结束 turn。
 
@@ -38,10 +38,14 @@ goal-dag.mjs supervisor-next <goal-dir> --limit 8
 
 所有动作只用不透明 action id 调用 `supervisor-ack`：
 
+- control：创建或复用 Planner/Planner Reviewer，等待终态；正常结束由脚本自动推进，不唤醒 Main。
 - 新 Owner worktree：按 action branch 创建线程，等待其 bootstrap `owner-sync` 结束，再 ack 和发送正式 dispatch。
 - 已有 Owner：复用原线程/worktree；每个新 run 已由脚本先 `owner-sync`。
 - integration repair：复用原 Owner，禁止再次同步或新建 worktree。
 - wait/notify/stalled：只传宿主标量和 cursor，不读取 Result 或 DAG。
+- main_action：把脚本 dispatch 原样发送给 Main 后结束 turn；最终交付和清理只能由 Main 执行。
+
+控制线程 stalled/failed/cancelled 或未生成有效结果时，Main 等待用户确认关闭旧线程，再调用 `supervisor-recover <goal-dir> <planner|planner-reviewer> <attempt> <reason>`。脚本原子清除旧 route/watch；重新唤醒 Supervisor 后由下一次 action 创建新线程。
 
 ## Owner 完成
 

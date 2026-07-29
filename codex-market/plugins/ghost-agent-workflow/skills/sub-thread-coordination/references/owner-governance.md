@@ -8,6 +8,14 @@ Owner 是长期责任域，不是人员。Planner 只能引用 Registry 中已�
 owner-registry.mjs init <workspace>
 ```
 
+如果本次只管理一组明确文件，必须在首次 Owner 提案前调用：
+
+```text
+owner-registry.mjs set-managed-roots <workspace> <精确仓库相对路径>...
+```
+
+该命令拒绝通配符、已有 Owner 和尚未清除的提案；不得手写 Registry。未调用时保持默认 `**`。
+
 路径路由交给 `route`。未归属、冲突、split/merge/transfer 才进入 Owner 变化。
 
 ## 当前变更

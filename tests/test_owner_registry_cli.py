@@ -157,6 +157,36 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.assertNotEqual(missing.returncode, 0)
             self.assertIn("unowned", missing.stderr)
 
+    def test_set_managed_roots_uses_exact_paths_before_initial_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", root], check=True)
+            for relative in ["src/user/model.ts", "README.md"]:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{relative}\n", encoding="utf-8")
+            subprocess.run(["git", "-C", root, "add", "."], check=True)
+
+            self.run_json("init", root)
+            receipt = self.run_json(
+                "set-managed-roots", root, "src/user/model.ts", "README.md",
+            )
+            self.assertEqual(receipt["status"], "managed_roots_set")
+            self.assertEqual(receipt["revision"], 2)
+            registry_path = root / ".ghost-agent-workflow/owners/registry.json"
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            self.assertEqual(registry["managed_roots"], ["README.md", "src/user/model.ts"])
+
+            repeated = self.run_json(
+                "set-managed-roots", root, "README.md", "src/user/model.ts",
+            )
+            self.assertEqual(repeated["status"], "unchanged")
+            self.assertEqual(repeated["revision"], 2)
+
+            wildcard = self.run_cli("set-managed-roots", root, "src/**")
+            self.assertNotEqual(wildcard.returncode, 0)
+            self.assertIn("exact repository paths", wildcard.stderr)
+
     def test_init_requires_an_approved_covering_create_request(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

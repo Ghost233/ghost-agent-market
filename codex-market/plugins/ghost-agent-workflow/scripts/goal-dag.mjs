@@ -55,6 +55,8 @@ import { fileURLToPath } from "node:url";
 
 
 
+const SUPERVISOR_CONTROL_TASKS = new Set(["planner", "planner-reviewer"]);
+
 
 
 
@@ -559,6 +561,7 @@ const WORKFLOW_GITIGNORE = [
   "owners/*/interfaces/",
   "",
 ].join("\n");
+const GIT_CAPTURE_MAX_BUFFER = 16 * 1024 * 1024;
 const ROLES = new Set          (["work", "review", "verify"]);
 const RUNTIME_ACTOR_IDS = new Set                ([
   "source-audit",
@@ -1047,6 +1050,7 @@ function gitOutput(workspaceRoot        , args          , label        )        
   const result = spawnSync("git", ["-C", workspaceRoot, ...args], {
     encoding: "utf8",
     shell: false,
+    maxBuffer: GIT_CAPTURE_MAX_BUFFER,
   });
   if (result.error !== undefined || result.status !== 0) {
     const detail = result.error?.message ?? String(result.stderr).trim();
@@ -1062,6 +1066,7 @@ function gitAttempt(
   const result = spawnSync("git", ["-C", workspaceRoot, ...args], {
     encoding: "utf8",
     shell: false,
+    maxBuffer: GIT_CAPTURE_MAX_BUFFER,
   });
   return {
     ok: result.error === undefined && result.status === 0,
@@ -1163,7 +1168,11 @@ function commitScriptManagedPaths(worktree        , paths          , message    
   const normalized = uniqueStrings(paths.map(normalizePathPattern));
   if (normalized.length === 0) return gitHead(worktree);
   gitOutput(worktree, ["var", "GIT_AUTHOR_IDENT"], "Git author identity check");
-  gitOutput(worktree, ["add", "--all", "--", ...normalized], "script-managed file staging");
+  gitOutput(
+    worktree,
+    ["add", "--all", "--force", "--", ...normalized],
+    "script-managed file staging",
+  );
   if (gitAttempt(worktree, ["diff", "--cached", "--quiet", "--", ...normalized]).ok) {
     return gitHead(worktree);
   }
@@ -2367,6 +2376,9 @@ function parseTaskSubgraph(value         , taskId        , index        )       
 function parseTask(value         , index        )                 {
   const source = requireRecord(value, `tasks[${index}]`);
   const id = requireIdentifier(source.id, `tasks[${index}].id`);
+  if (SUPERVISOR_CONTROL_TASKS.has(id)) {
+    fail(`tasks[${index}].id is reserved for Supervisor control: ${id}`);
+  }
   const nodeTypeRaw = source.node_type ?? "leaf";
   if (nodeTypeRaw !== "leaf" && nodeTypeRaw !== "composite") {
     fail(`tasks[${index}].node_type must equal leaf or composite`);
@@ -12144,6 +12156,20 @@ const SUPERVISOR_NOTIFY_STATES = new Set([
 
 
 
+function isSupervisorControlTask(taskId        )          {
+  return SUPERVISOR_CONTROL_TASKS.has(taskId);
+}
+
+function supervisorControlRole(taskId        )                                 {
+  if (taskId === "planner") return "planner";
+  if (taskId === "planner-reviewer") return "planner_reviewer";
+  fail(`unknown supervisor control task: ${taskId}`);
+}
+
+function supervisorControlThreadKey(taskId        )         {
+  return taskId === "planner" ? "wf_planner" : "wf_planner_reviewer";
+}
+
 function ownerFinishErrorPath(goalDirectory        , ownerId        )         {
   return join(goalDirectory, `owner-finish-error-${ownerId}.log`);
 }
@@ -12298,11 +12324,275 @@ function supervisorResultNotice(
   }
 }
 
+function supervisorMainRoute(registry                         )
+
+
+  {
+  const main = requireRecord(registry.main, "thread registry.main");
+  return {
+    thread: requireString(main.thread_id, "thread registry.main.thread_id"),
+    host: requireString(main.host_id, "thread registry.main.host_id"),
+  };
+}
+
+function emptySupervisorPayload(main                                  )                          {
+  return { main, create: [], wait: [], stalled: [], notify: [] };
+}
+
+function supervisorControlPrompt(
+  goalDirectory        ,
+  step                         ,
+  taskId        ,
+  title        ,
+)         {
+  if (taskId === "planner") {
+    const plannerAction = requireString(step.planner_action, "planner action");
+    return [
+      "$parallel-task-planner",
+      "",
+      plannerAction,
+      "",
+      `Goal 目录：${goalDirectory}`,
+      `请先把当前线程标题逐字设置为：${title}`,
+      "然后严格按 Skill 使用当前插件 Node CLI 完成这一次规划投影并结束当前 turn。",
+      "不得实现代码、操作 Git/worktree、创建中间 JSON 或等待其他线程。",
+    ].join("\n");
+  }
+  return [
+    "$planner-reviewer",
+    "",
+    `Goal 目录：${goalDirectory}`,
+    `请先把当前线程标题逐字设置为：${title}`,
+    "然后严格按 Skill 使用当前插件 Node CLI 完成这一次规划审查并结束当前 turn。",
+    "不得读取 Planner 聊天、实现代码、操作 Git/worktree 或等待其他线程。",
+  ].join("\n");
+}
+
+function supervisorControlAttempt(
+  goalDirectory        ,
+  taskId        ,
+)         {
+  const planPath = join(goalDirectory, "plan.json");
+  if (!existsSync(planPath)) return 1;
+  const revision = parsePlan(readJson(planPath), planPath).plan.revision;
+  return taskId === "planner" ? revision + 1 : revision;
+}
+
+function supervisorMainResumePrompt(goalDirectory        )         {
+  let command          ;
+  if (existsSync(dagWorktreesPath(goalDirectory))) {
+    const worktrees = readDagWorktrees(goalDirectory);
+    const developmentKey = developmentKeyFromDagBranch(worktrees.dag.branch) ??
+      fail(`invalid DAG integration branch: ${worktrees.dag.branch}`);
+    command = [
+      "node",
+      fileURLToPath(import.meta.url),
+      "workflow",
+      "start-dag",
+      worktrees.dag.path,
+      developmentKey,
+    ];
+  } else {
+    command = ["node", fileURLToPath(import.meta.url), "workflow", "step", goalDirectory];
+  }
+  return [
+    "$sub-thread-coordination",
+    "",
+    "Supervisor 检测到需要 Main 处理的确定性动作。",
+    `运行 ${command.map((value) => JSON.stringify(value)).join(" ")}，逐字执行脚本收据。`,
+    "完成主控动作后按收据重新唤醒 Supervisor；不要调用 wait_threads。",
+  ].join("\n");
+}
+
+function supervisorControlNext(
+  goalDirectory        ,
+  limit        ,
+)                                 {
+  if (!existsSync(workflowDefinitionPath(goalDirectory))) return null;
+  const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  const threadsPath = join(goalDirectory, "threads.json");
+  if (!existsSync(threadsPath)) fail(`supervisor runtime file is missing: ${threadsPath}`);
+
+  let completedControl                                           = null;
+  for (;;) {
+    const current = withStateLock(threadsPath, () => {
+      const registry = readThreadRegistry(threadsPath, goal.goal_id);
+      const main = supervisorMainRoute(registry);
+      const threads = requireRecord(registry.threads, "thread registry.threads");
+      const watches = registry.watches                             ;
+      if (watches.some((watch) => !isSupervisorControlTask(String(watch.task_id)))) {
+        return { kind: "task", main };
+      }
+      const controlWatches = watches.filter((watch) =>
+        isSupervisorControlTask(String(watch.task_id))
+      );
+      if (controlWatches.length > 1) fail("Supervisor has multiple active control watches");
+      if (controlWatches.length === 0) return { kind: "none", main };
+      const watch = controlWatches[0];
+      const taskId = requireIdentifier(watch.task_id, "control watch.task_id");
+      const attempt = requirePositiveInteger(watch.attempt, "control watch.attempt");
+      const threadKeyValue = requireString(watch.thread_key, "control watch.thread_key");
+      const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+      const status = requireString(thread.status, "control thread status");
+      if (status === "completed") {
+        registry.watches = watches.filter((candidate) => candidate !== watch);
+        thread.status = "idle";
+        validateThreadRegistry(registry);
+        writeJson(threadsPath, registry);
+        return { kind: "advance", main, task: taskId, attempt };
+      }
+      const title = taskId === "planner"
+        ? goalThreadTitles(goal).planner
+        : goalThreadTitles(goal).planner_reviewer;
+      const compact = {
+        task: taskId,
+        attempt,
+        thread: requireString(thread.thread_id, "control thread id"),
+        host: requireString(thread.host_id, "control thread host"),
+        title,
+        control: true,
+      };
+      const unchangedWaits = requireNonNegativeInteger(
+        watch.unchanged_waits,
+        "control watch.unchanged_waits",
+      );
+      if (status === "running" && unchangedWaits >= 3) {
+        return {
+          kind: "actions",
+          payload: {
+            ...emptySupervisorPayload(main),
+            stalled: [{
+              action_id: supervisorActionId("stalled", taskId, attempt),
+              ...compact,
+              unchanged_waits: unchangedWaits,
+            }],
+          },
+        };
+      }
+      if (status === "running") {
+        return {
+          kind: "actions",
+          payload: {
+            ...emptySupervisorPayload(main),
+            wait: [{
+              action_id: supervisorActionId("wait", taskId, attempt),
+              ...compact,
+              cursor: requireNullableString(thread.cursor, "control thread cursor"),
+            }],
+          },
+        };
+      }
+      if (SUPERVISOR_NOTIFY_STATES.has(status)) {
+        return {
+          kind: "actions",
+          payload: {
+            ...emptySupervisorPayload(main),
+            notify: [{
+              action_id: supervisorActionId("notify", taskId, attempt),
+              ...compact,
+              status,
+              result_ref: null,
+              summary: status === "needs_attention"
+                ? "控制线程需要用户处理"
+                : "控制线程异常结束",
+            }],
+          },
+        };
+      }
+      return { kind: "actions", payload: emptySupervisorPayload(main) };
+    });
+
+    if (current.kind === "advance") {
+      completedControl = {
+        task: requireIdentifier(current.task, "completed control task"),
+        attempt: requirePositiveInteger(current.attempt, "completed control attempt"),
+      };
+    } else if (current.kind === "task") return null;
+    else if (current.kind === "actions") {
+      return requireRecord(current.payload, "Supervisor control payload");
+    }
+    const main = requireRecord(current.main, "Supervisor main route")
+
+
+     ;
+    const step = runSelfJson(["workflow", "step", goalDirectory, "--defer-delivery"]);
+    const action = requireString(step.action, "workflow step action");
+    const taskId = action === "planner_review_required"
+      ? "planner-reviewer"
+      : new Set(["planner_required", "planner_revision_required"]).has(action)
+      ? "planner"
+      : null;
+    if (taskId !== null) {
+      const attempt = supervisorControlAttempt(goalDirectory, taskId);
+      if (
+        completedControl !== null && completedControl.task === taskId &&
+        completedControl.attempt === attempt
+      ) {
+        const payload = emptySupervisorPayload(main);
+        payload.main_action = {
+          action: "control_result_missing",
+          task: taskId,
+          attempt,
+          summary: `${taskId} 线程已结束，但未生成有效控制结果`,
+          dispatch: [
+            "$sub-thread-coordination",
+            "",
+            `${taskId} 线程已结束，但 runtime 未发现对应结果。`,
+            "向用户报告真实阻塞；不要等待、重试或手写 Plan/Review。",
+          ].join("\n"),
+        };
+        return payload;
+      }
+      const role = supervisorControlRole(taskId);
+      const title = requireString(step.thread_title, "control thread title");
+      const preferred = preferredWorkflowThread(goalDirectory, role);
+      return {
+        ...emptySupervisorPayload(main),
+        create: [{
+          action_id: supervisorActionId("create", taskId, attempt),
+          task: taskId,
+          attempt,
+          title,
+          model: requireString(step.model, "control model"),
+          thinking: requireString(step.effort, "control effort"),
+          prompt: supervisorControlPrompt(goalDirectory, step, taskId, title),
+          target: { environment: "local" },
+          thread: preferred?.thread_id ?? null,
+          host: preferred?.host_id ?? null,
+          control: true,
+        }].slice(0, limit),
+      };
+    }
+    if (action === "supervisor_required") return null;
+    if (action === "supervisor_init_required") {
+      fail("Supervisor route is missing after Supervisor initialization");
+    }
+    const payload = emptySupervisorPayload(main);
+    payload.main_action = {
+      action,
+      summary: action === "dashboard_start_required"
+        ? "Plan 已激活，需要 Main 启动 Dashboard"
+        : compactUserSummary(String(step.reason ?? action)),
+      dispatch: supervisorMainResumePrompt(goalDirectory),
+      ...(step.result_ref === undefined ? {} : {
+        result_ref: requireString(step.result_ref, "workflow step result_ref"),
+      }),
+    };
+    return payload;
+  }
+}
+
 function supervisorNextCommand(goalDirectoryArgument        , limitArgument         )       {
-  const { goalDirectory, planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  const goalDirectory = resolve(goalDirectoryArgument);
   const limit = limitArgument === undefined
     ? MAX_PARALLEL_THREADS
     : requireParallelCount(Number(limitArgument), "supervisor limit");
+  const control = supervisorControlNext(goalDirectory, limit);
+  if (control !== null) {
+    process.stdout.write(`${JSON.stringify(control)}\n`);
+    return;
+  }
+  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectory);
   const payload = withStateLock(statePath, () => withStateLock(threadsPath, () => {
     const { plan, goal, state } = loadPlanAndState(planPath, statePath, {
       allowSourceDrift: true,
@@ -12708,12 +12998,137 @@ function supervisorRecordCommand(
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
+function supervisorControlRecord(
+  goalDirectoryArgument        ,
+  action                                                               ,
+  args          ,
+)                          {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  const threadsPath = join(goalDirectory, "threads.json");
+  const routesPath = workflowRoutesPath(goalDirectory);
+  if (!existsSync(threadsPath) || !existsSync(routesPath)) {
+    fail("Supervisor control routing is not initialized");
+  }
+  return withStateLock(routesPath, () => withStateLock(threadsPath, () => {
+    const registry = readThreadRegistry(threadsPath, goal.goal_id);
+    const threads = requireRecord(registry.threads, "thread registry.threads");
+    const watches = registry.watches                             ;
+    const role = supervisorControlRole(action.task);
+    const key = supervisorControlThreadKey(action.task);
+
+    if (action.kind === "create") {
+      if (args.length !== 2) fail("control create acknowledgement requires <thread_id> <host_id>");
+      const threadId = requireString(args[0], "control thread id");
+      const hostId = requireString(args[1], "control thread host");
+      const routes = parseWorkflowRoutes(readJson(routesPath));
+      const existingRoute = routes[role];
+      if (
+        existingRoute !== null &&
+        (existingRoute.thread !== threadId || existingRoute.host !== hostId)
+      ) fail(`${role} must reuse its registered thread`);
+      const existingThread = Object.hasOwn(threads, key)
+        ? requireRecord(threads[key], `thread registry.threads.${key}`)
+        : null;
+      if (
+        existingThread !== null &&
+        requireString(existingThread.thread_id, "control thread id") !== threadId
+      ) fail(`${role} thread identity changed`);
+      routes[role] = { thread: threadId, host: hostId };
+      threads[key] = {
+        thread_id: threadId,
+        host_id: hostId,
+        role,
+        status: "running",
+        cursor: existingThread === null
+          ? null
+          : requireNullableString(existingThread.cursor, "control thread cursor"),
+      };
+      registry.watches = watches.filter((watch) => watch.task_id !== action.task);
+      (registry.watches                             ).push({
+        task_id: action.task,
+        attempt: action.attempt,
+        thread_key: key,
+        unchanged_waits: 0,
+      });
+      validateThreadRegistry(registry);
+      writeTransaction(threadsPath, [
+        [routesPath, routes],
+        [threadsPath, registry],
+      ]);
+      return {
+        status: "created",
+        control: true,
+        task: action.task,
+        attempt: action.attempt,
+        thread: threadId,
+      };
+    }
+
+    const watch = watches.find((candidate) =>
+      candidate.task_id === action.task && candidate.attempt === action.attempt
+    ) ?? fail(`Supervisor control watch is missing: ${action.task}`);
+    const threadKeyValue = requireString(watch.thread_key, "control thread key");
+    const thread = requireRecord(threads[threadKeyValue], `thread registry.threads.${threadKeyValue}`);
+    if (action.kind === "wait") {
+      if (args.length !== 2) fail("control wait acknowledgement requires <cursor|-> <status>");
+      const status = requireString(args[1], "control observed status");
+      if (status !== "running" && !SUPERVISOR_NOTIFY_STATES.has(status)) {
+        fail(`control observed status is invalid: ${status}`);
+      }
+      const nextCursor = args[0] === "-" ? null : requireString(args[0], "control cursor");
+      const previousCursor = requireNullableString(thread.cursor, "control cursor");
+      thread.cursor = nextCursor;
+      watch.unchanged_waits = status === "running"
+        ? previousCursor === nextCursor
+          ? requireNonNegativeInteger(watch.unchanged_waits, "control unchanged_waits") + 1
+          : 0
+        : 0;
+      thread.status = status;
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return {
+        status: "observed",
+        control: true,
+        task: action.task,
+        attempt: action.attempt,
+        terminal: SUPERVISOR_TERMINAL_STATES.has(status),
+        unchanged_waits: watch.unchanged_waits,
+      };
+    }
+    if (action.kind === "stalled") {
+      if (args.length !== 0) fail("control stalled acknowledgement takes no extra arguments");
+      if (requireNonNegativeInteger(watch.unchanged_waits, "control unchanged_waits") < 3) {
+        fail("control thread has not reached the stalled threshold");
+      }
+      if (thread.status !== "running") fail("control thread is not running");
+      thread.status = "stalled";
+      validateThreadRegistry(registry);
+      writeJson(threadsPath, registry);
+      return { status: "stalled_notified", control: true, task: action.task };
+    }
+    if (args.length !== 0) fail("control notify acknowledgement takes no extra arguments");
+    if (!SUPERVISOR_NOTIFY_STATES.has(String(thread.status))) {
+      fail(`control thread does not require notification: ${String(thread.status)}`);
+    }
+    thread.status = "attention_notified";
+    validateThreadRegistry(registry);
+    writeJson(threadsPath, registry);
+    return { status: "attention_notified", control: true, task: action.task };
+  }));
+}
+
 function supervisorAckCommand(
   goalDirectoryArgument        ,
   actionIdArgument        ,
   args          ,
 )       {
   const action = parseSupervisorActionId(actionIdArgument);
+  if (isSupervisorControlTask(action.task)) {
+    const receipt = supervisorControlRecord(goalDirectoryArgument, action, args);
+    process.stdout.write(`${JSON.stringify(receipt)}\n`);
+    return;
+  }
   let receipt                         ;
   if (action.kind === "create") {
     if (args.length !== 2) fail("create acknowledgement requires <thread_id> <host_id>");
@@ -12765,10 +13180,74 @@ function supervisorRecoverCommand(
   attemptArgument        ,
   reasonArgument        ,
 )       {
-  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  const goalDirectory = resolve(goalDirectoryArgument);
   const taskId = requireIdentifier(taskIdArgument, "task_id");
   const attempt = requirePositiveInteger(Number(attemptArgument), "attempt");
   const reason = requireString(reasonArgument, "reason");
+  if (isSupervisorControlTask(taskId)) {
+    const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+    const threadsPath = join(goalDirectory, "threads.json");
+    const routesPath = workflowRoutesPath(goalDirectory);
+    if (!existsSync(threadsPath) || !existsSync(routesPath)) {
+      fail("Supervisor control routing is not initialized");
+    }
+    const receipt = withStateLock(routesPath, () => withStateLock(threadsPath, () => {
+      const registry = readThreadRegistry(threadsPath, goal.goal_id);
+      const routes = parseWorkflowRoutes(readJson(routesPath));
+      const role = supervisorControlRole(taskId);
+      const key = supervisorControlThreadKey(taskId);
+      const watches = registry.watches                             ;
+      const watch = watches.find((candidate) =>
+        candidate.task_id === taskId && candidate.attempt === attempt
+      );
+      if (watch === undefined) {
+        const threads = requireRecord(registry.threads, "thread registry.threads");
+        if (routes[role] === null && !Object.hasOwn(threads, key)) {
+          return { removed_watches: 0, removed_threads: 0, idempotent: true };
+        }
+        const thread = requireRecord(threads[key], `thread registry.threads.${key}`);
+        const status = requireString(thread.status, "control thread status");
+        if (!["idle", "completed", "stalled", "attention_notified", "needs_attention", "failed", "cancelled", "archived"].includes(status)) {
+          fail(`control thread must be stopped or awaiting user action before recovery: ${status}`);
+        }
+        delete threads[key];
+        routes[role] = null;
+        validateThreadRegistry(registry);
+        writeTransaction(threadsPath, [
+          [routesPath, routes],
+          [threadsPath, registry],
+        ]);
+        return { removed_watches: 0, removed_threads: 1, idempotent: false };
+      }
+      const threadKeyValue = requireString(watch.thread_key, "control thread key");
+      if (threadKeyValue !== key) fail(`Supervisor control thread key mismatch: ${taskId}`);
+      const threads = requireRecord(registry.threads, "thread registry.threads");
+      const thread = requireRecord(threads[key], `thread registry.threads.${key}`);
+      const status = requireString(thread.status, "control thread status");
+      if (!["stalled", "attention_notified", "needs_attention", "failed", "cancelled", "archived"].includes(status)) {
+        fail(`control thread must be stopped or awaiting user action before recovery: ${status}`);
+      }
+      registry.watches = watches.filter((candidate) => candidate !== watch);
+      delete threads[key];
+      routes[role] = null;
+      validateThreadRegistry(registry);
+      writeTransaction(threadsPath, [
+        [routesPath, routes],
+        [threadsPath, registry],
+      ]);
+      return { removed_watches: 1, removed_threads: 1, idempotent: false };
+    }));
+    process.stdout.write(`${JSON.stringify({
+      contract: "SUPERVISOR_RECOVERY_RECEIPT_V1",
+      status: "recovered",
+      control: true,
+      task: taskId,
+      attempt,
+      ...receipt,
+    })}\n`);
+    return;
+  }
+  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
   const snapshot = withStateLock(statePath, () => withStateLock(threadsPath, () => {
     const { plan, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
     const registry = readThreadRegistry(threadsPath, plan.goal_id);
@@ -14911,7 +15390,11 @@ function startWorkflow(
   workspace        ,
   mode              ,
   objective        ,
+  dagWorktrees                        = null,
 )                          {
+  if (mode !== "dag" && dagWorktrees !== null) {
+    fail("DAG worktree state requires DAG mode");
+  }
   loadThreadWorkflowConfig(workspace);
   const active = activeWorkflowDirectories(workspace);
   if (active.length > 0) {
@@ -14969,11 +15452,13 @@ function startWorkflow(
         scope: ["**/*"],
       });
       runSelfJson(["goal-validate", join(directory, "goal.json")]);
-      writeTransaction(statePath, [
+      const entries                           = [
         [definitionPath, workflow],
         [workflowRoutesPath(directory), routes],
         [statePath, state],
-      ]);
+      ];
+      if (dagWorktrees !== null) entries.push([dagWorktreesPath(directory), dagWorktrees]);
+      writeTransaction(statePath, entries);
     }
   } catch (error) {
     rmSync(directory, { recursive: true, force: true });
@@ -14985,7 +15470,7 @@ function startWorkflow(
     mode,
     workflow_dir: directory,
     thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
-    action: mode === "quick" ? "owner_required" : "planner_required",
+    action: mode === "quick" ? "owner_required" : "main_route_required",
   };
 }
 
@@ -15032,6 +15517,44 @@ function pendingDagBranches(workspace        )           {
   ) === "true");
 }
 
+function recoverPendingDagHandoff(
+  goalDirectory        ,
+  workspace        ,
+  requestedDagBranch        ,
+)       {
+  const currentBranch = gitBranchOrNull(workspace);
+  const originalPath = currentBranch === null
+    ? null
+    : branchConfig(workspace, currentBranch, "original-path");
+  if (
+    currentBranch !== requestedDagBranch || originalPath === null ||
+    resolve(originalPath) === workspace || branchConfig(workspace, currentBranch, "pending") !== "true"
+  ) {
+    fail("active DAG is not isolated in a DAG worktree");
+  }
+  commitScriptManagedPaths(
+    workspace,
+    [".ghost-agent-workflow/.gitignore", ".ghost-agent-workflow/config.json"],
+    "chore(workflow): initialize DAG workspace",
+  );
+  writeJson(dagWorktreesPath(goalDirectory), {
+    contract: "DAG_WORKTREES_V1",
+    original: {
+      path: resolve(originalPath),
+      branch: requireString(
+        branchConfig(workspace, currentBranch, "original-branch"),
+        "DAG original branch",
+      ),
+      head: requireString(
+        branchConfig(workspace, currentBranch, "original-head"),
+        "DAG original head",
+      ),
+    },
+    dag: { path: workspace, branch: currentBranch },
+    owners: {},
+  }                         );
+}
+
 function workflowStartDagCommand(workspaceArgument        , developmentKeyArgument        )       {
   const workspace = gitRoot(resolve(workspaceArgument));
   const developmentKey = requireDevelopmentKey(developmentKeyArgument);
@@ -15041,11 +15564,21 @@ function workflowStartDagCommand(workspaceArgument        , developmentKeyArgume
   if (active.length > 1) fail(`DAG worktree has multiple active Goals: ${active.join(", ")}`);
   if (active.length === 1) {
     if (!existsSync(dagWorktreesPath(active[0]))) {
-      fail("active DAG is not isolated in a DAG worktree");
+      recoverPendingDagHandoff(active[0], workspace, requestedDagBranch);
     }
     const worktrees = readDagWorktrees(active[0]);
     if (worktrees.dag.branch !== requestedDagBranch) {
       fail(`active DAG uses ${worktrees.dag.branch}, not ${requestedDagBranch}`);
+    }
+    if (gitBranchOrNull(workspace) !== requestedDagBranch) {
+      fail(`active DAG worktree is not attached to ${requestedDagBranch}`);
+    }
+    if (branchConfig(workspace, requestedDagBranch, "pending") === "true") {
+      gitOutput(
+        workspace,
+        ["config", `branch.${requestedDagBranch}.ghost-agent-pending`, "false"],
+        "DAG handoff completion",
+      );
     }
     workflowStepCommand(active[0]);
     return;
@@ -15107,19 +15640,18 @@ function workflowStartDagCommand(workspaceArgument        , developmentKeyArgume
       branchConfig(workspace, dagBranch, "original-head"),
       "DAG original head",
     );
-    const started = startWorkflow(workspace, "dag", objective);
-    const goalDirectory = requireString(started.workflow_dir, "DAG workflow directory");
     commitScriptManagedPaths(
       workspace,
       [".ghost-agent-workflow/.gitignore", ".ghost-agent-workflow/config.json"],
       "chore(workflow): initialize DAG workspace",
     );
-    writeJson(dagWorktreesPath(goalDirectory), {
+    const started = startWorkflow(workspace, "dag", objective, {
       contract: "DAG_WORKTREES_V1",
       original: { path: originalPath, branch: originalBranch, head: originalHead },
       dag: { path: workspace, branch: dagBranch },
       owners: {},
     });
+    const goalDirectory = requireString(started.workflow_dir, "DAG workflow directory");
     gitOutput(workspace, ["config", `branch.${dagBranch}.ghost-agent-pending`, "false"], "DAG handoff completion");
     process.stdout.write(`${JSON.stringify({
       contract: "WORKFLOW_START_DAG_V1",
@@ -15646,9 +16178,10 @@ function supervisorRecoverRunCommand(goalDirectoryArgument        , runIdArgumen
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
-function workflowStepCommand(goalDirectoryArgument        )       {
+function workflowStepCommand(goalDirectoryArgument        , deferDelivery = false)       {
   const goalDirectory = resolve(goalDirectoryArgument);
   const definitionPath = workflowDefinitionPath(goalDirectory);
+  let managedDag = false;
   if (existsSync(definitionPath)) {
     const workflow = parseWorkflowDefinition(readJson(definitionPath), definitionPath);
     if (workflowRouteReceipt(goalDirectory, "main") === null) {
@@ -15660,6 +16193,7 @@ function workflowStepCommand(goalDirectoryArgument        )       {
       return;
     }
     if (workflow.mode === "quick") return quickWorkflowStepCommand(goalDirectory);
+    managedDag = true;
   }
   const goalPath = join(goalDirectory, "goal.json");
   const goalStatePath = join(goalDirectory, "goal-state.json");
@@ -15688,6 +16222,17 @@ function workflowStepCommand(goalDirectoryArgument        )       {
       })}\n`);
       return;
     }
+    if (deferDelivery) {
+      process.stdout.write(`${JSON.stringify({
+        contract: "WORKFLOW_STEP_V1",
+        action: "completed",
+        completed_tasks: [],
+        result_ref: completedResultRef,
+        native_sync: nativeSync.status,
+        delivery_required: existsSync(dagWorktreesPath(goalDirectory)),
+      })}\n`);
+      return;
+    }
     const delivered = existsSync(dagWorktreesPath(goalDirectory))
       ? completeDagDelivery(goalDirectory, completedResultRef)
       : null;
@@ -15699,6 +16244,17 @@ function workflowStepCommand(goalDirectoryArgument        )       {
       result_ref: delivered?.result_ref ?? completedResultRef,
       native_sync: nativeSync.status,
       ...(delivered === null ? {} : { delivery: delivered.delivery }),
+    })}\n`);
+    return;
+  }
+  if (managedDag && workflowRouteReceipt(goalDirectory, "supervisor") === null) {
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_STEP_V1",
+      action: "supervisor_init_required",
+      completed_tasks: [],
+      thread_title: goalThreadTitles(goal).supervisor,
+      preferred_thread: null,
+      dispatch: supervisorDispatchPrompt(goalDirectory),
     })}\n`);
     return;
   }
@@ -15753,6 +16309,7 @@ function workflowStepCommand(goalDirectoryArgument        )       {
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
         action: plan.revision >= 2 ? "main_attention_required" : "planner_revision_required",
+        planner_action: "revision",
         reasons: review.changes,
         thread_title: goalThreadTitles(parseGoal(readJson(goalPath))).planner,
         preferred_thread: preferredWorkflowThread(goalDirectory, "planner"),
@@ -15978,6 +16535,18 @@ function workflowStepCommand(goalDirectoryArgument        )       {
         return;
       }
       const finalizedResultRef = requireString(finalized.result_ref, "finalized result_ref");
+      if (deferDelivery) {
+        process.stdout.write(`${JSON.stringify({
+          contract: "WORKFLOW_STEP_V1",
+          action: "completed",
+          completed_tasks: completedTasks,
+          result_ref: finalizedResultRef,
+          native_sync: finalized.native_sync,
+          delivery_required: existsSync(dagWorktreesPath(goalDirectory)),
+          ...(finalized.native_action === undefined ? {} : { native_action: finalized.native_action }),
+        })}\n`);
+        return;
+      }
       const delivered = existsSync(dagWorktreesPath(goalDirectory))
         ? completeDagDelivery(goalDirectory, finalizedResultRef)
         : null;
@@ -16194,6 +16763,9 @@ function main(argv          )       {
   }
   if (command === "workflow" && args[0] === "step" && args.length === 2) {
     return workflowStepCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "step" && args.length === 3 && args[2] === "--defer-delivery") {
+    return workflowStepCommand(args[1], true);
   }
   if (command === "workflow" && args[0] === "dispatch" && args.length === 3) {
     return workflowDispatchCommand(args[1], args[2]);

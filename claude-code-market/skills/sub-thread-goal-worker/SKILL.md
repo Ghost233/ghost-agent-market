@@ -13,6 +13,8 @@ goal-dag.mjs worker open <workflow-dir> <run-id>
 
 不得读取原始 Plan、State、Registry 或猜测 task、attempt、token、路径和字段。核对 Binding 的 task、done、dependencies 与 scope；身份不符立即停止。
 
+任何 runtime 命令失败时立即停止并通知 Main。禁止编辑、复制、替换或绕过工作流脚本，包括插件缓存和 `/tmp` 副本；禁止用内部命令、手写 JSON 或临时补丁继续。
+
 ## Worktree 边界
 
 - Quick Owner 在 Quick workspace 工作。

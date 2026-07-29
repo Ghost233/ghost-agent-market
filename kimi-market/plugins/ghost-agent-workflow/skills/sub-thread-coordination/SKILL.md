@@ -16,6 +16,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 ## 硬边界
 
 - 只通过领域脚本修改 workflow、Plan、State、Result、Registry、Capsule、配置与 Review 文件。
+- 运行中的 Main、Planner、Reviewer、Supervisor 和 Worker 都不得编辑、复制、替换或绕过 `goal-dag.mjs`、`owner-registry.mjs`、`workflow-config.mjs`、`start-dashboard.mjs`，包括插件缓存和 `/tmp` 副本。runtime 失败时立即停止当前动作，只报告失败命令、简短错误和日志路径；不得改用内部命令、手写状态或临时补丁继续。
 - Git 分支、worktree、提交、合并、验证、ID、路径、attempt、token、digest 和状态迁移都由脚本决定；LLM 不直接运行 Git。
 - 脚本 JSON 只作机器收据，不复制到聊天。
 - Quick 只保留当前 Owner 上下文、当前状态和最终结果；DAG 运行中额外保留当前 Plan/State、`progress.json` 和唯一历史 `events.jsonl`。成功交付后只在原始工作区保留最终 `result.json` 与 `events.jsonl`。
@@ -56,7 +57,7 @@ goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 2. 取得正式 threadId 后输出创建的任务链接。
 3. 当前会话立即停止；不得创建 Goal、Planner、Supervisor、Dashboard，不得等待新主控，也不得继续执行任何 DAG 工作。
 
-新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区> <相同 development-key>`。宿主创建的 worktree 可以是 detached HEAD；脚本验证 HEAD、清洁状态和分支占用后自行附着 `ga/<key>/main`，不得强制抢占。认领成功后脚本创建 Goal 和状态并返回 `ready`。从此只有新 Main 继续工作；Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
+新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区> <相同 development-key>`。宿主创建的 worktree 可以是 detached HEAD；脚本验证 HEAD、清洁状态和分支占用后自行附着 `ga/<key>/main`，不得强制抢占。认领成功后脚本创建 Goal 并先要求登记 Main，再要求创建 Supervisor；Planner 尚未启动。Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
 
 新 Main 后续每次只调用：
 
@@ -68,11 +69,13 @@ goal-dag.mjs workflow start-dag <当前 DAG worktree> <development-key>
 
 ## DAG 动作
 
-- `planner_required`：在 DAG worktree 创建或复用 Planner，逐字使用收据的 profile、标题和 action。
-- `planner_review_required`：创建独立 Planner Reviewer；最多允许 Planner 修订一次。
+- `main_route_required`：登记当前新 Main 的正式 threadId/hostId，然后再次投影。
+- `supervisor_init_required`：立即调用内部 `workflow supervisor-init`，在 DAG worktree 以 `environment: local` 创建唯一 Supervisor，使用 `gpt-5.6-luna/medium`；Supervisor 必须早于 Planner 创建，登记并发送 dispatch 后新 Main 立即结束 turn。
+- Planner、Planner Reviewer、Owner 与 Implementation Review 全部由 Supervisor 根据 `supervisor-next` 的脚本 action 创建、复用和等待。Main 不直接创建或等待这些线程。
+- `planner_required`、`planner_revision_required` 和 `planner_review_required` 如果意外投影到 Main，只能重新唤醒已登记 Supervisor；不得由 Main 执行。
 - `dashboard_start_required`：Plan 激活后由新 Main 启动 Dashboard，回执失败不阻断业务。
-- `supervisor_init_required`：按收据调用内部 `workflow supervisor-init`，在 DAG worktree 以 `environment: local` 创建唯一 Supervisor，使用 `gpt-5.6-luna/medium`；登记后新 Main 立即结束 turn。
 - `supervisor_required`：只向已登记 Supervisor 发送收据 dispatch，然后结束；Main 不等待。
+- Planner、Planner Reviewer 或普通任务疑似挂死、异常结束或未生成有效结果时，Main 先报告并等待用户决定。用户确认关闭旧线程后，Main 调用 `supervisor-recover <goal-dir> <task-id> <attempt> <reason>`；脚本清除旧 watch，控制线程同时清除旧 route，随后重新唤醒 Supervisor。不得手写 route、watch 或状态。
 - `owner_action_required`：报告 Owner 变化并等待用户决定。
 - `native_completion_required`：只执行收据指定的原生 Goal 桥接。
 - `completed`：脚本已合并回原始分支、保存最终结果和 DAG 日志，并删除全部 Owner/DAG worktree 与分支；Main 才报告最终结果并停止。

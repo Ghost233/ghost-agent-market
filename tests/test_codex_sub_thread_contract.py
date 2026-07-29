@@ -69,6 +69,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("禁止读取 Plan、State、Registry、Result", self.supervisor)
         self.assertIn("脚本 JSON 只作机器收据", self.coordinator)
         self.assertIn("workflow supervisor-init", self.coordinator)
+        self.assertIn("Supervisor 必须早于 Planner", self.coordinator_reference)
+        self.assertIn("Main 不直接创建或等待这些线程", self.coordinator)
+        self.assertIn("control: true", self.supervisor)
+        self.assertIn("main_action", self.supervisor)
         self.assertIn("environment: local", self.supervisor)
         self.assertIn("禁止 Orca", self.supervisor)
         self.assertIn("Main 不调用 `wait_threads`", self.coordinator)
@@ -273,7 +277,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.2\.9\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.3\.4\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
