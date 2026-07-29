@@ -57,7 +57,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "supervisor-ack",
             "gpt-5.6-luna/medium",
             "gpt-5.6-sol/high",
-            "workflow step",
+            "workflow start-dag",
             "必须由用户明确选择",
         ):
             self.assertIn(requirement, combined)
@@ -66,10 +66,20 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertIn("$sub-thread-goal-worker", self.coordinator)
         self.assertIn("$parallel-task-planner", self.coordinator)
         self.assertIn("$sub-thread-task-supervisor", self.coordinator)
-        self.assertIn("禁止读取 `plan.json`", self.supervisor)
-        self.assertIn("脚本 stdout 不进入聊天", self.supervisor)
-        self.assertIn("100 字内", self.worker)
-        self.assertIn("用户可见文本不含 result_ref", self.supervisor)
+        self.assertIn("禁止读取 Plan、State、Registry、Result", self.supervisor)
+        self.assertIn("脚本 JSON 只作机器收据", self.coordinator)
+        self.assertIn("workflow supervisor-init", self.coordinator)
+        self.assertIn("environment: local", self.supervisor)
+        self.assertIn("禁止 Orca", self.supervisor)
+        self.assertIn("Main 不调用 `wait_threads`", self.coordinator)
+        self.assertIn("当前会话立即停止", self.coordinator)
+        self.assertIn("完全不创建、切换、合并或删除 Git 分支/worktree", self.coordinator)
+        self.assertIn("删除全部 Owner/DAG worktree 与分支", self.coordinator)
+        self.assertIn(".ghost-agent-workflow/result.json", self.goal_contract)
+        self.assertIn("model/thinking/prompt/target", self.supervisor)
+        self.assertIn("target.environment: worktree", self.supervisor)
+        self.assertIn("最多 100 字", self.worker)
+        self.assertIn("用户可见文本不显示 result_ref", self.supervisor)
         self.assertIn("default_prompt:", self.coordinator_metadata)
         self.assertIn("allow_implicit_invocation: false", self.coordinator_metadata)
         self.assertIn("standalone_thread", combined)
@@ -142,7 +152,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
     def test_recovery_uses_script_state_instead_of_chat_history(self) -> None:
         combined = f"{self.coordinator}\n{self.coordinator_reference}"
         self.assertIn("聊天不是状态源", combined)
-        self.assertIn("workflow step <workflow-dir>", combined)
+        self.assertIn("workflow start-dag <当前 DAG worktree>", combined)
         self.assertIn("supervisor-next <goal-dir> --limit 8", combined)
         self.assertIn("成功验收后立即删除当前临时文件", combined)
 
@@ -262,7 +272,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.1\.9\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.2\.6\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]

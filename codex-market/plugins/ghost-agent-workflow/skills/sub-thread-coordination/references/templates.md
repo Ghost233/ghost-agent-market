@@ -1,28 +1,34 @@
 # 恢复与动作
 
-聊天不是状态源。Main 丢失上下文后只运行：
-
-```text
-goal-dag.mjs workflow step <workflow-dir>
-```
-
-脚本会返回 Quick 或 DAG 当前唯一动作；不得扫描或拼接原始状态文件。
-
-如果返回 `main_route_required`，先用当前 Main 的正式 threadId/hostId 调用 `workflow thread ... main ...`，再重新 step。
+聊天不是状态源；不得扫描、打开或拼接原始状态文件。
 
 ## Quick
 
-- `owner_required`：`workflow dispatch`。
-- `attach_required`：取得正式 threadId 后 `workflow attach`。
-- `wait_thread`：Main 直接等待收据中的线程。
-- 等待返回新 cursor：`workflow observe <dir> <run-id> <cursor>`。
-- `next_owner_or_review`：再次 dispatch，或 `workflow review`。
-- `owner_action_required` / `user_blocked`：通知用户并等待决定。
-- `completed`：读取最终结果引用。
+Quick Main 丢失上下文后运行脚本返回的 `workflow step` 当前动作：dispatch/attach/observe/review。Quick Owner 可按 `preferred_thread` 复用；Review 必须使用干净线程。
 
-Owner 线程可按脚本 `preferred_thread` 复用；Review 不复用实施线程。Quick 没有 Supervisor。
+## DAG 当前会话
 
-## DAG Supervisor
+首次只调用：
+
+```text
+goal-dag.mjs workflow start-dag <原始工作区>
+```
+
+收到 `handoff_required` 后按收据创建 DAG worktree 新 Main，然后当前会话永久停止。不得等待或继续执行。
+
+## DAG 新 Main
+
+首次把原目标通过 stdin 交给：
+
+```text
+goal-dag.mjs workflow start-dag <当前 DAG worktree>
+```
+
+认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
+
+Main 不调用 `wait_threads`。创建或唤醒 Supervisor 后立即结束 turn。
+
+## Supervisor
 
 Supervisor 丢失上下文后只运行：
 
@@ -30,16 +36,19 @@ Supervisor 丢失上下文后只运行：
 goal-dag.mjs supervisor-next <goal-dir> --limit 8
 ```
 
-`create/wait/notify/stalled` 都只用不透明 action id 调用 `supervisor-ack`。不得解析 task、attempt 或 token。三次无 cursor 变化只报告疑似挂死；恢复或重建必须由用户决定。
+所有动作只用不透明 action id 调用 `supervisor-ack`：
 
-## DAG 控制动作
+- 新 Owner worktree：按 action branch 创建线程，等待其 bootstrap `owner-sync` 结束，再 ack 和发送正式 dispatch。
+- 已有 Owner：复用原线程/worktree；每个新 run 已由脚本先 `owner-sync`。
+- integration repair：复用原 Owner，禁止再次同步或新建 worktree。
+- wait/notify/stalled：只传宿主标量和 cursor，不读取 Result 或 DAG。
 
-- `planner_required` / `planner_review_required`：使用收据中的 action、`model`、`effort`、标题和 preferred thread，不猜测配置或低层状态。
-- `dashboard_start_required`：启动 Dashboard 后调用 `workflow dashboard ... started|failed`。
-- `supervisor_init_required`：调用 `workflow supervisor-init`。
-- `owner_action_required` / `user_action_required`：等待用户决定。
-- `native_completion_required`：完成原生 Goal 后调用 `workflow native-confirm`。
+## Owner 完成
+
+Worker `complete` 后 task 仍为 running。新 Main 下一次 `start-dag` 内部执行 `owner-finish`。只有脚本合并和集成验证通过才完成；失败时返回 Supervisor repair 动作，由原 Owner 原地修复。
+
+Goal finalize 后脚本自动合并 DAG 分支回原始分支，保存最终结果与 DAG 日志，再删除全部 Owner/DAG worktree 和分支。失败时停止清理并保留剩余现场供继续修复。
 
 ## 清理
 
-运行中的 Binding、candidate、fence、artifact、checkpoint 和 watch 由脚本管理。成功验收后立即删除当前临时文件；工作流完成后只保留各模式规定的当前状态、DAG 日志和最终结果。
+Binding、candidate、fence、artifact、checkpoint、临时集成 worktree 与 watch 由脚本管理。成功验收后立即删除当前临时文件；最终只在原始工作区保留 `result.json` 与 `events.jsonl`。

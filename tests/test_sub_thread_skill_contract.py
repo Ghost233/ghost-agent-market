@@ -47,15 +47,18 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             for required in (
                 "唯一协调入口",
                 "禁止 subagent",
-                "workflow start",
-                "workflow step",
+                "workflow start-dag",
+                "workflow owner-sync",
+                "workflow owner-finish",
                 "必须由用户明确选择",
                 "supervisor_required",
+                "当前会话立即停止",
+                "Main 不调用 `wait_threads`",
+                "Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree",
                 "$sub-thread-goal-worker",
                 "$parallel-task-planner",
             ):
                 self.assertIn(required, coordinator)
-            self.assertIn("只供 runtime 和测试使用", coordinator)
 
     def test_mode_choice_is_required_and_quick_can_upgrade_one_way(self) -> None:
         for platform in PLATFORMS:
@@ -63,7 +66,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             contract = self.reference(platform, "sub-thread-coordination", "goal-contract.md")
             combined = f"{coordinator}\n{contract}"
             for required in (
-                "用户未明确指定",
+                "用户未明确指定运行模式",
                 "等待用户作出选择",
                 "不得调用 `workflow start`",
                 "Quick 不创建 Planner、Plan、Dashboard 或 Supervisor",
@@ -71,14 +74,14 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "workflow review",
                 "worker request-dag",
                 "不得从 DAG 降级回 Quick",
-                "八个是上限，不是目标",
+                "八个是上限",
             ):
                 self.assertIn(required, combined)
 
     def test_thread_creation_and_titles_are_host_owned(self) -> None:
         for platform in PLATFORMS:
             coordinator = self.skill(platform, "sub-thread-coordination")
-            self.assertIn("等待正式 threadId", coordinator)
+            self.assertIn("正式 threadId", coordinator)
             self.assertIn("set_thread_title", coordinator)
             self.assertIn("不得给 `create_thread` 伪造 title/name", coordinator)
             self.assertIn("[GA][任务][主控|规划|子图规划|规划审查|责任域|实现审查|监督]", coordinator)
@@ -92,12 +95,35 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "action id 是不透明值",
                 "wait_threads",
                 "--limit 8",
-                "supervisor-resume",
-                "supervisor-recover-run",
+                "create_thread",
+                "set_thread_title",
+                "environment: local",
+                "target.environment: worktree",
+                "starting_branch",
+                "不得再次 `owner-sync`",
+                "禁止 Orca",
+                "只有 Supervisor 负责等待",
             ):
                 self.assertIn(required, supervisor)
             self.assertIn("不得调用低层 `supervisor-record`", supervisor)
-            self.assertIn("线程已结束，但尚未生成有效结果", supervisor)
+
+    def test_dag_and_owner_worktrees_are_script_owned(self) -> None:
+        for platform in PLATFORMS:
+            coordinator = self.skill(platform, "sub-thread-coordination")
+            worker = self.skill(platform, "sub-thread-goal-worker")
+            combined = f"{coordinator}\n{worker}"
+            for required in (
+                "workflow start-dag <workspace>",
+                "workflow owner-sync <goal-dir> <owner-id>",
+                "workflow owner-finish <goal-dir> <run-id>",
+                "当前会话立即停止",
+                "只存在于 DAG worktree",
+                "每轮开始前必须 `owner-sync`",
+                "下游只读取已合并到 DAG 分支的代码",
+                "原 Owner 在原 worktree 修复",
+                "Worker 不运行任何 Git",
+            ):
+                self.assertIn(required, combined)
 
     def test_worker_never_builds_result_json(self) -> None:
         for platform in PLATFORMS:

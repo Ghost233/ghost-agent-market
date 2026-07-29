@@ -13,6 +13,7 @@ import {
   readFileSync,
   readSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -21,6 +22,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 type ExecutionPlatform = "codex" | "claude_code" | "kimi";
@@ -70,13 +72,14 @@ type QuickRunV1 = {
   request_dag: boolean;
 };
 
-type WorkflowThreadRole = "main" | "planner" | "planner_reviewer";
+type WorkflowThreadRole = "main" | "planner" | "planner_reviewer" | "supervisor";
 
 type WorkflowRoutesV1 = {
   contract: "WORKFLOW_ROUTES_V1";
   main: { thread: string; host: string } | null;
   planner: { thread: string; host: string } | null;
   planner_reviewer: { thread: string; host: string } | null;
+  supervisor: { thread: string; host: string } | null;
 };
 
 type QuickAcceptedV1 = {
@@ -97,6 +100,19 @@ type WorkflowStateV1 = {
   accepted: QuickAcceptedV1 | null;
   attention: string | null;
   result_ref: string | null;
+};
+
+type DagOwnerWorktreeV1 = {
+  branch: string;
+  path: string | null;
+  synced_dag_head: string;
+};
+
+type DagWorktreesV1 = {
+  contract: "DAG_WORKTREES_V1";
+  original: { path: string; branch: string; head: string };
+  dag: { path: string; branch: string };
+  owners: Record<string, DagOwnerWorktreeV1>;
 };
 
 type WorkerProfile = {
@@ -1021,11 +1037,65 @@ function gitOutput(workspaceRoot: string, args: string[], label: string): string
   return result.stdout;
 }
 
+function gitAttempt(
+  workspaceRoot: string,
+  args: string[],
+): { ok: boolean; stdout: string; stderr: string } {
+  const result = spawnSync("git", ["-C", workspaceRoot, ...args], {
+    encoding: "utf8",
+    shell: false,
+  });
+  return {
+    ok: result.error === undefined && result.status === 0,
+    stdout: result.stdout ?? "",
+    stderr: result.error?.message ?? result.stderr ?? `exit ${result.status}`,
+  };
+}
+
+function gitRoot(path: string): string {
+  return resolve(gitOutput(path, ["rev-parse", "--show-toplevel"], "git root lookup").trim());
+}
+
+function canonicalFilesystemPath(path: string): string {
+  const absolute = resolve(path);
+  return existsSync(absolute) ? realpathSync(absolute) : absolute;
+}
+
+function gitHead(path: string): string {
+  const head = gitOutput(path, ["rev-parse", "--verify", "HEAD"], "git HEAD lookup").trim();
+  if (!/^[0-9a-f]{40,64}$/u.test(head)) fail("git HEAD lookup returned an invalid object id");
+  return head;
+}
+
+function gitBranch(path: string): string {
+  return requireString(
+    gitOutput(path, ["symbolic-ref", "--quiet", "--short", "HEAD"], "git branch lookup").trim(),
+    "git branch",
+  );
+}
+
+function assertCleanGitWorktree(path: string, label: string): void {
+  const changes = [...gitAllStatusMap(path).keys()];
+  if (changes.length > 0) fail(`${label} is not clean: ${changes.slice(0, 8).join(", ")}`);
+}
+
+function gitBranchExists(path: string, branch: string): boolean {
+  return gitAttempt(path, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).ok;
+}
+
+function gitCommonDirectory(path: string): string {
+  const value = requireString(
+    gitOutput(path, ["rev-parse", "--git-common-dir"], "Git common directory lookup").trim(),
+    "Git common directory",
+  );
+  return realpathSync(resolve(path, value));
+}
+
 function isRuntimeWorkspacePath(path: string): boolean {
   return path === ".ghost-agent-workflow" || path.startsWith(".ghost-agent-workflow/");
 }
 
-function gitStatusMap(workspaceRoot: string): Map<string, string> {
+function gitAllStatusMap(workspaceRoot: string): Map<string, string> {
   const output = gitOutput(
     workspaceRoot,
     ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
@@ -1036,9 +1106,31 @@ function gitStatusMap(workspaceRoot: string): Map<string, string> {
     if (!record) continue;
     if (record.length < 4 || record[2] !== " ") fail("git status returned malformed porcelain");
     const path = normalizePathPattern(record.slice(3));
-    if (!isRuntimeWorkspacePath(path)) result.set(path, record.slice(0, 2));
+    result.set(path, record.slice(0, 2));
   }
   return result;
+}
+
+function gitStatusMap(workspaceRoot: string): Map<string, string> {
+  return new Map(
+    [...gitAllStatusMap(workspaceRoot)].filter(([path]) => !isRuntimeWorkspacePath(path)),
+  );
+}
+
+function commitScriptManagedPaths(worktree: string, paths: string[], message: string): string {
+  const normalized = uniqueStrings(paths.map(normalizePathPattern));
+  if (normalized.length === 0) return gitHead(worktree);
+  gitOutput(worktree, ["var", "GIT_AUTHOR_IDENT"], "Git author identity check");
+  gitOutput(worktree, ["add", "--all", "--", ...normalized], "script-managed file staging");
+  if (gitAttempt(worktree, ["diff", "--cached", "--quiet", "--", ...normalized]).ok) {
+    return gitHead(worktree);
+  }
+  gitOutput(
+    worktree,
+    ["commit", "--no-verify", "-m", message, "--", ...normalized],
+    "script-managed commit",
+  );
+  return gitHead(worktree);
 }
 
 function gitIndexMap(
@@ -1713,11 +1805,18 @@ function approvedOwnerRegistry(goal: GoalContract): {
   if (!legacy && source.matcher !== "owner-path-expression-v2") {
     fail("owner registry matcher must equal owner-path-expression-v2");
   }
-  canonicalPath(
-    goal.workspace.root,
+  const registryWorkspace = resolve(
     requireString(source.workspace_root, "owner registry.workspace_root"),
-    "owner registry.workspace_root",
   );
+  if (
+    registryWorkspace !== goal.workspace.root &&
+    (
+      !existsSync(registryWorkspace) ||
+      gitCommonDirectory(registryWorkspace) !== gitCommonDirectory(goal.workspace.root)
+    )
+  ) {
+    fail(`owner registry.workspace_root must equal ${goal.workspace.root} or a linked Git worktree`);
+  }
   if (!Array.isArray(source.owners)) fail("owner registry.owners must be an array");
   const owners = source.owners.map((value, index) => {
     const owner = requireRecord(value, `owner registry.owners[${index}]`);
@@ -5769,7 +5868,10 @@ function bindTaskState(
       taskState.attempt,
       reservationToken,
     );
-    writeImmutableJson(baselineRef, captureWorktreeSnapshot(goal.workspace.root));
+    writeImmutableJson(
+      baselineRef,
+      captureWorktreeSnapshot(taskExecutionWorkspace(dirname(planPath), goal, task)),
+    );
     taskState.task_baseline_ref = baselineRef;
     taskState.task_baseline_digest = digestFile(baselineRef);
     ownerState.bound_executor_id = actualExecutorId;
@@ -7615,6 +7717,36 @@ function updateCapsule(
   return capsule;
 }
 
+function ownerIntegrationPath(goalDirectory: string, runId: string): string {
+  return join(goalDirectory, `owner-integration-${runId}.json`);
+}
+
+function readOwnerIntegration(
+  goalDirectory: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+  dagWorkspace: string,
+): { changed_files: string[]; dag_head: string } | null {
+  const path = ownerIntegrationPath(goalDirectory, taskRunId(task.id, taskState));
+  if (!existsSync(path) || task.owner_id === null || task.role !== "work") return null;
+  const value = requireRecord(readJson(path), "Owner integration");
+  requireExactKeys(
+    value,
+    ["contract", "run", "task", "owner", "changed_files", "dag_head"],
+    "Owner integration",
+  );
+  if (value.contract !== "OWNER_INTEGRATION_V1") fail("Owner integration contract is invalid");
+  if (value.run !== taskRunId(task.id, taskState)) fail("Owner integration run mismatch");
+  if (value.task !== task.id || value.owner !== task.owner_id) fail("Owner integration task mismatch");
+  const dagHead = requireString(value.dag_head, "Owner integration.dag_head");
+  if (gitHead(dagWorkspace) !== dagHead) fail("DAG HEAD changed after Owner integration");
+  return {
+    changed_files: requireStringArray(value.changed_files, "Owner integration.changed_files")
+      .map(normalizePathPattern),
+    dag_head: dagHead,
+  };
+}
+
 function finishCommand(
   planArgument: string,
   stateArgument: string,
@@ -7738,18 +7870,37 @@ function finishCommand(
     if (digestFile(taskState.task_baseline_ref) !== taskState.task_baseline_digest) {
       fail(`task ${taskId} baseline digest mismatch`);
     }
+    const executionWorkspace = taskExecutionWorkspace(dirname(planPath), goal, task);
     const taskBaseline = parseWorktreeBaseline(
       readJson(taskState.task_baseline_ref),
+      executionWorkspace,
+    );
+    const authorizedPatterns = effectiveWritablePaths(task, taskState);
+    const integration = readOwnerIntegration(
+      dirname(planPath),
+      task,
+      taskState,
       goal.workspace.root,
     );
-    const currentSnapshot = captureWorktreeSnapshot(goal.workspace.root);
-    if (currentSnapshot.tree_oid !== taskBaseline.tree_oid) {
-      fail(`task ${taskId} observed a Git tree content change`);
+    let automaticallyAttributedChanges: string[];
+    if (integration !== null) {
+      const outsideScope = integration.changed_files.filter(
+        (path) => !authorizedPatterns.some((pattern) => pathMatchesPattern(path, pattern)),
+      );
+      if (outsideScope.length > 0) {
+        fail(`Owner integration changed files outside task scope: ${outsideScope.join(", ")}`);
+      }
+      automaticallyAttributedChanges = [...integration.changed_files].sort(compareStableStrings);
+      cleanupAfterFinish.push(ownerIntegrationPath(dirname(planPath), taskRunId(task.id, taskState)));
+    } else {
+      const currentSnapshot = captureWorktreeSnapshot(executionWorkspace);
+      if (currentSnapshot.tree_oid !== taskBaseline.tree_oid) {
+        fail(`task ${taskId} observed a Git tree content change`);
+      }
+      automaticallyAttributedChanges = changedWorktreePaths(taskBaseline, currentSnapshot)
+        .filter((path) => authorizedPatterns.some((pattern) => pathMatchesPattern(path, pattern)))
+        .sort(compareStableStrings);
     }
-    const authorizedPatterns = effectiveWritablePaths(task, taskState);
-    const automaticallyAttributedChanges = changedWorktreePaths(taskBaseline, currentSnapshot)
-      .filter((path) => authorizedPatterns.some((pattern) => pathMatchesPattern(path, pattern)))
-      .sort(compareStableStrings);
     result.changed_files = automaticallyAttributedChanges;
     bindDiffScopeArtifact(planPath, plan, goal, state, task, taskState, result, false);
     bindSourceCoverageArtifact(
@@ -10225,6 +10376,8 @@ type DashboardServeOptions = {
   host: string;
   port: number;
   allowRemote: boolean;
+  lifecyclePath: string | null;
+  runtimeId: string | null;
 };
 
 function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
@@ -10234,6 +10387,8 @@ function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
   let host = "127.0.0.1";
   let port = 7357;
   let allowRemote = false;
+  let lifecyclePath: string | null = null;
+  let runtimeId: string | null = null;
   let index = 1;
   if (args[index] !== undefined && !args[index].startsWith("--")) {
     statePath = canonicalPath(statePathFor(planPath), args[index], "state path");
@@ -10246,7 +10401,10 @@ function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
       index += 1;
       continue;
     }
-    if (option !== "--host" && option !== "--port") {
+    if (
+      option !== "--host" && option !== "--port" && option !== "--lifecycle"
+      && option !== "--runtime-id"
+    ) {
       fail(`unknown dashboard option: ${option}`);
     }
     const value = args[index + 1];
@@ -10254,6 +10412,15 @@ function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
     if (option === "--host") {
       if (!/^[A-Za-z0-9.:[\]-]+$/u.test(value)) fail(`dashboard host is invalid: ${value}`);
       host = value;
+    } else if (option === "--lifecycle") {
+      lifecyclePath = canonicalPath(
+        join(dirname(planPath), "dashboard.json"),
+        value,
+        "dashboard lifecycle path",
+      );
+    } else if (option === "--runtime-id") {
+      if (!/^[0-9a-f]{20}$/u.test(value)) fail("dashboard runtime id is invalid");
+      runtimeId = value;
     } else {
       const parsedPort = Number(value);
       if (!Number.isInteger(parsedPort) || parsedPort < 0 || parsedPort > 65_535) {
@@ -10267,7 +10434,7 @@ function parseDashboardServeOptions(args: string[]): DashboardServeOptions {
   if (!loopback && !allowRemote) {
     fail("non-loopback dashboard host requires --allow-remote because Goal metadata becomes network-visible");
   }
-  return { planPath, statePath, host, port, allowRemote };
+  return { planPath, statePath, host, port, allowRemote, lifecyclePath, runtimeId };
 }
 
 function setDashboardHeaders(response: ServerResponse): void {
@@ -10411,6 +10578,27 @@ function dashboardCommand(args: string[]): void {
     process.exitCode = 1;
   });
   let pendingRefresh: ReturnType<typeof setTimeout> | null = null;
+  let dashboardWatcher: ReturnType<typeof watch> | null = null;
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+    dashboardWatcher?.close();
+    for (const response of liveResponses) response.end();
+    liveResponses.clear();
+    server.close(() => {
+      if (options.runtimeId !== null) {
+        const runtimeDirectory = join(tmpdir(), "ghost-agent-workflow-dashboard");
+        rmSync(join(runtimeDirectory, `${options.runtimeId}.json`), { force: true });
+        rmSync(join(runtimeDirectory, `${options.runtimeId}.log`), { force: true });
+      }
+    });
+  };
+  const inputsAvailable = () =>
+    existsSync(options.planPath)
+    && existsSync(options.statePath)
+    && (options.lifecyclePath === null || existsSync(options.lifecyclePath));
   const watchedFiles = new Set([
     "goal.json",
     "goal-state.json",
@@ -10418,8 +10606,14 @@ function dashboardCommand(args: string[]): void {
     "coverage.json",
     "state.json",
   ]);
+  if (options.lifecyclePath !== null) watchedFiles.add(basename(options.lifecyclePath));
   const pushChangedSnapshot = () => {
     pendingRefresh = null;
+    if (!inputsAvailable()) {
+      process.stderr.write("info: dashboard inputs were removed; stopping\n");
+      shutdown();
+      return;
+    }
     try {
       refreshProgressDocument(options.planPath, options.statePath);
       const snapshot = dashboardSnapshot(options.planPath, options.statePath);
@@ -10434,7 +10628,7 @@ function dashboardCommand(args: string[]): void {
       }
     }
   };
-  const dashboardWatcher = watch(dirname(options.planPath), (eventType, filename) => {
+  dashboardWatcher = watch(dirname(options.planPath), (eventType, filename) => {
     const changedName = filename === null ? "" : basename(filename.toString());
     if (
       changedName &&
@@ -10445,6 +10639,7 @@ function dashboardCommand(args: string[]): void {
   });
   dashboardWatcher.on("error", (error) => {
     process.stderr.write(`warning: dashboard file watcher failed: ${error.message}\n`);
+    if (!inputsAvailable()) shutdown();
   });
   server.listen(options.port, options.host, () => {
     const address = server.address();
@@ -10467,13 +10662,6 @@ function dashboardCommand(args: string[]): void {
       network_visible: options.allowRemote,
     })}\n`);
   });
-  const shutdown = () => {
-    if (pendingRefresh !== null) clearTimeout(pendingRefresh);
-    dashboardWatcher.close();
-    for (const response of liveResponses) response.end();
-    liveResponses.clear();
-    server.close();
-  };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }
@@ -11567,6 +11755,20 @@ const SUPERVISOR_NOTIFY_STATES = new Set([
 
 type SupervisorActionKind = "create" | "wait" | "stalled" | "notify";
 
+function ownerFinishErrorPath(goalDirectory: string, ownerId: string): string {
+  return join(goalDirectory, `owner-finish-error-${ownerId}.log`);
+}
+
+function isOwnerIntegrationRepair(
+  goalDirectory: string,
+  task: TaskDefinition,
+  taskState: TaskState,
+): boolean {
+  return task.role === "work" && task.owner_id !== null && taskState.status === "running" &&
+    taskState.result_path !== null && !existsSync(taskState.result_path) &&
+    existsSync(ownerFinishErrorPath(goalDirectory, task.owner_id));
+}
+
 function supervisorActionId(kind: SupervisorActionKind, taskId: string, attempt: number): string {
   const encoded = Buffer.from(JSON.stringify({ kind, task: taskId, attempt }), "utf8").toString("base64url");
   return `sa.${encoded}.${createHash("sha256").update(encoded).digest("hex").slice(0, 12)}`;
@@ -11708,7 +11910,7 @@ function supervisorResultNotice(
 }
 
 function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: string): void {
-  const { planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
+  const { goalDirectory, planPath, statePath, threadsPath } = supervisorPaths(goalDirectoryArgument);
   const limit = limitArgument === undefined
     ? MAX_PARALLEL_THREADS
     : requireParallelCount(Number(limitArgument), "supervisor limit");
@@ -11726,7 +11928,12 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
     for (const task of plan.tasks) {
       if (create.length >= limit) break;
       const taskState = state.tasks[task.id];
-      if (taskState.status !== "reserved" || task.owner_id === null) continue;
+      const integrationRepair = isOwnerIntegrationRepair(
+        goalDirectory,
+        task,
+        taskState,
+      );
+      if ((taskState.status !== "reserved" && !integrationRepair) || task.owner_id === null) continue;
       if (!sourceCurrent) continue;
       const subject = subjectForTask(plan, task);
       const subjectState = subjectStateForTask(state, task);
@@ -11737,7 +11944,9 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
       const reusableThread = subjectState.bound_executor_id === null
         ? null
         : registeredThreadForExecutor(threads, subjectState.bound_executor_id);
-      const reusableStatuses = new Set(["idle", "running"]);
+      const reusableStatuses = integrationRepair
+        ? new Set(["idle", "running", "completed", "failed", "cancelled", "archived", "attention_notified"])
+        : new Set(["idle", "running"]);
       const registered = canonicalThread !== null && reusableStatuses.has(String(canonicalThread.status))
         ? canonicalThread
         : reusableThread !== null && reusableStatuses.has(String(reusableThread.thread.status))
@@ -11747,14 +11956,30 @@ function supervisorNextCommand(goalDirectoryArgument: string, limitArgument?: st
         fail(`bound executor ${subjectState.bound_executor_id} is missing from thread registry`);
       }
       const profile = runtimeProfileForTask(goal, task);
+      const title = threadTitle(task, subject);
+      const ownerSync = !integrationRepair && task.role === "work" && task.owner_id !== null &&
+          existsSync(dagWorktreesPath(goalDirectory))
+        ? runSelfJson(["workflow", "owner-sync", goalDirectory, task.owner_id])
+        : null;
       create.push({
         action_id: supervisorActionId("create", task.id, taskState.attempt),
         task: task.id,
         attempt: taskState.attempt,
         run: taskRunId(task.id, taskState),
-        title: threadTitle(task, subject),
-        model: profile.model,
-        effort: profile.reasoning_effort,
+        title,
+        model: ownerSync?.model ?? profile.model,
+        thinking: ownerSync?.thinking ?? profile.reasoning_effort,
+        prompt: integrationRepair
+          ? `继续使用现有 Owner worktree 修复集成失败；不得重新创建线程或 worktree。`
+          : ownerSync?.prompt ?? [
+          `请先把当前线程标题逐字设置为：${title}`,
+          "不要执行任务或读取工作流文件；改名后结束当前 turn，等待 Supervisor 发送正式 dispatch。",
+        ].join("\n"),
+        ...(ownerSync === null ? {} : {
+          owner: task.owner_id,
+          sync_status: ownerSync.status,
+          target: ownerSync.target,
+        }),
         thread: registered?.thread_id ?? null,
         host: registered?.host_id ?? null,
       });
@@ -11885,6 +12110,11 @@ function supervisorRecordCommand(
       const task = plan.tasks.find((candidate) => candidate.id === taskId);
       if (task === undefined) fail(`unknown task: ${taskId}`);
       if (task.owner_id === null) fail(`task ${taskId} is script-only`);
+      const integrationRepair = isOwnerIntegrationRepair(goalDirectory, task, state.tasks[taskId]);
+      if (!integrationRepair && task.role === "work" && existsSync(dagWorktreesPath(goalDirectory))) {
+        const synced = runSelfJson(["workflow", "owner-sync", goalDirectory, task.owner_id]);
+        if (synced.status !== "ready") fail(`Owner ${task.owner_id} worktree bootstrap is incomplete`);
+      }
       const taskState = state.tasks[taskId];
       if (taskState.attempt !== attempt) fail("task attempt mismatch");
       const subject = subjectForTask(plan, task);
@@ -11954,6 +12184,9 @@ function supervisorRecordCommand(
         goalDirectory,
         runId,
       ].map((value) => JSON.stringify(value)).join(" ");
+      const repairReason = integrationRepair && task.owner_id !== null
+        ? compactUserSummary(readFileSync(ownerFinishErrorPath(goalDirectory, task.owner_id), "utf8"))
+        : null;
       return {
         status: "created",
         task: taskId,
@@ -11961,7 +12194,9 @@ function supervisorRecordCommand(
         thread: actualExecutorId,
         run: runId,
         main: mainRoute,
-        dispatch: `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取当前 Binding，再执行。`,
+        dispatch: repairReason === null
+          ? `使用 $sub-thread-goal-worker；先运行 ${dispatchCommand} 获取当前 Binding，再执行。`
+          : `使用 $sub-thread-goal-worker；上次集成失败：${repairReason}。先运行 ${dispatchCommand} 获取当前 Binding，在同一 Owner worktree 修复后重新验证并提交。`,
         binding_ref: bindingRef,
         binding_digest: digestFile(bindingRef),
       };
@@ -12521,13 +12756,87 @@ function workflowDashboardPath(goalDirectory: string): string {
   return join(goalDirectory, "dashboard.json");
 }
 
+function dagWorktreesPath(goalDirectory: string): string {
+  return join(goalDirectory, "worktrees.json");
+}
+
+function parseDagWorktrees(value: unknown, goalDirectory: string): DagWorktreesV1 {
+  const source = requireRecord(value, "DAG worktrees");
+  requireExactKeys(source, ["contract", "original", "dag", "owners"], "DAG worktrees");
+  if (source.contract !== "DAG_WORKTREES_V1") fail("DAG worktrees contract is invalid");
+  const original = requireRecord(source.original, "DAG worktrees.original");
+  const dag = requireRecord(source.dag, "DAG worktrees.dag");
+  requireExactKeys(original, ["path", "branch", "head"], "DAG worktrees.original");
+  requireExactKeys(dag, ["path", "branch"], "DAG worktrees.dag");
+  const ownersInput = requireRecord(source.owners, "DAG worktrees.owners");
+  const owners: Record<string, DagOwnerWorktreeV1> = {};
+  for (const [ownerId, rawOwner] of Object.entries(ownersInput)) {
+    requireIdentifier(ownerId, "DAG worktree owner id");
+    const owner = requireRecord(rawOwner, `DAG worktrees.owners.${ownerId}`);
+    requireExactKeys(owner, ["branch", "path", "synced_dag_head"], `DAG worktrees.owners.${ownerId}`);
+    owners[ownerId] = {
+      branch: requireString(owner.branch, `DAG worktrees.owners.${ownerId}.branch`),
+      path: owner.path === null
+        ? null
+        : canonicalFilesystemPath(requireString(owner.path, `DAG worktrees.owners.${ownerId}.path`)),
+      synced_dag_head: requireString(
+        owner.synced_dag_head,
+        `DAG worktrees.owners.${ownerId}.synced_dag_head`,
+      ),
+    };
+  }
+  const result: DagWorktreesV1 = {
+    contract: "DAG_WORKTREES_V1",
+    original: {
+      path: realpathSync(resolve(requireString(original.path, "DAG worktrees.original.path"))),
+      branch: requireString(original.branch, "DAG worktrees.original.branch"),
+      head: requireString(original.head, "DAG worktrees.original.head"),
+    },
+    dag: {
+      path: realpathSync(resolve(requireString(dag.path, "DAG worktrees.dag.path"))),
+      branch: requireString(dag.branch, "DAG worktrees.dag.branch"),
+    },
+    owners,
+  };
+  const goalRoot = realpathSync(resolve(goalDirectory, "..", "..", "..", ".."));
+  if (result.dag.path !== goalRoot) fail("DAG worktree path does not own the Goal directory");
+  return result;
+}
+
+function readDagWorktrees(goalDirectory: string): DagWorktreesV1 {
+  const path = dagWorktreesPath(goalDirectory);
+  if (!existsSync(path)) fail(`DAG worktree state is missing: ${path}`);
+  return parseDagWorktrees(readJson(path), goalDirectory);
+}
+
+function taskExecutionWorkspace(
+  goalDirectory: string,
+  goal: GoalContract,
+  task: TaskDefinition,
+): string {
+  if (task.role !== "work" || task.owner_id === null) return goal.workspace.root;
+  const path = dagWorktreesPath(goalDirectory);
+  if (!existsSync(path)) return goal.workspace.root;
+  const owner = readDagWorktrees(goalDirectory).owners[task.owner_id];
+  if (owner?.path === null || owner?.path === undefined) {
+    fail(`Owner ${task.owner_id} worktree is not ready; run workflow owner-sync first`);
+  }
+  return owner.path;
+}
+
 function quickRuntimePath(goalDirectory: string, name: string): string {
   return join(goalDirectory, "quick", name);
 }
 
 function parseWorkflowRoutes(value: unknown): WorkflowRoutesV1 {
   const source = requireRecord(value, "workflow routes");
-  requireExactKeys(source, ["contract", "main", "planner", "planner_reviewer"], "workflow routes");
+  const allowed = new Set(["contract", "main", "planner", "planner_reviewer", "supervisor"]);
+  for (const key of Object.keys(source)) {
+    if (!allowed.has(key)) fail(`workflow routes contains unknown field: ${key}`);
+  }
+  for (const key of ["contract", "main", "planner", "planner_reviewer"]) {
+    if (!(key in source)) fail(`workflow routes is missing field: ${key}`);
+  }
   if (source.contract !== "WORKFLOW_ROUTES_V1") fail("workflow routes contract is invalid");
   const endpoint = (input: unknown, label: string): { thread: string; host: string } | null => {
     if (input === null) return null;
@@ -12543,6 +12852,9 @@ function parseWorkflowRoutes(value: unknown): WorkflowRoutesV1 {
     main: endpoint(source.main, "workflow routes.main"),
     planner: endpoint(source.planner, "workflow routes.planner"),
     planner_reviewer: endpoint(source.planner_reviewer, "workflow routes.planner_reviewer"),
+    supervisor: source.supervisor === undefined
+      ? null
+      : endpoint(source.supervisor, "workflow routes.supervisor"),
   };
 }
 
@@ -12591,6 +12903,19 @@ function activeWorkflowDirectories(workspaceRoot: string): string[] {
       fail(`cannot inspect workflow ${directory}: ${error instanceof Error ? error.message : String(error)}`);
     }
     return [];
+  }).sort(compareStableStrings);
+}
+
+function completedWorkflowDirectories(workspaceRoot: string): string[] {
+  const root = join(resolve(workspaceRoot), ".ghost-agent-workflow", "runtime", "goals");
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return [];
+    const directory = join(root, entry.name);
+    const statePath = workflowStatePath(directory);
+    if (!existsSync(statePath)) return [];
+    const state = parseWorkflowState(readJson(statePath));
+    return state.status === "completed" ? [directory] : [];
   }).sort(compareStableStrings);
 }
 
@@ -13169,8 +13494,8 @@ function workflowThreadCommand(
 ): void {
   const loaded = loadWorkflow(goalDirectoryArgument);
   const role = requireString(roleArgument, "workflow thread role") as WorkflowThreadRole;
-  if (!new Set<WorkflowThreadRole>(["main", "planner", "planner_reviewer"]).has(role)) {
-    fail("workflow thread role must be main, planner, or planner_reviewer");
+  if (!new Set<WorkflowThreadRole>(["main", "planner", "planner_reviewer", "supervisor"]).has(role)) {
+    fail("workflow thread role must be main, planner, planner_reviewer, or supervisor");
   }
   const path = workflowRoutesPath(loaded.directory);
   const endpoint = {
@@ -13242,7 +13567,8 @@ function workflowDashboardAckCommand(goalDirectoryArgument: string, statusArgume
     })}\n`);
     return;
   }
-  if (current.status !== "pending") {
+  const retrySucceeded = current.status === "failed" && status === "started";
+  if (current.status !== "pending" && !retrySucceeded) {
     fail("workflow dashboard acknowledgement conflicts with the recorded status");
   }
   writeJson(path, {
@@ -13742,7 +14068,7 @@ function workerVerifyCommand(
       if (!run.task.verification_ids.includes(verificationId)) {
         fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
       }
-      workspace = run.goal.workspace.root;
+      workspace = taskExecutionWorkspace(run.goalDirectory, run.goal, run.task);
       taskId = run.task.id;
     }
   } else {
@@ -13753,7 +14079,7 @@ function workerVerifyCommand(
     if (!run.task.verification_ids.includes(verificationId)) {
       fail(`verification is not bound to task ${run.task.id}: ${verificationId}`);
     }
-    workspace = run.goal.workspace.root;
+    workspace = taskExecutionWorkspace(run.goalDirectory, run.goal, run.task);
     taskId = run.task.id;
   }
   const execution = spawnSync(command[0], command.slice(1), {
@@ -13958,6 +14284,34 @@ function plannerReviewDecisionCommand(goalDirectoryArgument: string, args: strin
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
+function plannerSourceBlocks(goalDirectory: string, goal: GoalContract): Array<Record<string, unknown>> {
+  const statePath = goalStatePathFor(join(goalDirectory, "goal.json"));
+  const captured = existsSync(statePath)
+    ? (() => {
+      const goalState = parseGoalState(readJson(statePath), goal);
+      const sourceBlocks = parseSourceBlocks(readJson(goalState.source_blocks.ref), goal);
+      if (digestFile(goalState.source_blocks.ref) !== goalState.source_blocks.digest) {
+        fail("goal state source blocks digest mismatch");
+      }
+      return sourceBlocks;
+    })()
+    : buildSourceBlocks(goal);
+  const sourceBytes = readFileSync(goal.source.path);
+  if (createHash("sha256").update(sourceBytes).digest("hex") !== goal.source.digest) {
+    fail("goal source digest mismatch");
+  }
+  const sourceText = sourceBytes.toString("utf8");
+  const lines = sourceText.split(/\r?\n/u);
+  return captured.blocks.map((block) => {
+    const text = lines.slice(block.line_start - 1, block.line_end).join("\n");
+    return {
+      id: block.id,
+      line: block.line_start,
+      text: text.length <= 1_000 ? text : `${text.slice(0, 999)}…`,
+    };
+  });
+}
+
 function plannerOpenCommand(goalDirectoryArgument: string, cursorArgument?: string): void {
   const goalDirectory = resolve(goalDirectoryArgument);
   const goalPath = join(goalDirectory, "goal.json");
@@ -13974,6 +14328,7 @@ function plannerOpenCommand(goalDirectoryArgument: string, cursorArgument?: stri
   let reviewUpgrades: Array<Record<string, unknown>> = [];
   let subgraphRequests: Array<Record<string, unknown>> = [];
   let problems: Array<Record<string, unknown>> = [];
+  let sourceBlocks: Array<Record<string, unknown>> = [];
   if (existsSync(planPath)) {
     const rawState = existsSync(statePath)
       ? requireRecord(readJson(statePath), "planner state")
@@ -14049,9 +14404,13 @@ function plannerOpenCommand(goalDirectoryArgument: string, cursorArgument?: stri
       after: task.depends_on,
       parent: task.parent_task_id,
     }));
+  } else {
+    sourceBlocks = plannerSourceBlocks(goalDirectory, goal);
   }
   const pageSize = 50;
-  const page = tasks.slice(cursor, cursor + pageSize);
+  const taskPage = tasks.slice(cursor, cursor + pageSize);
+  const sourceBlockPage = sourceBlocks.slice(cursor, cursor + pageSize);
+  const totalItems = Math.max(tasks.length, sourceBlocks.length);
   process.stdout.write(`${JSON.stringify({
     contract: "PLANNER_OPEN_V1",
     action,
@@ -14066,11 +14425,12 @@ function plannerOpenCommand(goalDirectoryArgument: string, cursorArgument?: stri
       responsibility: owner.responsibility,
       scope: owner.scope_patterns,
     })),
-    tasks: page,
+    tasks: taskPage,
+    source_blocks: sourceBlockPage,
     review_upgrades: reviewUpgrades,
     subgraph_requests: subgraphRequests,
     problems,
-    next_cursor: cursor + page.length < tasks.length ? cursor + page.length : null,
+    next_cursor: cursor + pageSize < totalItems ? cursor + pageSize : null,
   })}\n`);
 }
 
@@ -14148,12 +14508,11 @@ function workflowCreateCommand(
   })}\n`);
 }
 
-function workflowStartCommand(workspaceArgument: string, modeArgument: string): void {
-  const workspace = resolve(workspaceArgument);
-  if (!existsSync(workspace)) fail(`workspace root does not exist: ${workspace}`);
-  const mode = requireString(modeArgument, "workflow mode") as WorkflowMode;
-  if (mode !== "quick" && mode !== "dag") fail("workflow mode must equal quick or dag");
-  const objective = requireChineseText(readPlainSemanticInput("workflow objective"), "workflow objective");
+function startWorkflow(
+  workspace: string,
+  mode: WorkflowMode,
+  objective: string,
+): Record<string, unknown> {
   loadThreadWorkflowConfig(workspace);
   const active = activeWorkflowDirectories(workspace);
   if (active.length > 0) {
@@ -14190,6 +14549,7 @@ function workflowStartCommand(workspaceArgument: string, modeArgument: string): 
     main: null,
     planner: null,
     planner_reviewer: null,
+    supervisor: null,
   };
   mkdirSync(directory, { recursive: true });
   try {
@@ -14220,14 +14580,538 @@ function workflowStartCommand(workspaceArgument: string, modeArgument: string): 
     rmSync(directory, { recursive: true, force: true });
     throw error;
   }
-  process.stdout.write(`${JSON.stringify({
+  return {
     contract: "WORKFLOW_START_V1",
     status: "created",
     mode,
     workflow_dir: directory,
     thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
     action: mode === "quick" ? "owner_required" : "planner_required",
+  };
+}
+
+function workflowStartCommand(workspaceArgument: string, modeArgument: string): void {
+  const workspace = resolve(workspaceArgument);
+  if (!existsSync(workspace)) fail(`workspace root does not exist: ${workspace}`);
+  const mode = requireString(modeArgument, "workflow mode") as WorkflowMode;
+  if (mode !== "quick" && mode !== "dag") fail("workflow mode must equal quick or dag");
+  const objective = requireChineseText(readPlainSemanticInput("workflow objective"), "workflow objective");
+  process.stdout.write(`${JSON.stringify(startWorkflow(workspace, mode, objective))}\n`);
+}
+
+function branchConfig(workspace: string, branch: string, key: string): string | null {
+  const result = gitAttempt(workspace, ["config", "--get", `branch.${branch}.ghost-agent-${key}`]);
+  return result.ok ? result.stdout.trim() : null;
+}
+
+function pendingDagBranches(workspace: string): string[] {
+  return gitOutput(
+    workspace,
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads/codex/"],
+    "DAG branch listing",
+  ).split(/\r?\n/u).filter((branch) => branch.startsWith("codex/dag-") && branchConfig(
+    workspace,
+    branch,
+    "pending",
+  ) === "true");
+}
+
+function workflowStartDagCommand(workspaceArgument: string): void {
+  const workspace = gitRoot(resolve(workspaceArgument));
+  const active = activeWorkflowDirectories(workspace);
+  if (active.length > 1) fail(`DAG worktree has multiple active Goals: ${active.join(", ")}`);
+  if (active.length === 1) {
+    if (!existsSync(dagWorktreesPath(active[0]))) {
+      fail("active DAG is not isolated in a DAG worktree");
+    }
+    workflowStepCommand(active[0]);
+    return;
+  }
+
+  const currentBranch = gitBranch(workspace);
+  const currentDagOriginal = branchConfig(workspace, currentBranch, "original-path");
+  if (
+    currentDagOriginal !== null && resolve(currentDagOriginal) !== workspace &&
+    branchConfig(workspace, currentBranch, "pending") === "false"
+  ) {
+    const completed = completedWorkflowDirectories(workspace);
+    if (completed.length !== 1) {
+      fail("completed DAG worktree cannot identify exactly one finished workflow");
+    }
+    workflowStepCommand(completed[0]);
+    return;
+  }
+
+  const pending = pendingDagBranches(workspace);
+  const claimable = pending.filter((branch) => {
+    const originalPath = branchConfig(workspace, branch, "original-path");
+    if (originalPath === null || resolve(originalPath) === workspace) return false;
+    const dagHead = gitOutput(workspace, ["rev-parse", branch], "pending DAG branch lookup").trim();
+    return gitAttempt(workspace, ["merge-base", "--is-ancestor", dagHead, "HEAD"]).ok;
+  });
+  const objective = requireChineseText(readPlainSemanticInput("DAG objective"), "DAG objective");
+
+  if (claimable.length > 0) {
+    if (claimable.length !== 1) fail("multiple pending DAG branches can claim this worktree");
+    const dagBranch = claimable[0];
+    assertCleanGitWorktree(workspace, "new DAG worktree");
+    if (gitBranch(workspace) !== dagBranch) {
+      gitOutput(workspace, ["checkout", dagBranch], "DAG branch checkout");
+    }
+    const originalPath = resolve(requireString(
+      branchConfig(workspace, dagBranch, "original-path"),
+      "DAG original path",
+    ));
+    const originalBranch = requireString(
+      branchConfig(workspace, dagBranch, "original-branch"),
+      "DAG original branch",
+    );
+    const originalHead = requireString(
+      branchConfig(workspace, dagBranch, "original-head"),
+      "DAG original head",
+    );
+    const started = startWorkflow(workspace, "dag", objective);
+    const goalDirectory = requireString(started.workflow_dir, "DAG workflow directory");
+    commitScriptManagedPaths(
+      workspace,
+      [".ghost-agent-workflow/.gitignore", ".ghost-agent-workflow/config.json"],
+      "chore(workflow): initialize DAG workspace",
+    );
+    writeJson(dagWorktreesPath(goalDirectory), {
+      contract: "DAG_WORKTREES_V1",
+      original: { path: originalPath, branch: originalBranch, head: originalHead },
+      dag: { path: workspace, branch: dagBranch },
+      owners: {},
+    });
+    gitOutput(workspace, ["config", `branch.${dagBranch}.ghost-agent-pending`, "false"], "DAG handoff completion");
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_START_DAG_V1",
+      status: "ready",
+      goal_dir: goalDirectory,
+      dag_branch: dagBranch,
+      dag_worktree: workspace,
+      thread_title: started.thread_title,
+      action: started.action,
+    })}\n`);
+    return;
+  }
+
+  if (pending.length > 0) fail("a DAG handoff is already pending for this repository");
+  assertCleanGitWorktree(workspace, "original workspace");
+  const originalBranch = gitBranch(workspace);
+  const originalHead = gitHead(workspace);
+  const dagBranch = `codex/dag-${Date.now().toString(36)}-${digestJson(objective).slice(0, 8)}`;
+  gitOutput(workspace, ["branch", dagBranch, originalHead], "DAG branch creation");
+  for (const [key, value] of [
+    ["original-path", workspace],
+    ["original-branch", originalBranch],
+    ["original-head", originalHead],
+    ["pending", "true"],
+  ]) {
+    gitOutput(workspace, ["config", `branch.${dagBranch}.ghost-agent-${key}`, value], "DAG handoff metadata");
+  }
+  const profile = existsSync(threadWorkflowConfigPath(workspace))
+    ? parseThreadWorkflowConfig(readJson(threadWorkflowConfigPath(workspace))).profiles.planner
+    : DEFAULT_THREAD_WORKFLOW_CONFIG.profiles.planner;
+  process.stdout.write(`${JSON.stringify({
+    contract: "WORKFLOW_START_DAG_V1",
+    status: "handoff_required",
+    dag_branch: dagBranch,
+    model: profile.model,
+    thinking: profile.reasoning_effort,
+    thread_title: `[GA][任务][主控] ${compactUserSummary(objective)}`,
+    target: { environment: "worktree", starting_branch: dagBranch },
+    dispatch: [
+      "$sub-thread-coordination",
+      "",
+      "你是新的 DAG Main。当前工作目录必须是脚本指定分支创建的独立 worktree。",
+      "把下面目标通过 stdin 原样传给 `goal-dag.mjs workflow start-dag <当前工作区>`，然后只在新 Main 继续：",
+      objective,
+    ].join("\n"),
   })}\n`);
+}
+
+function ownerBranchName(goal: GoalContract, ownerId: string): string {
+  return `codex/ga-owner-${goal.goal_id.slice(-12)}-${ownerId}`;
+}
+
+function workflowOwnerSyncCommand(goalDirectoryArgument: string, ownerIdArgument: string): void {
+  const goalDirectory = resolve(goalDirectoryArgument);
+  const planPath = join(goalDirectory, "plan.json");
+  const statePath = join(goalDirectory, "state.json");
+  const { plan, goal, state } = loadPlanAndState(planPath, statePath, { allowSourceDrift: true });
+  const ownerId = requireIdentifier(ownerIdArgument, "owner id");
+  const owner = plan.owners.find((candidate) => candidate.id === ownerId) ??
+    fail(`unknown DAG Owner: ${ownerId}`);
+  const activeTasks = plan.tasks.filter((task) =>
+    task.owner_id === ownerId && task.role === "work" &&
+    ["reserved", "running"].includes(state.tasks[task.id].status)
+  );
+  if (activeTasks.length !== 1) fail(`Owner ${ownerId} must have exactly one active work task`);
+  const task = activeTasks[0];
+  const taskState = state.tasks[task.id];
+  const worktreesPath = dagWorktreesPath(goalDirectory);
+  const callerRoot = gitRoot(process.cwd());
+  const receipt = withStateLock(worktreesPath, () => {
+    const worktrees = readDagWorktrees(goalDirectory);
+    if (gitRoot(worktrees.dag.path) !== worktrees.dag.path) fail("DAG worktree root is invalid");
+    if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its integration branch");
+    assertCleanGitWorktree(worktrees.dag.path, "DAG worktree");
+    const dagHead = gitHead(worktrees.dag.path);
+    const branch = worktrees.owners[ownerId]?.branch ?? ownerBranchName(goal, ownerId);
+    if (!gitBranchExists(worktrees.dag.path, branch)) {
+      gitOutput(worktrees.dag.path, ["branch", branch, dagHead], `Owner ${ownerId} branch creation`);
+    }
+    const current = worktrees.owners[ownerId] ?? {
+      branch,
+      path: null,
+      synced_dag_head: dagHead,
+    };
+    if (current.branch !== branch) fail(`Owner ${ownerId} branch identity changed`);
+
+    if (current.path === null && callerRoot !== worktrees.dag.path) {
+      assertCleanGitWorktree(callerRoot, `Owner ${ownerId} bootstrap worktree`);
+      if (gitBranch(callerRoot) !== branch) {
+        const ownerHead = gitOutput(callerRoot, ["rev-parse", branch], "Owner branch lookup").trim();
+        if (!gitAttempt(callerRoot, ["merge-base", "--is-ancestor", ownerHead, "HEAD"]).ok) {
+          fail(`current worktree was not created from Owner ${ownerId} branch`);
+        }
+        gitOutput(callerRoot, ["checkout", branch], `Owner ${ownerId} branch checkout`);
+      }
+      current.path = callerRoot;
+    }
+
+    if (current.path !== null) {
+      if (!existsSync(current.path) || gitRoot(current.path) !== current.path) {
+        fail(`Owner ${ownerId} worktree is missing`);
+      }
+      if (gitBranch(current.path) !== branch) fail(`Owner ${ownerId} worktree left its branch`);
+      assertCleanGitWorktree(current.path, `Owner ${ownerId} worktree before sync`);
+      const synced = gitAttempt(current.path, ["merge", "--ff-only", worktrees.dag.branch]);
+      if (!synced.ok) fail(`Owner ${ownerId} cannot fast-forward from DAG: ${synced.stderr.trim()}`);
+      current.synced_dag_head = gitHead(current.path);
+      if (current.synced_dag_head !== dagHead) fail(`Owner ${ownerId} did not reach current DAG HEAD`);
+    } else {
+      current.synced_dag_head = dagHead;
+    }
+    worktrees.owners[ownerId] = current;
+    writeJson(worktreesPath, worktrees);
+    const profile = loadThreadWorkflowConfig(goal.workspace.root).profiles.owner;
+    const title = threadTitle(task, owner);
+    const run = taskRunId(task.id, taskState);
+    return {
+      contract: "WORKFLOW_OWNER_SYNC_V1",
+      status: current.path === null ? "worktree_required" : "ready",
+      owner: ownerId,
+      run,
+      branch,
+      worktree: current.path,
+      dag_head: dagHead,
+      model: profile.model,
+      thinking: profile.reasoning_effort,
+      title,
+      target: current.path === null
+        ? { environment: "worktree", starting_branch: branch }
+        : { environment: "local", path: current.path },
+      prompt: [
+        `请先把当前线程标题逐字设置为：${title}`,
+        `然后只调用 workflow owner-sync ${goalDirectory} ${ownerId} 完成 worktree 登记。`,
+        "不要执行任务；同步成功后结束当前 turn，等待 Supervisor 发送正式 dispatch。",
+      ].join("\n"),
+    };
+  });
+  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function gitChangedPathsSince(worktree: string, base: string): string[] {
+  const tracked = gitOutput(
+    worktree,
+    ["diff", "--name-only", "-z", base, "--"],
+    "Owner changed path scan",
+  ).split("\0").filter(Boolean).map(normalizePathPattern);
+  return uniqueStrings([...tracked, ...gitStatusMap(worktree).keys()]).sort(compareStableStrings);
+}
+
+function runOwnerIntegrationChecks(
+  goalDirectory: string,
+  task: TaskDefinition,
+  runId: string,
+  integrationWorktree: string,
+): void {
+  for (const verificationId of task.verification_ids) {
+    const path = workerVerificationPath(goalDirectory, task.id, verificationId, false);
+    readWorkerVerification(path, runId, verificationId);
+    const verification = requireRecord(readJson(path), `verification ${verificationId}`);
+    const argv = requireStringArray(verification.argv, `verification ${verificationId}.argv`, false);
+    const result = spawnSync(argv[0], argv.slice(1), {
+      cwd: integrationWorktree,
+      encoding: "utf8",
+      shell: false,
+      env: process.env,
+      timeout: 10 * 60 * 1000,
+      maxBuffer: 1024 * 1024,
+    });
+    if (result.error !== undefined || result.status !== 0) {
+      const detail = result.error?.message ?? result.stderr ?? `exit ${result.status}`;
+      fail(`integration verification failed (${verificationId}): ${String(detail).trim()}`);
+    }
+  }
+}
+
+function workflowOwnerFinishCommand(goalDirectoryArgument: string, runIdArgument: string): void {
+  const run = taskForRun(goalDirectoryArgument, runIdArgument);
+  if (run.task.role !== "work" || run.task.owner_id === null) {
+    fail("workflow owner-finish only accepts Owner work tasks");
+  }
+  if (run.taskState.status !== "running" || run.taskState.result_path === null) {
+    fail("Owner run is not ready to finish");
+  }
+  if (!existsSync(run.taskState.result_path)) fail("Owner run has not submitted a result");
+  const owner = subjectForTask(run.plan, run.task);
+  const candidate = parseWorkerResult(
+    readJson(run.taskState.result_path),
+    run.task,
+    owner,
+    run.taskState,
+  );
+  if (candidate.status !== "completed") fail("Owner result must be completed before integration");
+  const worktrees = readDagWorktrees(run.goalDirectory);
+  const ownerWorktree = worktrees.owners[run.task.owner_id];
+  if (ownerWorktree?.path === null || ownerWorktree?.path === undefined) {
+    fail(`Owner ${run.task.owner_id} worktree is not registered`);
+  }
+  if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its branch");
+  if (gitBranch(ownerWorktree.path) !== ownerWorktree.branch) fail("Owner worktree left its branch");
+  assertCleanGitWorktree(worktrees.dag.path, "DAG worktree before Owner integration");
+  const ownerControlChanges = [...gitAllStatusMap(ownerWorktree.path).keys()]
+    .filter(isRuntimeWorkspacePath);
+  if (ownerControlChanges.length > 0) {
+    fail(`Owner changed script-managed workflow files: ${ownerControlChanges.join(", ")}`);
+  }
+  const dagBefore = gitHead(worktrees.dag.path);
+  const changedBeforeCommit = gitChangedPathsSince(ownerWorktree.path, ownerWorktree.synced_dag_head);
+  const authorized = effectiveWritablePaths(run.task, run.taskState);
+  const outsideScope = changedBeforeCommit.filter(
+    (path) => !authorized.some((pattern) => pathMatchesPattern(path, pattern)),
+  );
+  if (outsideScope.length > 0) {
+    fail(`Owner changes are outside task scope: ${outsideScope.join(", ")}`);
+  }
+
+  const errorLog = ownerFinishErrorPath(run.goalDirectory, run.task.owner_id);
+  const integrationPath = ownerIntegrationPath(run.goalDirectory, runIdArgument);
+  const temporaryWorktree = join(
+    tmpdir(),
+    `ghost-agent-workflow-merge-${digestJson({ goal: run.goal.goal_id, run: runIdArgument }).slice(0, 16)}`,
+  );
+  let dagAdvanced = false;
+  try {
+    const pendingChanges = [...gitStatusMap(ownerWorktree.path).keys()];
+    if (pendingChanges.length > 0) {
+      gitOutput(ownerWorktree.path, ["add", "--all", "--", ...pendingChanges], "Owner change staging");
+      gitOutput(
+        ownerWorktree.path,
+        ["commit", "-m", `task(${run.task.id}): ${run.task.title}`],
+        "Owner task commit",
+      );
+    }
+    const ownerHead = gitHead(ownerWorktree.path);
+    const changedFiles = gitOutput(
+      ownerWorktree.path,
+      ["diff", "--name-only", "-z", `${ownerWorktree.synced_dag_head}..${ownerHead}`, "--"],
+      "Owner committed path scan",
+    ).split("\0").filter(Boolean).map(normalizePathPattern).sort(compareStableStrings);
+    const committedOutsideScope = changedFiles.filter(
+      (path) => !authorized.some((pattern) => pathMatchesPattern(path, pattern)),
+    );
+    if (committedOutsideScope.length > 0) {
+      fail(`Owner commit is outside task scope: ${committedOutsideScope.join(", ")}`);
+    }
+    rmSync(temporaryWorktree, { recursive: true, force: true });
+    gitOutput(
+      worktrees.dag.path,
+      ["worktree", "add", "--detach", temporaryWorktree, dagBefore],
+      "temporary integration worktree creation",
+    );
+    const merged = gitAttempt(temporaryWorktree, ["merge", "--no-ff", "--no-edit", ownerHead]);
+    if (!merged.ok) fail(`Owner merge conflict: ${merged.stderr.trim()}`);
+    runOwnerIntegrationChecks(run.goalDirectory, run.task, runIdArgument, temporaryWorktree);
+    const integratedHead = gitHead(temporaryWorktree);
+    if (gitHead(worktrees.dag.path) !== dagBefore) fail("DAG HEAD changed during Owner integration");
+    gitOutput(worktrees.dag.path, ["merge", "--ff-only", integratedHead], "DAG integration fast-forward");
+    dagAdvanced = true;
+    writeJson(integrationPath, {
+      contract: "OWNER_INTEGRATION_V1",
+      run: runIdArgument,
+      task: run.task.id,
+      owner: run.task.owner_id,
+      changed_files: changedFiles,
+      dag_head: integratedHead,
+    });
+    const receipt = runSelfJson([
+      "finish",
+      run.planPath,
+      run.statePath,
+      run.task.id,
+      requireString(run.taskState.reservation_token, "reservation token"),
+      run.taskState.result_path,
+      "--compact",
+    ]);
+    const finalDagHead = commitScriptManagedPaths(
+      worktrees.dag.path,
+      [relative(
+        worktrees.dag.path,
+        persistentOwnerCapsulePathFor(worktrees.dag.path, run.task.owner_id),
+      )],
+      `chore(workflow): update Owner ${run.task.owner_id}`,
+    );
+    rmSync(errorLog, { force: true });
+    process.stdout.write(`${JSON.stringify({
+      contract: "WORKFLOW_OWNER_FINISH_V1",
+      status: receipt.status,
+      task: run.task.id,
+      owner: run.task.owner_id,
+      changed_files: changedFiles,
+      dag_head: finalDagHead,
+      result_ref: receipt.result_ref,
+    })}\n`);
+  } catch (error) {
+    if (dagAdvanced) {
+      gitOutput(worktrees.dag.path, ["reset", "--hard", dagBefore], "DAG integration rollback");
+    }
+    rmSync(integrationPath, { force: true });
+    rmSync(run.taskState.result_path, { force: true });
+    const message = error instanceof Error ? error.message : String(error);
+    writeTextAtomic(errorLog, `${message}\n`);
+    fail(`Owner integration failed; continue in the same Owner worktree: ${message}; log: ${errorLog}`);
+  } finally {
+    gitAttempt(worktrees.dag.path, ["worktree", "remove", "--force", temporaryWorktree]);
+    rmSync(temporaryWorktree, { recursive: true, force: true });
+  }
+}
+
+function mergeDagBackToOriginal(goalDirectory: string): Record<string, unknown> {
+  const worktrees = readDagWorktrees(goalDirectory);
+  if (gitBranch(worktrees.dag.path) !== worktrees.dag.branch) fail("DAG worktree left its branch");
+  if (gitBranch(worktrees.original.path) !== worktrees.original.branch) {
+    fail("original workspace left the branch captured by start-dag");
+  }
+  assertCleanGitWorktree(worktrees.dag.path, "DAG worktree before final merge");
+  assertCleanGitWorktree(worktrees.original.path, "original workspace before final merge");
+  const dagHead = gitHead(worktrees.dag.path);
+  if (gitAttempt(worktrees.original.path, ["merge-base", "--is-ancestor", dagHead, "HEAD"]).ok) {
+    return { status: "already_merged", original_head: gitHead(worktrees.original.path) };
+  }
+  const merged = gitAttempt(
+    worktrees.original.path,
+    ["merge", "--no-ff", "--no-edit", worktrees.dag.branch],
+  );
+  if (!merged.ok) {
+    gitAttempt(worktrees.original.path, ["merge", "--abort"]);
+    fail(`final DAG merge failed; resolve in DAG and retry: ${merged.stderr.trim()}`);
+  }
+  return { status: "merged", original_head: gitHead(worktrees.original.path) };
+}
+
+function preflightDagCleanup(worktrees: DagWorktreesV1, originalHead: string): void {
+  const branches = new Set<string>();
+  const paths = new Set<string>([worktrees.original.path]);
+  const candidates = [
+    ...Object.entries(worktrees.owners).map(([ownerId, owner]) => ({
+      label: `Owner ${ownerId}`,
+      branch: owner.branch,
+      path: owner.path,
+    })),
+    { label: "DAG", branch: worktrees.dag.branch, path: worktrees.dag.path },
+  ];
+  for (const candidate of candidates) {
+    if (candidate.branch === worktrees.original.branch) {
+      fail(`${candidate.label} branch cannot equal the original branch`);
+    }
+    if (branches.has(candidate.branch)) fail(`duplicate cleanup branch: ${candidate.branch}`);
+    branches.add(candidate.branch);
+    if (gitBranchExists(worktrees.original.path, candidate.branch)) {
+      if (!gitAttempt(
+        worktrees.original.path,
+        ["merge-base", "--is-ancestor", candidate.branch, originalHead],
+      ).ok) {
+        fail(`${candidate.label} branch is not merged into the original branch`);
+      }
+    }
+    if (candidate.path === null || !existsSync(candidate.path)) continue;
+    if (paths.has(candidate.path)) fail(`duplicate cleanup worktree: ${candidate.path}`);
+    paths.add(candidate.path);
+    if (gitBranch(candidate.path) !== candidate.branch) {
+      fail(`${candidate.label} worktree left its branch`);
+    }
+    assertCleanGitWorktree(candidate.path, `${candidate.label} worktree before cleanup`);
+  }
+}
+
+function removeMergedBranch(workspace: string, branch: string, label: string): void {
+  if (!gitBranchExists(workspace, branch)) return;
+  const removed = gitAttempt(workspace, ["branch", "-d", branch]);
+  if (!removed.ok) fail(`${label} branch cleanup failed: ${removed.stderr.trim()}`);
+}
+
+function cleanupDeliveredDag(
+  goalDirectory: string,
+  resultRef: string,
+): Record<string, unknown> {
+  const worktrees = readDagWorktrees(goalDirectory);
+  const originalHead = gitHead(worktrees.original.path);
+  preflightDagCleanup(worktrees, originalHead);
+  if (!existsSync(resultRef)) fail(`final result is missing: ${resultRef}`);
+  const stableResultRef = join(worktrees.original.path, ".ghost-agent-workflow", "result.json");
+  writeTextAtomic(stableResultRef, readFileSync(resultRef, "utf8"));
+  const sourceEventLog = join(goalDirectory, "events.jsonl");
+  const stableEventLog = join(worktrees.original.path, ".ghost-agent-workflow", "events.jsonl");
+  if (existsSync(sourceEventLog)) {
+    writeTextAtomic(stableEventLog, readFileSync(sourceEventLog, "utf8"));
+  } else {
+    rmSync(stableEventLog, { force: true });
+  }
+
+  let removedOwners = 0;
+  for (const owner of Object.values(worktrees.owners)) {
+    if (owner.path !== null && existsSync(owner.path)) {
+      const removed = gitAttempt(
+        worktrees.original.path,
+        ["worktree", "remove", "--force", owner.path],
+      );
+      if (!removed.ok) fail(`Owner worktree cleanup failed: ${removed.stderr.trim()}`);
+    }
+    if (gitBranchExists(worktrees.original.path, owner.branch)) removedOwners += 1;
+    removeMergedBranch(worktrees.original.path, owner.branch, "Owner");
+  }
+
+  const removedDag = gitAttempt(
+    worktrees.original.path,
+    ["worktree", "remove", "--force", worktrees.dag.path],
+  );
+  if (!removedDag.ok) fail(`DAG worktree cleanup failed: ${removedDag.stderr.trim()}`);
+  removeMergedBranch(worktrees.original.path, worktrees.dag.branch, "DAG");
+  gitAttempt(worktrees.original.path, ["worktree", "prune"]);
+  return {
+    status: "cleaned",
+    result_ref: stableResultRef,
+    event_log_ref: existsSync(stableEventLog) ? stableEventLog : null,
+    removed_owner_branches: removedOwners,
+    removed_dag_branch: worktrees.dag.branch,
+  };
+}
+
+function completeDagDelivery(
+  goalDirectory: string,
+  resultRef: string,
+): { result_ref: string; delivery: Record<string, unknown> } {
+  const merged = mergeDagBackToOriginal(goalDirectory);
+  completeWorkflowWrapper(goalDirectory, resultRef);
+  const cleanup = cleanupDeliveredDag(goalDirectory, resultRef);
+  return {
+    result_ref: requireString(cleanup.result_ref, "stable DAG result_ref"),
+    delivery: { ...merged, cleanup },
+  };
 }
 
 function ownerPauseCurrentCommand(goalDirectoryArgument: string): void {
@@ -14261,6 +15145,18 @@ function supervisorResumeCommand(goalDirectoryArgument: string, runIdArgument: s
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
+function supervisorDispatchPrompt(goalDirectory: string): string {
+  const goal = parseGoal(readJson(join(goalDirectory, "goal.json")));
+  return [
+    "$sub-thread-task-supervisor",
+    "",
+    `Goal 目录：${goalDirectory}`,
+    `线程标题：${goalThreadTitles(goal).supervisor}`,
+    "",
+    "立即按 Skill 使用当前插件 Node CLI 和宿主原生线程工具进入监督循环；禁止 Orca runtime 和 orchestration skill。",
+  ].join("\n");
+}
+
 function supervisorInitCommand(
   goalDirectoryArgument: string,
   mainThreadIdArgument: string,
@@ -14284,6 +15180,8 @@ function supervisorInitCommand(
     thread_title: goalThreadTitles(goal).supervisor,
     model: profile.model,
     effort: profile.reasoning_effort,
+    preferred_thread: preferredWorkflowThread(goalDirectory, "supervisor"),
+    dispatch: supervisorDispatchPrompt(goalDirectory),
   })}\n`);
 }
 
@@ -14342,13 +15240,17 @@ function workflowStepCommand(goalDirectoryArgument: string): void {
       })}\n`);
       return;
     }
-    completeWorkflowWrapper(goalDirectory, completedResultRef);
+    const delivered = existsSync(dagWorktreesPath(goalDirectory))
+      ? completeDagDelivery(goalDirectory, completedResultRef)
+      : null;
+    if (delivered === null) completeWorkflowWrapper(goalDirectory, completedResultRef);
     process.stdout.write(`${JSON.stringify({
       contract: "WORKFLOW_STEP_V1",
       action: "completed",
       completed_tasks: [],
-      result_ref: completedResultRef,
+      result_ref: delivered?.result_ref ?? completedResultRef,
       native_sync: nativeSync.status,
+      ...(delivered === null ? {} : { delivery: delivered.delivery }),
     })}\n`);
     return;
   }
@@ -14480,19 +15382,46 @@ function workflowStepCommand(goalDirectoryArgument: string): void {
         taskState.status === "running" && taskState.result_path !== null &&
         existsSync(taskState.result_path)
       ) {
-        const receipt = runSelfJson([
-          "finish",
-          planPath,
-          statePath,
-          task.id,
-          requireString(taskState.reservation_token, "reservation token"),
-          taskState.result_path,
-          "--compact",
-        ]);
+        let receipt: Record<string, unknown>;
+        if (
+          task.role === "work" && task.owner_id !== null &&
+          existsSync(dagWorktreesPath(goalDirectory))
+        ) {
+          try {
+            receipt = runSelfJson([
+              "workflow",
+              "owner-finish",
+              goalDirectory,
+              taskRunId(task.id, taskState),
+            ]);
+          } catch (error) {
+            const supervisorRoute = preferredWorkflowThread(goalDirectory, "supervisor");
+            process.stdout.write(`${JSON.stringify({
+              contract: "WORKFLOW_STEP_V1",
+              action: "supervisor_required",
+              completed_tasks: completedTasks,
+              preferred_thread: supervisorRoute,
+              dispatch: supervisorDispatchPrompt(goalDirectory),
+              repair_required: true,
+              reason: compactUserSummary(error instanceof Error ? error.message : String(error)),
+            })}\n`);
+            return;
+          }
+        } else {
+          receipt = runSelfJson([
+            "finish",
+            planPath,
+            statePath,
+            task.id,
+            requireString(taskState.reservation_token, "reservation token"),
+            taskState.result_path,
+            "--compact",
+          ]);
+        }
         completedTasks.push({
-          task_id: receipt.task_id,
+          task_id: receipt.task_id ?? receipt.task,
           status: receipt.status,
-          user_message: receipt.user_message,
+          user_message: receipt.user_message ?? `任务 ${String(receipt.task)} 已合并到 DAG 分支`,
         });
       }
     }
@@ -14570,12 +15499,14 @@ function workflowStepCommand(goalDirectoryArgument: string): void {
         ranScript = true;
       }
       if (ranScript) continue;
-      const threadsPath = join(goalDirectory, "threads.json");
+      const supervisorRoute = preferredWorkflowThread(goalDirectory, "supervisor");
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
-        action: existsSync(threadsPath) ? "supervisor_required" : "supervisor_init_required",
+        action: supervisorRoute === null ? "supervisor_init_required" : "supervisor_required",
         completed_tasks: completedTasks,
         thread_title: goalThreadTitles(parseGoal(readJson(goalPath))).supervisor,
+        preferred_thread: supervisorRoute,
+        dispatch: supervisorDispatchPrompt(goalDirectory),
       })}\n`);
       return;
     }
@@ -14588,13 +15519,28 @@ function workflowStepCommand(goalDirectoryArgument: string): void {
         statePath,
         "--compact",
       ]);
-      completeWorkflowWrapper(goalDirectory, requireString(finalized.result_ref, "finalized result_ref"));
+      if (finalized.native_sync === "pending") {
+        process.stdout.write(`${JSON.stringify({
+          contract: "WORKFLOW_STEP_V1",
+          action: "native_completion_required",
+          completed_tasks: completedTasks,
+          result_ref: finalized.result_ref,
+          native_action: finalized.native_action,
+        })}\n`);
+        return;
+      }
+      const finalizedResultRef = requireString(finalized.result_ref, "finalized result_ref");
+      const delivered = existsSync(dagWorktreesPath(goalDirectory))
+        ? completeDagDelivery(goalDirectory, finalizedResultRef)
+        : null;
+      if (delivered === null) completeWorkflowWrapper(goalDirectory, finalizedResultRef);
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
         action: "completed",
         completed_tasks: completedTasks,
-        result_ref: finalized.result_ref,
+        result_ref: delivered?.result_ref ?? finalizedResultRef,
         native_sync: finalized.native_sync,
+        ...(delivered === null ? {} : { delivery: delivered.delivery }),
         ...(finalized.native_action === undefined ? {} : { native_action: finalized.native_action }),
       })}\n`);
       return;
@@ -14649,13 +15595,15 @@ function workflowStepCommand(goalDirectoryArgument: string): void {
         }
         continue;
       }
-      const threadsPath = join(goalDirectory, "threads.json");
+      const supervisorRoute = preferredWorkflowThread(goalDirectory, "supervisor");
       process.stdout.write(`${JSON.stringify({
         contract: "WORKFLOW_STEP_V1",
-        action: existsSync(threadsPath) ? "supervisor_required" : "supervisor_init_required",
+        action: supervisorRoute === null ? "supervisor_init_required" : "supervisor_required",
         completed_tasks: completedTasks,
         reason: "源文件变化；等待当前执行线程结束后由脚本刷新",
         thread_title: goalThreadTitles(goal).supervisor,
+        preferred_thread: supervisorRoute,
+        dispatch: supervisorDispatchPrompt(goalDirectory),
       })}\n`);
       return;
     }
@@ -14725,9 +15673,22 @@ function runtimeExecuteCommand(
   let audit: Record<string, unknown> | null = null;
   if (!existsSync(taskState.result_path)) {
     if (task.runtime_actor_id === "source-audit") {
+      const goal = parseGoal(readJson(plan.goal_contract_path));
+      const sourceLines = readFileSync(goal.source.path, "utf8").split(/\r?\n/u);
+      const headingNonRequirements: Record<string, string> = {};
+      for (const block of buildSourceBlocks(goal).blocks) {
+        const blockLines = sourceLines.slice(block.line_start - 1, block.line_end);
+        if (
+          blockLines.length > 0 &&
+          blockLines.every((line) => /^\s{0,3}#{1,6}\s+\S/u.test(line))
+        ) {
+          headingNonRequirements[block.id] =
+            "Markdown 标题只组织源文档结构，不包含独立实施要求";
+        }
+      }
       audit = runSelfJson(
         ["source-audit-auto", planPath, statePath, taskId, reservationToken],
-        { contract: "SOURCE_AUDIT_INPUT_V1", non_requirements: {} },
+        { contract: "SOURCE_AUDIT_INPUT_V1", non_requirements: headingNonRequirements },
       );
     } else if (task.runtime_actor_id === "diff-audit") {
       audit = runSelfJson(["diff-audit", planPath, statePath, taskId, reservationToken]);
@@ -14773,6 +15734,15 @@ function main(argv: string[]): void {
   const [command, ...args] = argv;
   if (command === "workflow" && args[0] === "start" && args.length === 3) {
     return workflowStartCommand(args[1], args[2]);
+  }
+  if (command === "workflow" && args[0] === "start-dag" && args.length === 2) {
+    return workflowStartDagCommand(args[1]);
+  }
+  if (command === "workflow" && args[0] === "owner-sync" && args.length === 3) {
+    return workflowOwnerSyncCommand(args[1], args[2]);
+  }
+  if (command === "workflow" && args[0] === "owner-finish" && args.length === 3) {
+    return workflowOwnerFinishCommand(args[1], args[2]);
   }
   if (command === "workflow" && args[0] === "step" && args.length === 2) {
     return workflowStepCommand(args[1]);
@@ -15015,7 +15985,7 @@ function main(argv: string[]): void {
     return runtimeExecuteCommand(args[0], args[1], args[2], args[3]);
   }
   fail(
-    "usage: goal-dag.mjs workflow start|step|dispatch|review|attach|thread|observe|dashboard|supervisor-init|native-confirm ... | worker open|verify|complete|block|fail|request-dag|complete-risk|request-scope ... | planner-open|planner-submit|planner-review ... | supervisor-next|supervisor-ack ... | internal runtime commands",
+    "usage: goal-dag.mjs workflow start-dag <workspace> | workflow owner-sync <goal-dir> <owner-id> | workflow owner-finish <goal-dir> <run-id> | internal runtime commands",
   );
 }
 

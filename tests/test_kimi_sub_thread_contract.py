@@ -40,7 +40,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
     def test_kimi_plugin_manifest_is_current(self) -> None:
         manifest = json.loads(read("kimi.plugin.json"))
         self.assertEqual(manifest["name"], "ghost-agent-workflow")
-        self.assertEqual(manifest["version"], "0.3.6")
+        self.assertEqual(manifest["version"], "0.4.3")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("最小 DAG", manifest["description"])
@@ -90,7 +90,9 @@ class KimiWorkflowContractTests(unittest.TestCase):
             "gpt-5.6-luna/medium",
             "gpt-5.6-sol/high",
             "workflow-config.mjs",
-            "workflow step",
+            "workflow start-dag",
+            "workflow owner-sync",
+            "workflow owner-finish",
             "worker verify",
             "worker request-dag",
             "worker complete",

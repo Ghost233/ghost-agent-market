@@ -5,9 +5,11 @@ import json
 import os
 from pathlib import Path
 import selectors
+import shutil
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 from urllib.request import urlopen
 
@@ -171,6 +173,28 @@ class GoalDagCliTests(unittest.TestCase):
         environment.update(extra_env)
         return subprocess.run(
             ["node", str(script), *(str(arg) for arg in args)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+
+    def run_cli_from(
+        self,
+        cwd: Path,
+        *args: object,
+        input_text: str | None = None,
+        script: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        script = CODEX_SCRIPT if script is None else script
+        environment = os.environ.copy()
+        environment["GOAL_DAG_EXECUTION_PLATFORM"] = (
+            "claude_code" if script == CLAUDE_SCRIPT else "codex"
+        )
+        return subprocess.run(
+            ["node", str(script), *(str(arg) for arg in args)],
+            cwd=cwd,
+            input=input_text,
             capture_output=True,
             text=True,
             check=False,
@@ -800,6 +824,24 @@ class GoalDagCliTests(unittest.TestCase):
     def test_quick_workflow_uses_owner_kernel_then_explicit_clean_review(self) -> None:
         with self.workspace() as (_, goal_path, _):
             workspace_root = Path(json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"])
+            initial_branch = subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "--show-current"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            initial_branches = subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            initial_worktrees = subprocess.run(
+                ["git", "-C", str(workspace_root), "worktree", "list", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
 
             def text_command(text: str, *args: object) -> dict:
                 result = subprocess.run(
@@ -949,6 +991,33 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertFalse((workflow_dir / "quick").exists())
             self.assertFalse((workflow_dir / "events.jsonl").exists())
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--show-current"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                initial_branch,
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                initial_branches,
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "worktree", "list", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                initial_worktrees,
+            )
 
     def test_quick_workflow_upgrades_one_way_to_minimal_dag(self) -> None:
         with self.workspace() as (_, goal_path, _):
@@ -1003,6 +1072,453 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertIn("已验收输入", source)
             self.assertIn("状态模块部分已验收", source)
 
+    def test_start_dag_hands_off_before_creating_goal_state(self) -> None:
+        with self.workspace() as (_, goal_path, _):
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            shutil.rmtree(workspace_root / ".ghost-agent-workflow/goal-fixture")
+            subprocess.run(
+                ["node", str(WORKFLOW_CONFIG_SCRIPT), "init", str(workspace_root)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "add",
+                    "development.md", ".ghost-agent-workflow/.gitignore",
+                    ".ghost-agent-workflow/config.json", ".ghost-agent-workflow/owners",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root),
+                    "-c", "user.name=Goal DAG", "-c", "user.email=goal-dag@example.invalid",
+                    "commit", "-q", "-m", "workflow configuration",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "config", "user.name", "Goal DAG"],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "config", "user.email",
+                    "goal-dag@example.invalid",
+                ],
+                check=True,
+            )
+
+            objective = "在独立工作树中完成状态模块改造"
+            handoff_process = self.run_cli_from(
+                workspace_root,
+                "workflow", "start-dag", workspace_root,
+                input_text=objective,
+            )
+            self.assertEqual(handoff_process.returncode, 0, handoff_process.stderr)
+            handoff = json.loads(handoff_process.stdout)
+            self.assertEqual(handoff["status"], "handoff_required")
+            self.assertEqual(handoff["target"]["environment"], "worktree")
+            self.assertFalse((workspace_root / ".ghost-agent-workflow/runtime").exists())
+
+            dag_worktree = workspace_root.parent / f"{workspace_root.name}-dag"
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "add", "-q",
+                    "-b", "codex/host-created-main", str(dag_worktree), handoff["dag_branch"],
+                ],
+                check=True,
+            )
+            claimed_process = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree,
+                input_text=objective,
+            )
+            self.assertEqual(claimed_process.returncode, 0, claimed_process.stderr)
+            claimed = json.loads(claimed_process.stdout)
+            self.assertEqual(claimed["status"], "ready")
+            self.assertEqual(Path(claimed["dag_worktree"]).resolve(), dag_worktree.resolve())
+            self.assertTrue(Path(claimed["goal_dir"]).is_dir())
+            self.assertTrue((Path(claimed["goal_dir"]) / "worktrees.json").is_file())
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "-C", str(dag_worktree), "branch", "--show-current"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+                handoff["dag_branch"],
+            )
+            self.assertFalse((workspace_root / ".ghost-agent-workflow/runtime").exists())
+
+            goal_dir = Path(claimed["goal_dir"])
+            self.run_json("workflow", "thread", goal_dir, "main", "new-main", "local")
+            delivered_file = dag_worktree / "delivered.txt"
+            delivered_file.write_text("merged from DAG\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(dag_worktree), "add", "delivered.txt"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(dag_worktree), "commit", "-q", "-m", "DAG delivery"],
+                check=True,
+            )
+            owner_branch = "codex/ga-owner-cleanup-fixture"
+            owner_worktree = workspace_root.parent / f"{workspace_root.name}-owner-cleanup"
+            subprocess.run(
+                [
+                    "git", "-C", str(dag_worktree), "worktree", "add", "-q", "-b",
+                    owner_branch, str(owner_worktree), "HEAD",
+                ],
+                check=True,
+            )
+            worktrees_path = goal_dir / "worktrees.json"
+            worktrees = json.loads(worktrees_path.read_text(encoding="utf-8"))
+            worktrees["owners"]["cleanup-domain"] = {
+                "branch": owner_branch,
+                "path": str(owner_worktree.resolve()),
+                "synced_dag_head": subprocess.run(
+                    ["git", "-C", str(dag_worktree), "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+            }
+            worktrees_path.write_text(
+                json.dumps(worktrees, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            result_path = goal_dir / "result.json"
+            result_path.write_text("{}\n", encoding="utf-8")
+            (goal_dir / "events.jsonl").write_text(
+                '{"type":"goal_completed"}\n',
+                encoding="utf-8",
+            )
+            goal_state_path = goal_dir / "goal-state.json"
+            goal_state = json.loads(goal_state_path.read_text(encoding="utf-8"))
+            goal_state["status"] = "completed"
+            goal_state["result_ref"] = str(result_path)
+            goal_state["native_sync"]["status"] = "not_required"
+            goal_state_path.write_text(
+                json.dumps(goal_state, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            delivered_process = self.run_cli_from(
+                dag_worktree,
+                "workflow", "start-dag", dag_worktree,
+            )
+            self.assertEqual(delivered_process.returncode, 0, delivered_process.stderr)
+            delivered = json.loads(delivered_process.stdout)
+            self.assertEqual(delivered["action"], "completed")
+            self.assertEqual(delivered["delivery"]["cleanup"]["status"], "cleaned")
+            self.assertEqual(delivered["delivery"]["cleanup"]["removed_owner_branches"], 1)
+            self.assertEqual(
+                (workspace_root / "delivered.txt").read_text(encoding="utf-8"),
+                "merged from DAG\n",
+            )
+            self.assertFalse(dag_worktree.exists())
+            self.assertFalse(owner_worktree.exists())
+            self.assertEqual(
+                Path(delivered["result_ref"]).resolve(),
+                (workspace_root / ".ghost-agent-workflow/result.json").resolve(),
+            )
+            self.assertTrue(Path(delivered["result_ref"]).is_file())
+            self.assertEqual(
+                (workspace_root / ".ghost-agent-workflow/events.jsonl").read_text(
+                    encoding="utf-8"
+                ),
+                '{"type":"goal_completed"}\n',
+            )
+            self.assertNotIn(
+                handoff["dag_branch"],
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.splitlines(),
+            )
+            self.assertNotIn(
+                owner_branch,
+                subprocess.run(
+                    ["git", "-C", str(workspace_root), "branch", "--format=%(refname:short)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.splitlines(),
+            )
+
+    def test_owner_worktree_sync_and_finish_merge_before_task_completion(self) -> None:
+        with self.workspace() as (legacy_goal_dir, goal_path, plan_path):
+            goal = json.loads(goal_path.read_text(encoding="utf-8"))
+            workspace_root = Path(goal["workspace"]["root"])
+            goal_dir = workspace_root / ".ghost-agent-workflow/runtime/goals/goal-fixture"
+            goal_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(legacy_goal_dir), str(goal_dir))
+            goal_path = goal_dir / "goal.json"
+            plan_path = goal_dir / "plan.json"
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan["goal_contract_path"] = str(goal_path)
+            plan["goal_digest"] = hashlib.sha256(goal_path.read_bytes()).hexdigest()
+            plan["coverage_path"] = str(goal_dir / "coverage.json")
+            plan_path.write_text(
+                json.dumps(plan, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            coverage_path = goal_dir / "coverage.json"
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            coverage["plan_path"] = str(plan_path)
+            coverage["plan_digest"] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+            coverage_path.write_text(
+                json.dumps(coverage, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["node", str(WORKFLOW_CONFIG_SCRIPT), "init", str(workspace_root)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "config", "user.name", "Goal DAG"],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "config", "user.email",
+                    "goal-dag@example.invalid",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "add",
+                    "development.md", ".ghost-agent-workflow/.gitignore",
+                    ".ghost-agent-workflow/config.json", ".ghost-agent-workflow/owners",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_root), "commit", "-q", "-m", "workflow fixture"],
+                check=True,
+            )
+            dag_branch = subprocess.run(
+                ["git", "-C", str(workspace_root), "branch", "--show-current"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            canonical_workspace = workspace_root.resolve()
+            (goal_dir / "worktrees.json").write_text(
+                json.dumps(
+                    {
+                        "contract": "DAG_WORKTREES_V1",
+                        "original": {
+                            "path": str(canonical_workspace),
+                            "branch": dag_branch,
+                            "head": subprocess.run(
+                                ["git", "-C", str(workspace_root), "rev-parse", "HEAD"],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                            ).stdout.strip(),
+                        },
+                        "dag": {"path": str(canonical_workspace), "branch": dag_branch},
+                        "owners": {},
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            state_path = self.initialize(goal_path, plan_path)
+            self.run_json("supervisor-init", goal_dir, "main-thread", "local")
+            action = self.reserve_one(plan_path, state_path)
+            self.assertEqual(action["task_id"], "T1")
+
+            first_sync_process = self.run_cli_from(
+                workspace_root,
+                "workflow", "owner-sync", goal_dir, "state-domain",
+            )
+            self.assertEqual(first_sync_process.returncode, 0, first_sync_process.stderr)
+            first_sync = json.loads(first_sync_process.stdout)
+            self.assertEqual(first_sync["status"], "worktree_required")
+            owner_worktree = workspace_root.parent / f"{workspace_root.name}-owner"
+            subprocess.run(
+                [
+                    "git", "-C", str(workspace_root), "worktree", "add", "-q",
+                    "-b", "codex/host-created-owner", str(owner_worktree), first_sync["branch"],
+                ],
+                check=True,
+            )
+            try:
+                ready_process = self.run_cli_from(
+                    owner_worktree,
+                    "workflow", "owner-sync", goal_dir, "state-domain",
+                )
+                self.assertEqual(ready_process.returncode, 0, ready_process.stderr)
+                ready = json.loads(ready_process.stdout)
+                self.assertEqual(ready["status"], "ready")
+                self.assertEqual(Path(ready["worktree"]).resolve(), owner_worktree.resolve())
+                self.run_json(
+                    "supervisor-record", goal_dir, "created", action["task_id"],
+                    "1", "owner-thread", "local",
+                )
+                changed = owner_worktree / "src/state/worktree.ts"
+                changed.parent.mkdir(parents=True, exist_ok=True)
+                changed.write_text("export const integrated = true;\n", encoding="utf-8")
+                self.run_json(
+                    "worker", "verify", goal_dir, ready["run"], "state-unit",
+                    "node", "-e", "process.exit(0)",
+                )
+                completed = self.run_cli_from(
+                    owner_worktree,
+                    "worker", "complete", goal_dir, ready["run"],
+                    input_text="已在责任域工作树完成状态类型抽离",
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.run_json(
+                    "supervisor-record", goal_dir, "observed", "T1", "1",
+                    "cursor-t1", "completed",
+                )
+                self.run_json("supervisor-record", goal_dir, "notified", "T1", "1")
+                running_state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(running_state["tasks"]["T1"]["status"], "running")
+
+                finished_process = self.run_cli_from(
+                    workspace_root,
+                    "workflow", "owner-finish", goal_dir, ready["run"],
+                )
+                self.assertEqual(finished_process.returncode, 0, finished_process.stderr)
+                finished = json.loads(finished_process.stdout)
+                self.assertEqual(finished["status"], "completed")
+                self.assertEqual(
+                    (workspace_root / "src/state/worktree.ts").read_text(encoding="utf-8"),
+                    "export const integrated = true;\n",
+                )
+                accepted_state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(accepted_state["tasks"]["T1"]["status"], "completed")
+                self.assertEqual(
+                    subprocess.run(
+                        ["git", "-C", str(workspace_root), "status", "--porcelain"],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout,
+                    "",
+                )
+
+                second_action = self.reserve_one(plan_path, state_path)
+                self.assertEqual(second_action["task_id"], "T2")
+                second_sync_process = self.run_cli_from(
+                    workspace_root,
+                    "workflow", "owner-sync", goal_dir, "state-domain",
+                )
+                self.assertEqual(second_sync_process.returncode, 0, second_sync_process.stderr)
+                second_sync = json.loads(second_sync_process.stdout)
+                self.assertEqual(second_sync["status"], "ready")
+                self.assertEqual(Path(second_sync["worktree"]).resolve(), owner_worktree.resolve())
+                self.run_json(
+                    "supervisor-record", goal_dir, "created", second_action["task_id"],
+                    "1", "owner-thread", "local",
+                )
+                second_change = owner_worktree / "src/page/worktree.ts"
+                second_change.parent.mkdir(parents=True, exist_ok=True)
+                second_change.write_text("export const retry = true;\n", encoding="utf-8")
+                owner_realpath = str(owner_worktree.resolve())
+                self.run_json(
+                    "worker", "verify", goal_dir, second_sync["run"], "page-unit",
+                    "node", "-e",
+                    (
+                        "const fs=require('fs');"
+                        f"process.exit(fs.realpathSync(process.cwd())==={json.dumps(owner_realpath)}?0:1)"
+                    ),
+                )
+                second_completed = self.run_cli_from(
+                    owner_worktree,
+                    "worker", "complete", goal_dir, second_sync["run"],
+                    input_text="已完成页面状态读取迁移",
+                )
+                self.assertEqual(second_completed.returncode, 0, second_completed.stderr)
+                self.run_json(
+                    "supervisor-record", goal_dir, "observed", "T2", "1",
+                    "cursor-t2", "completed",
+                )
+                self.run_json("supervisor-record", goal_dir, "notified", "T2", "1")
+                dag_before_failure = subprocess.run(
+                    ["git", "-C", str(workspace_root), "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                rejected_finish = self.run_cli_from(
+                    workspace_root,
+                    "workflow", "owner-finish", goal_dir, second_sync["run"],
+                )
+                self.assertNotEqual(rejected_finish.returncode, 0)
+                self.assertIn("continue in the same Owner worktree", rejected_finish.stderr)
+                self.assertFalse((workspace_root / "src/page/worktree.ts").exists())
+                self.assertEqual(
+                    subprocess.run(
+                        ["git", "-C", str(workspace_root), "rev-parse", "HEAD"],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip(),
+                    dag_before_failure,
+                )
+                retry_state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(retry_state["tasks"]["T2"]["status"], "running")
+                self.assertFalse(Path(retry_state["tasks"]["T2"]["result_path"]).exists())
+                self.assertTrue((goal_dir / "owner-finish-error-state-domain.log").is_file())
+
+                repair_actions = self.run_json("supervisor-next", goal_dir, "--limit", "8")
+                repair = next(item for item in repair_actions["create"] if item["task"] == "T2")
+                self.assertEqual(repair["thread"], "owner-thread")
+                repair_ack = self.run_json(
+                    "supervisor-ack", goal_dir, repair["action_id"], "owner-thread", "local",
+                )
+                self.assertIn("上次集成失败", repair_ack["dispatch"])
+
+                self.run_json(
+                    "worker", "verify", goal_dir, second_sync["run"], "page-unit",
+                    "node", "-e", "process.exit(0)",
+                )
+                retry_completed = self.run_cli_from(
+                    owner_worktree,
+                    "worker", "complete", goal_dir, second_sync["run"],
+                    input_text="已修复集成验证并完成页面状态读取迁移",
+                )
+                self.assertEqual(retry_completed.returncode, 0, retry_completed.stderr)
+                self.run_json(
+                    "supervisor-record", goal_dir, "observed", "T2", "1",
+                    "cursor-t2-retry", "completed",
+                )
+                self.run_json("supervisor-record", goal_dir, "notified", "T2", "1")
+                retry_finish = self.run_cli_from(
+                    workspace_root,
+                    "workflow", "owner-finish", goal_dir, second_sync["run"],
+                )
+                self.assertEqual(retry_finish.returncode, 0, retry_finish.stderr)
+                self.assertEqual(
+                    (workspace_root / "src/page/worktree.ts").read_text(encoding="utf-8"),
+                    "export const retry = true;\n",
+                )
+                final_state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(final_state["tasks"]["T2"]["status"], "completed")
+            finally:
+                subprocess.run(
+                    [
+                        "git", "-C", str(workspace_root), "worktree", "remove", "--force",
+                        str(owner_worktree),
+                    ],
+                    check=True,
+                )
+
     def test_dag_workflow_routes_main_then_requires_dashboard_before_execution(self) -> None:
         with self.workspace() as (_, goal_path, _):
             workspace_root = Path(
@@ -1050,6 +1566,11 @@ class GoalDagCliTests(unittest.TestCase):
             source_blocks = json.loads(
                 Path(goal_state["source_blocks"]["ref"]).read_text(encoding="utf-8")
             )
+            self.assertEqual(
+                [block["id"] for block in opened["source_blocks"]],
+                [block["id"] for block in source_blocks["blocks"]],
+            )
+            self.assertTrue(all(block["text"] for block in opened["source_blocks"]))
             self.run_json_input(
                 {
                     "contract": "PLAN_INPUT_V1",
@@ -1092,6 +1613,8 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(dashboard["action"], "dashboard_start_required")
             self.assertTrue((workflow_dir / "state.json").exists())
             self.run_json("workflow", "dashboard", workflow_dir, "failed")
+            retried = self.run_json("workflow", "dashboard", workflow_dir, "started")
+            self.assertEqual(retried["status"], "started")
             execution = self.run_json("workflow", "step", workflow_dir)
             self.assertEqual(execution["action"], "supervisor_init_required")
             subprocess.run(
@@ -1103,16 +1626,40 @@ class GoalDagCliTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            initialized = self.run_json("workflow", "supervisor-init", workflow_dir)
+            self.assertEqual(initialized["contract"], "SUPERVISOR_INIT_V1")
+            self.assertEqual(initialized["status"], "initialized")
             self.assertEqual(
-                self.run_json("workflow", "supervisor-init", workflow_dir),
-                {
-                    "contract": "SUPERVISOR_INIT_V1",
-                    "status": "initialized",
-                    "thread_title": "[GA][任务][监督] 用最小 DAG 完成状态模块调整",
-                    "model": "gpt-supervisor-live",
-                    "effort": "low",
-                },
+                initialized["thread_title"],
+                "[GA][任务][监督] 用最小 DAG 完成状态模块调整",
             )
+            self.assertEqual(initialized["model"], "gpt-supervisor-live")
+            self.assertEqual(initialized["effort"], "low")
+            self.assertIsNone(initialized["preferred_thread"])
+            self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
+            self.assertIn("禁止 Orca runtime", initialized["dispatch"])
+            retry_creation = self.run_json("workflow", "step", workflow_dir)
+            self.assertEqual(retry_creation["action"], "supervisor_init_required")
+            self.assertIsNone(retry_creation["preferred_thread"])
+
+            routes_path = workflow_dir / "routes.json"
+            legacy_routes = json.loads(routes_path.read_text(encoding="utf-8"))
+            legacy_routes.pop("supervisor")
+            routes_path.write_text(
+                json.dumps(legacy_routes, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            self.run_json(
+                "workflow", "thread", workflow_dir, "supervisor",
+                "supervisor-thread", "local",
+            )
+            wake = self.run_json("workflow", "step", workflow_dir)
+            self.assertEqual(wake["action"], "supervisor_required")
+            self.assertEqual(
+                wake["preferred_thread"],
+                {"thread_id": "supervisor-thread", "host_id": "local"},
+            )
+            self.assertEqual(wake["dispatch"], initialized["dispatch"])
 
     def test_supervisor_commands_return_bounded_actions_and_persist_observations(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
@@ -1124,6 +1671,8 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(initialized["contract"], "SUPERVISOR_INIT_V1")
             self.assertEqual(initialized["model"], "gpt-5.6-luna")
             self.assertEqual(initialized["effort"], "medium")
+            self.assertIsNone(initialized["preferred_thread"])
+            self.assertIn("$sub-thread-task-supervisor", initialized["dispatch"])
             action = self.reserve_one(plan_path, state_path)
 
             pending = self.run_json("supervisor-next", root, "--limit", 8)
@@ -1138,7 +1687,10 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertIsNone(create["thread"])
             self.assertIsNone(create["host"])
             self.assertEqual(create["model"], "gpt-5.6-sol")
-            self.assertEqual(create["effort"], "high")
+            self.assertEqual(create["thinking"], "high")
+            self.assertIn(create["title"], create["prompt"])
+            self.assertIn("等待 Supervisor 发送正式 dispatch", create["prompt"])
+            self.assertNotIn("effort", create)
             self.assertNotIn("binding", create)
             self.assertTrue(create["action_id"].startswith("sa."))
             self.assertTrue(create["run"].startswith("run-"))
@@ -1600,6 +2152,32 @@ class GoalDagCliTests(unittest.TestCase):
             page = self.run_json("planner-open", root)
             self.assertEqual(page["action"], "review_draft")
             self.assertLessEqual(len(page["tasks"]), 50)
+
+    def test_planner_open_pages_authoritative_source_blocks(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            goal = json.loads(goal_path.read_text(encoding="utf-8"))
+            source_path = Path(goal["source"]["path"])
+            source_path.write_text(
+                "\n".join(f"需求 {index}" for index in range(1, 56)) + "\n",
+                encoding="utf-8",
+            )
+            goal["source"]["digest"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            goal_path.write_text(
+                json.dumps(goal, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            plan_path.unlink()
+
+            first = self.run_json("planner-open", root)
+            self.assertEqual(len(first["source_blocks"]), 50)
+            self.assertEqual(first["next_cursor"], 50)
+            self.assertEqual(first["source_blocks"][0]["text"], "需求 1")
+            self.assertTrue(first["source_blocks"][0]["id"].startswith("L1-"))
+
+            second = self.run_json("planner-open", root, 50)
+            self.assertEqual(len(second["source_blocks"]), 5)
+            self.assertIsNone(second["next_cursor"])
+            self.assertEqual(second["source_blocks"][-1]["text"], "需求 55")
 
     def test_initial_plan_rejects_preexpanded_child_tasks(self) -> None:
         with self.workspace() as (root, goal_path, plan_path):
@@ -3286,6 +3864,79 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertNotEqual(escaped.returncode, 0)
             self.assertIn("must equal", escaped.stderr)
 
+    def test_runtime_source_audit_ignores_only_unmapped_markdown_headings(self) -> None:
+        with self.workspace() as (root, goal_path, plan_path):
+            coverage_path = root / "coverage.json"
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            self.run_json("goal-validate", goal_path)
+            goal_state = json.loads(
+                (root / "goal-state.json").read_text(encoding="utf-8")
+            )
+            source_blocks = json.loads(
+                Path(goal_state["source_blocks"]["ref"]).read_text(encoding="utf-8")
+            )["blocks"]
+            heading_id = source_blocks[0]["id"]
+            body_id = source_blocks[-1]["id"]
+            for item in coverage["required_plan_items"]:
+                item["source_refs"] = [body_id]
+            coverage_path.write_text(
+                json.dumps(coverage, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            state_path = self.initialize(
+                goal_path, plan_path, complete_source_audit=False
+            )
+            action = self.reserve_one(plan_path, state_path)
+            completed = self.run_json(
+                "runtime-execute", plan_path, state_path, action["task_id"],
+                action["reservation_token"],
+            )
+            result = json.loads(
+                Path(completed["result_ref"]).read_text(encoding="utf-8")
+            )
+            evidence = next(
+                item for item in result["evidence"]
+                if item["verification_id"] == "source-coverage-audit"
+            )
+            artifact = json.loads(
+                Path(evidence["artifact_ref"]).read_text(encoding="utf-8")
+            )
+            heading = next(
+                item for item in artifact["classifications"]
+                if item["block_id"] == heading_id
+            )
+            self.assertEqual(heading["disposition"], "non_requirement")
+            self.assertIn("Markdown 标题", heading["reason"])
+
+        with self.workspace() as (root, goal_path, plan_path):
+            coverage_path = root / "coverage.json"
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            self.run_json("goal-validate", goal_path)
+            goal_state = json.loads(
+                (root / "goal-state.json").read_text(encoding="utf-8")
+            )
+            source_blocks = json.loads(
+                Path(goal_state["source_blocks"]["ref"]).read_text(encoding="utf-8")
+            )["blocks"]
+            heading_id = source_blocks[0]["id"]
+            body_id = source_blocks[-1]["id"]
+            for item in coverage["required_plan_items"]:
+                item["source_refs"] = [heading_id]
+            coverage_path.write_text(
+                json.dumps(coverage, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            state_path = self.initialize(
+                goal_path, plan_path, complete_source_audit=False
+            )
+            action = self.reserve_one(plan_path, state_path)
+            rejected = self.run_cli(
+                "runtime-execute", plan_path, state_path, action["task_id"],
+                action["reservation_token"],
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(body_id, rejected.stderr)
+
     def test_real_diff_scan_handles_dirty_baseline_and_rejects_late_drift(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
             workspace_root = Path(json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"])
@@ -4303,6 +4954,15 @@ class GoalDagCliTests(unittest.TestCase):
     def test_node_launcher_discovers_workspace_and_starts_dashboard_idempotently(self) -> None:
         with self.workspace() as (_, goal_path, plan_path):
             state_path = self.initialize(goal_path, plan_path)
+            lifecycle_path = plan_path.parent / "dashboard.json"
+            lifecycle_path.write_text(
+                json.dumps({
+                    "contract": "WORKFLOW_DASHBOARD_V1",
+                    "status": "pending",
+                    "updated_at": "2026-07-29T00:00:00.000Z",
+                }) + "\n",
+                encoding="utf-8",
+            )
             workspace_root = Path(
                 json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
             )
@@ -4363,6 +5023,18 @@ class GoalDagCliTests(unittest.TestCase):
                 already_running = json.loads(second.stdout)
                 self.assertEqual(already_running["status"], "already_running")
                 self.assertEqual(already_running["pid"], pid)
+
+                lifecycle_path.unlink()
+                for _ in range(100):
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        pid = None
+                        break
+                    time.sleep(0.05)
+                self.assertIsNone(pid, "dashboard did not stop after lifecycle cleanup")
+                self.assertFalse(Path(started["descriptor_path"]).exists())
+                self.assertFalse(Path(started["log_path"]).exists())
             finally:
                 if isinstance(pid, int):
                     try:
@@ -4371,6 +5043,87 @@ class GoalDagCliTests(unittest.TestCase):
                         pass
                 for path in cleanup_paths:
                     path.unlink(missing_ok=True)
+
+    def test_node_launcher_reclaims_tracked_unhealthy_dashboard(self) -> None:
+        with self.workspace() as (_, goal_path, plan_path):
+            self.initialize(goal_path, plan_path)
+            workspace_root = Path(
+                json.loads(goal_path.read_text(encoding="utf-8"))["workspace"]["root"]
+            )
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                listener.bind(("127.0.0.1", 0))
+                port = listener.getsockname()[1]
+            fake = subprocess.Popen(
+                [
+                    "node", "-e",
+                    (
+                        "require('node:http').createServer((req,res)=>{"
+                        "if(req.url==='/healthz'){res.setHeader('content-type','application/json');"
+                        "res.end('{\"status\":\"ok\"}');return;}"
+                        "res.statusCode=500;res.end('stale');"
+                        f"}}).listen({port},'127.0.0.1',()=>console.log('ready'))"
+                    ),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            started_pid = None
+            runtime_dir = Path(tempfile.gettempdir()) / "ghost-agent-workflow-dashboard"
+            identity = f"{workspace_root}\nstale-goal\n127.0.0.1\n{port}"
+            runtime_id = hashlib.sha256(identity.encode()).hexdigest()[:20]
+            descriptor_path = runtime_dir / f"{runtime_id}.json"
+            log_path = runtime_dir / f"{runtime_id}.log"
+            try:
+                assert fake.stdout is not None
+                self.assertEqual(fake.stdout.readline().strip(), "ready")
+                runtime_dir.mkdir(parents=True, exist_ok=True)
+                descriptor_path.write_text(
+                    json.dumps({
+                        "contract": "DAG_DASHBOARD_START_V1",
+                        "pid": fake.pid,
+                        "workspace_root": str(workspace_root),
+                        "goal_id": "stale-goal",
+                        "plan_path": str(plan_path.parent / "missing-plan.json"),
+                        "state_path": str(plan_path.parent / "missing-state.json"),
+                        "host": "127.0.0.1",
+                        "port": port,
+                        "log_path": str(log_path),
+                    }) + "\n",
+                    encoding="utf-8",
+                )
+                launched = subprocess.run(
+                    [
+                        "node", str(CODEX_DASHBOARD_STARTER), str(workspace_root),
+                        "--port", str(port),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=15,
+                )
+                self.assertEqual(launched.returncode, 0, launched.stdout + launched.stderr)
+                payload = json.loads(launched.stdout)
+                self.assertEqual(payload["status"], "started")
+                started_pid = payload["pid"]
+                self.assertNotEqual(started_pid, fake.pid)
+                fake.wait(timeout=5)
+                self.assertFalse(descriptor_path.exists())
+            finally:
+                if fake.poll() is None:
+                    fake.terminate()
+                    fake.wait(timeout=5)
+                if fake.stdout is not None:
+                    fake.stdout.close()
+                if fake.stderr is not None:
+                    fake.stderr.close()
+                if isinstance(started_pid, int):
+                    try:
+                        os.kill(started_pid, 15)
+                    except ProcessLookupError:
+                        pass
+                descriptor_path.unlink(missing_ok=True)
+                log_path.unlink(missing_ok=True)
 
     def test_claude_driver_uses_default_runtime_profiles(self) -> None:
         with self.workspace("claude_code") as (_, goal_path, plan_path):

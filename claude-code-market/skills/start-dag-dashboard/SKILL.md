@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 由 Main 直接调用后台 Node 启动器。不得创建用于刷新看板的模型线程。不要创建 Goal、生成计划、调度 task、修改 DAG 状态、打开浏览器、停止服务或持续监控。
 
-1. 取得目标仓库的工作目录绝对路径。
+1. 取得脚本收据中的 DAG worktree 绝对路径；不得从用户原始工作区启动。
 2. 运行后台启动器；不要追加 `nohup`、`&` 或 shell job control：
 
 ```bash
@@ -18,7 +18,7 @@ node <plugin-root>/scripts/start-dashboard.mjs <workspace> [--goal <goal-id>] [-
 ```
 
 3. 启动器必须从 `<workspace>/.ghost-agent-workflow` 发现并校验已激活的 `goal.json`、`goal-state.json`、`plan.json` 和 `state.json`。存在多个 active Goal 时传入 `--goal`；无法唯一选择时停止并报告候选。
-4. 只接受 `DAG_DASHBOARD_START_V1`。`started` 或 `already_running` 时只向用户报告一次 `url`；不得继续轮询。
-5. 失败时原样报告。协调工作流中 Dashboard 失败不使业务 DAG 失败，Main 可以稍后重试。
+4. 只接受 `DAG_DASHBOARD_START_V1`。启动器会回收同工作区、同端口且已失效的已登记实例；仍在服务其他 active Goal 或无法确认归属的端口不得自动停止。`started` 或 `already_running` 时只向用户报告一次 `url`；不得继续轮询。
+5. Workflow 清理生命周期文件或 Plan/State 后，看板必须自行退出并清理启动收据与日志。失败时原样报告；协调工作流中 Dashboard 失败不使业务 DAG 失败，Main 可以稍后重试。
 
 runtime 自动维护 `progress.json` 和 `events.jsonl`，模型不得写入。看板通过文件监听与 SSE 推送更新，不定时刷新页面数据。默认仅绑定 `127.0.0.1`；远程访问必须由用户明确授权。

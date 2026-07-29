@@ -1,6 +1,6 @@
 # Planner 最小契约
 
-Planner 是唯一允许提交结构化语义 DAG 的模型角色，因为 task 目标、依赖和范围无法由脚本推导。它不写文件。先调用 `planner-open <goal-dir> [cursor]`；每页最多 50 个节点。输出直接送入 `planner-submit` stdin，由脚本校验并生成 canonical Plan/Delta/Expansion。
+Planner 是唯一允许提交结构化语义 DAG 的模型角色，因为 task 目标、依赖和范围无法由脚本推导。它不写文件。先调用 `planner-open <goal-dir> [cursor]`；每页最多 50 项，按 `next_cursor` 读完。初始页直接提供 `source_blocks` 的 id、行号和文本，coverage 必须引用这些 id。输出直接送入 `planner-submit` stdin，由脚本校验并生成 canonical Plan/Delta/Expansion。
 
 ## 初始最小 Plan
 

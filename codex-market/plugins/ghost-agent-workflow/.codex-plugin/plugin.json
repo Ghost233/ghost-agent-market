@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.1.9+codex.20260728142936",
+  "version": "1.2.6+codex.20260729072922",
   "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。",
   "author": {
     "name": "Ghost233",

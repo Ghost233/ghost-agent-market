@@ -2,6 +2,8 @@
 
 Worker 只接收 `<workflow-dir> + <run-id>`，先调用 `worker open`。不得读取原始 Plan、State、Registry 或构造 Binding/Result。
 
+DAG Work 的工作目录由 `owner-sync` 固定为 Owner 专属 worktree。Worker 不执行 Git；`worker complete` 只写结果候选，`owner-finish` 合并并通过集成验证后 runtime 才更新 task 完成状态。集成失败时原 run 保持 running，由同一 Owner worktree 修复后重提。
+
 | 意图 | 公共命令 | stdin |
 |---|---|---|
 | 执行绑定验证 | `worker verify <dir> <run> <verification-id> <command> [arg...]` | 无 |

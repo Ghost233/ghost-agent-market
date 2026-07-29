@@ -13,19 +13,24 @@ goal-dag.mjs worker open <workflow-dir> <run-id>
 
 不得读取原始 Plan、State、Registry 或猜测 task、attempt、token、路径和字段。核对 Binding 的 task、done、dependencies 与 scope；身份不符立即停止。
 
-Work 只修改 writable scope。Review 使用干净上下文、不得读取实施聊天、不得修改文件。只运行 Binding `task.verify` 中的定向验证；机械验收由脚本完成，不属于模型 Review。
+## Worktree 边界
 
-每个绑定验证必须通过脚本实际执行一次：
+- Quick Owner 在 Quick workspace 工作。
+- DAG Owner 只能在脚本登记的专属 Owner worktree 工作；本轮正式 dispatch 前必须已经完成 `workflow owner-sync`。
+- Review 在 DAG worktree 使用干净上下文，只读，不得读取实施聊天或修改文件。
+- Worker 不运行任何 Git、worktree、commit、merge、checkout、rebase 或 branch 命令；全部由 `owner-sync/owner-finish` 处理。
+
+Work 只修改 Binding writable scope。每个绑定验证都通过脚本执行一次：
 
 ```text
 goal-dag.mjs worker verify <workflow-dir> <run-id> <verification-id> <command> [arg...]
 ```
 
-命令使用 argv，不使用 shell 字符串。一个 verification id 只保存当前一次日志；重跑会覆盖旧结果。`worker complete`、`complete-risk` 和 `request-dag` 会拒绝缺失或失败的验证，Worker 不得伪造 pass/evidence。
+命令按 argv 传入，不用 shell 字符串。验证会在当前绑定的 Owner worktree 执行；缺失或失败时完成动作被拒绝。
 
-## 动作
+## 结果动作
 
-摘要通过 stdin，控制在 100 字内：
+摘要通过 stdin，最多 100 字：
 
 ```text
 goal-dag.mjs worker complete <workflow-dir> <run-id>
@@ -34,8 +39,10 @@ goal-dag.mjs worker fail <workflow-dir> <run-id>
 goal-dag.mjs worker request-dag <workflow-dir> <run-id>
 ```
 
-`request-dag` 在 Quick 中验收安全边界并单向升级，只规划剩余工作；在 DAG 父节点中请求 Composite Planner 展开内部子图。
+`worker complete` 只生成结果候选，不表示 DAG task 完成。线程结束后，新 Main 的 `workflow start-dag` 会调用 `owner-finish`：脚本提交 Owner 修改，在临时集成 worktree 合并到最新 DAG、重跑绑定验证，再快进 DAG 并机械验收。只有该流程成功，task 才完成。
 
-Quick 的 `block/fail` 前必须恢复未验收文件修改；需要保留已完成部分时使用 `request-dag`。DAG 的固定风险与 scope 动作见 [动作表](references/templates.md)。
+若收到集成修复 dispatch，必须继续使用当前 Owner 线程和 worktree，根据脚本给出的简短失败原因修复，重新运行全部绑定验证并再次 `worker complete`。不得重新同步、丢弃提交、切换分支或自行处理 Git。
 
-命令生成 changed files、identity、结果候选和 digest。禁止调用 `result-submit`、手写 Result/JSON、保存 evidence/history 或自行启动 Review。stdout 只作机器收据；线程结束后由 Main 或 Supervisor 调用 `workflow step` 机械验收。
+`request-dag` 在 Quick 中验收安全边界后单向升级；在 DAG 父节点中请求 Composite Planner 展开内部子图。DAG 风险与 scope 固定动作见 [动作表](references/templates.md)。
+
+禁止调用 `result-submit` 或 `finish`；禁止手写 Result/JSON、保存 evidence/history 或自行启动 Review。stdout 只作机器收据。

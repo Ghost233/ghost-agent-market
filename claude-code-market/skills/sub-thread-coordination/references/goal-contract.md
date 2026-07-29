@@ -1,42 +1,48 @@
 # 运行模式
 
-两种模式共用 Owner、run-id、Binding、fence、scope、机械验收和最终 Result 内核。模式不是仓库配置：每次调用 `workflow start <workspace> <quick|dag>` 选择。用户没有明确选择时必须先询问并等待，不能默认 Quick 或 DAG。
+用户每次必须明确选择 Quick 或 DAG。两者共用 Owner、run-id、Binding、scope、脚本验证与最终 Result，不共用调度位置。
 
 Claude Code 固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接。
 
 ## Quick
 
-Quick 是显式选择的串行模式，不创建 Goal、Plan、Planner、Supervisor 或 Dashboard。
+Quick 是原地串行模式：始终使用启动时的当前工作区和当前分支，不创建或操作任何 Git 分支/worktree。它不创建 Planner、Plan、Supervisor 或 Dashboard；Main 串行 dispatch Owner，脚本机械验收后显式启动独立 Review。跨 Owner 只消费脚本 handoff，不读取前一线程聊天。
+
+## DAG handoff
 
 ```text
-workflow start ... quick
-→ workflow thread ... main ...
-→ workflow step
-→ workflow dispatch ... <owner>
-→ workflow attach ... <thread> <host>
-→ Owner Worker
-→ workflow step 机械验收
-→ 可选下一 Owner
-→ workflow review
-→ 独立 Review Worker
-→ workflow step 生成 result.json
+原始用户会话
+→ workflow start-dag 创建 DAG 分支并返回 handoff
+→ 宿主以该分支创建 DAG worktree 和新 Main
+→ 新 Main 再次 start-dag，认领分支并创建 Goal
+→ 原始会话停止
 ```
 
-跨 Owner 只读取脚本生成的当前 handoff，不读取前一线程聊天。Review 必须使用干净线程。Quick 只保留 `workflow.json`、`workflow-state.json`、Owner 当前上下文和最终 `result.json`；运行中的 baseline、Binding、candidate 与 handoff 验收或完成后删除。
+首次 `start-dag` 不创建 Goal 或状态。新 Main 认领后，Goal、Dashboard、Plan、State、Result、progress 与 events 只存在于 DAG worktree。原始工作区只保留原始分支，直到最终交付。
 
-Worker 使用 `worker request-dag` 时，脚本接受安全边界，把当前成果作为“已验收输入”，并只为剩余工作创建 DAG。该转换不可逆。
+Planner 只生成最小顶层图；初始 child 被拒绝。父节点不能直接完成时再由 Composite Planner 展开子图。Planner Reviewer 是激活前门禁；Implementation Review 是显式 DAG 节点。
 
-## DAG
+## Owner 集成
 
-DAG 用于用户明确要求的并行、DAG 或网页进度。初始 Planner 只生成顶层最小图；初始 Plan 中出现 child 会被 runtime 拒绝。父节点无法直接完成时再由 Composite Planner 展开内部子图。
+每个 Owner 在当前 Goal 内复用自己的分支、worktree 与线程：
 
-Plan draft 必须经过独立 Planner Reviewer 才能激活。Implementation Review 是显式 DAG 节点；普通完成不产生隐形 Review。风险上升时 runtime 进入明确的 Review upgrade action，只影响相关下游。
+```text
+owner-sync <goal-dir> <owner-id>
+→ Owner 在专属 worktree 实施并验证
+→ worker complete 生成候选
+→ owner-finish <goal-dir> <run-id>
+→ 临时 worktree 合并 + 重跑验证
+→ DAG 分支快进 + task 完成
+```
 
-Supervisor 最多调度八个 ready 节点；八个是上限，不是目标。Plan 激活后，`workflow step` 先要求 Main 启动并确认 Dashboard，之后才进入执行调度。
+`owner-sync` 是每轮任务的前置门禁。Owner 分支可能并行基于同一 DAG HEAD；`owner-finish` 总是在最新 DAG HEAD 上做临时集成，因此冲突或失败不会污染 DAG。失败时保留 Owner 分支、原 worktree 和 running task，清除候选，原 Owner 继续修复。
+
+下游只在前置 task 已合并 DAG 后 ready。Goal finalize 后，脚本先把 DAG 分支合并回启动时记录的原始分支，再保存最终结果和 DAG 日志，最后删除全部 Owner/DAG worktree 与分支；任一步失败都不得声称交付完成。
 
 ## 持久化
 
 - Quick：当前 workflow 状态、Owner 当前上下文、最终结果。
-- DAG：当前 Plan/State、`progress.json`、唯一历史 `events.jsonl`、最终结果。
+- DAG 运行中：DAG worktree 内的当前 Plan/State、`progress.json`、`events.jsonl`、worktree 路由和最终结果。
+- DAG 成功交付后：原始工作区 `.ghost-agent-workflow/result.json` 与 `.ghost-agent-workflow/events.jsonl`；执行状态随 DAG worktree 删除。
 
 事务恢复文件成功后立即清理。禁止 attempt、Review、evidence、recovery 和聊天 history。

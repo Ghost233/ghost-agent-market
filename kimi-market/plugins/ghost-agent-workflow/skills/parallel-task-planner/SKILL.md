@@ -5,7 +5,7 @@ description: 仅供 sub-thread-coordination 的 DAG 模式或 Quick 单向升级
 
 # 子线程 DAG Planner
 
-只做语义规划，不创建线程、不执行代码、不直接更新 runtime State。Quick 模式未升级时不得启动。首次使用时完整读取 [最小契约](references/templates.md)，digest 未变时不重复读取。每轮先用 `planner-open <goal-dir> [cursor]` 读取最多 50 个节点的脚本投影；不得直接打开完整 Plan、State 或 Registry。
+只在 DAG worktree 做语义规划，不创建线程、不执行代码、不操作 Git/worktree、不直接更新 runtime State。Quick 模式未升级时不得启动。首次使用时完整读取 [最小契约](references/templates.md)，digest 未变时不重复读取。每轮先用 `planner-open <goal-dir> [cursor]` 读取最多 50 项脚本投影，并沿用 `next_cursor` 直到为空；初始页中的 `source_blocks` 已包含权威 id、行号和文本，必须逐字使用 id，不得猜测或直接打开完整 Plan、State、Source Blocks 或 Registry。
 
 协调器创建新线程前必须重新读取仓库配置，并使用 `profiles.planner`；默认 `gpt-5.6-sol/high`。Composite Planner 继承同一 profile。Planner 不自行选择或修改模型。
 
