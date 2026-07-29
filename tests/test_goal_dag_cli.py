@@ -1127,7 +1127,7 @@ class GoalDagCliTests(unittest.TestCase):
             )
             self.assertNotEqual(invalid_key.returncode, 0)
             subprocess.run(
-                ["git", "-C", str(workspace_root), "branch", "dev/existing_key/main"],
+                ["git", "-C", str(workspace_root), "branch", "ga/existing_key/main"],
                 check=True,
             )
             existing_key = self.run_cli_from(
@@ -1138,7 +1138,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertNotEqual(existing_key.returncode, 0)
             self.assertIn("already exists", existing_key.stderr)
             subprocess.run(
-                ["git", "-C", str(workspace_root), "branch", "-D", "dev/existing_key/main"],
+                ["git", "-C", str(workspace_root), "branch", "-D", "ga/existing_key/main"],
                 check=True,
                 capture_output=True,
             )
@@ -1152,7 +1152,7 @@ class GoalDagCliTests(unittest.TestCase):
             self.assertEqual(handoff["status"], "handoff_required")
             self.assertEqual(handoff["model"], "gpt-5.6-sol")
             self.assertEqual(handoff["thinking"], "xhigh")
-            self.assertEqual(handoff["dag_branch"], "dev/next_auth_v2/main")
+            self.assertEqual(handoff["dag_branch"], "ga/next_auth_v2/main")
             self.assertEqual(handoff["target"]["environment"], "worktree")
             self.assertFalse((workspace_root / ".ghost-agent-workflow/runtime").exists())
             self.assertEqual(
@@ -1238,7 +1238,7 @@ class GoalDagCliTests(unittest.TestCase):
                 ["git", "-C", str(dag_worktree), "commit", "-q", "-m", "DAG delivery"],
                 check=True,
             )
-            owner_branch = "dev/next_auth_v2/cleanup-domain"
+            owner_branch = "ga/next_auth_v2/cleanup-domain"
             owner_worktree = workspace_root.parent / f"{workspace_root.name}-owner-cleanup"
             subprocess.run(
                 [
@@ -1247,7 +1247,7 @@ class GoalDagCliTests(unittest.TestCase):
                 ],
                 check=True,
             )
-            review_branch = "dev/next_auth_v2/review"
+            review_branch = "ga/next_auth_v2/review"
             review_worktree = workspace_root.parent / f"{workspace_root.name}-owner-review"
             subprocess.run(
                 [
@@ -1312,7 +1312,7 @@ class GoalDagCliTests(unittest.TestCase):
                 "workflow", "start-dag", dag_worktree, "wrong_key",
             )
             self.assertNotEqual(wrong_key_process.returncode, 0)
-            self.assertIn("not dev/wrong_key/main", wrong_key_process.stderr)
+            self.assertIn("not ga/wrong_key/main", wrong_key_process.stderr)
             delivered_process = self.run_cli_from(
                 dag_worktree,
                 "workflow", "start-dag", dag_worktree, development_key,
@@ -1429,7 +1429,7 @@ class GoalDagCliTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.strip()
-            dag_branch = "dev/owner_sync/main"
+            dag_branch = "ga/owner_sync/main"
             subprocess.run(
                 ["git", "-C", str(workspace_root), "checkout", "-q", "-b", dag_branch],
                 check=True,

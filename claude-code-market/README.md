@@ -27,7 +27,7 @@ Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `st
 
 短提示必须逐字使用 runtime 输出，不携带计划、DAG、Owner Capsule 或 worker prompt；下一轮从 `.ghost-agent-workflow/` 恢复当前状态。启动前必须由用户明确选择模式；Quick 不启动 Supervisor；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 最多调度 8 个 ready 线程。配置包含五组 profile，机械 gate 与定向验证由脚本执行。
 
-DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `dev/<key>/main` 和 Owner 分支 `dev/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
+DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `ga/<key>/main` 和 Owner 分支 `ga/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
 
 用户可见标题统一为 `[GA][任务][角色] <中文任务>`；新线程取得正式 threadId 后自行设置 canonical 标题。脚本 JSON 只作机器收据，主线程完成机械验收后才报告 task 最终结果。
 

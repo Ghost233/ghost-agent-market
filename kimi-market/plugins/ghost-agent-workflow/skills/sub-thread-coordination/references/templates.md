@@ -24,7 +24,7 @@ goal-dag.mjs workflow start-dag <原始工作区> <development-key>
 goal-dag.mjs workflow start-dag <当前 DAG worktree> <相同 development-key>
 ```
 
-新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `dev/<key>/main`。认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
+新 worktree 允许从目标分支创建为 detached HEAD；认领脚本负责校验并附着 `ga/<key>/main`。认领成功后，恢复或推进仍只运行同一命令；脚本会返回当前唯一动作。`main_route_required`、Dashboard、Supervisor 和 native ack 只按收据执行。
 
 Main 不调用 `wait_threads`。创建或唤醒 Supervisor 后立即结束 turn。
 

@@ -46,7 +46,7 @@ goal-dag.mjs workflow owner-sync <goal-dir> <owner-id>
 goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 ```
 
-其中 `start-dag` 的实际签名是 `start-dag <workspace> <development-key>`。Main 根据开发需求生成简短、稳定的英文 key；用户明确提供时原样使用。key 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，首次调用和移交后的 Main 必须完全一致，禁止时间戳、Goal ID 或 hash。完整分支名只由脚本生成：DAG 为 `dev/<development-key>/main`，Owner 为 `dev/<development-key>/<owner_id>`；Owner ID 只来自 Planner/runtime，Main 与 Supervisor 不拼接分支。
+其中 `start-dag` 的实际签名是 `start-dag <workspace> <development-key>`。Main 根据开发需求生成简短、稳定的英文 key；用户明确提供时原样使用。key 必须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，首次调用和移交后的 Main 必须完全一致，禁止时间戳、Goal ID 或 hash。完整分支名只由脚本生成：DAG 为 `ga/<development-key>/main`，Owner 为 `ga/<development-key>/<owner_id>`；Owner ID 只来自 Planner/runtime，Main 与 Supervisor 不拼接分支。
 
 当前用户会话把中文目标通过 stdin 交给 `workflow start-dag <原始工作区> <development-key>`。脚本要求原始工作树干净，只创建 DAG 分支并返回 `handoff_required`；收据的 dispatch 必须包含带 key 的完整命令。此时原始工作区不得出现 Goal、Dashboard 或 DAG State，也不得切换原始分支。
 
@@ -56,7 +56,7 @@ goal-dag.mjs workflow owner-finish <goal-dir> <run-id>
 2. 取得正式 threadId 后输出创建的任务链接。
 3. 当前会话立即停止；不得创建 Goal、Planner、Supervisor、Dashboard，不得等待新主控，也不得继续执行任何 DAG 工作。
 
-新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区> <相同 development-key>`。宿主创建的 worktree 可以是 detached HEAD；脚本验证 HEAD、清洁状态和分支占用后自行附着 `dev/<key>/main`，不得强制抢占。认领成功后脚本创建 Goal 和状态并返回 `ready`。从此只有新 Main 继续工作；Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
+新线程自行设置收据标题，并在自己的 worktree 中把相同中文目标通过 stdin 交给同一个 `workflow start-dag <当前工作区> <相同 development-key>`。宿主创建的 worktree 可以是 detached HEAD；脚本验证 HEAD、清洁状态和分支占用后自行附着 `ga/<key>/main`，不得强制抢占。认领成功后脚本创建 Goal 和状态并返回 `ready`。从此只有新 Main 继续工作；Goal、Dashboard、Plan、State、Result 和 DAG 日志只存在于 DAG worktree。
 
 新 Main 后续每次只调用：
 

@@ -122,8 +122,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 "下游只读取已合并到 DAG 分支的代码",
                 "原 Owner 在原 worktree 修复",
                 "Worker 不运行任何 Git",
-                "dev/<development-key>/main",
-                "dev/<development-key>/<owner_id>",
+                "ga/<development-key>/main",
+                "ga/<development-key>/<owner_id>",
                 "detached HEAD",
             ):
                 self.assertIn(required, combined)

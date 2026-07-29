@@ -14659,18 +14659,18 @@ function requireDevelopmentKey(value         )         {
 }
 
 function dagBranchName(developmentKey        )         {
-  return `dev/${developmentKey}/main`;
+  return `ga/${developmentKey}/main`;
 }
 
 function developmentKeyFromDagBranch(branch        )                {
-  const match = /^dev\/([a-z0-9][a-z0-9_-]{0,63})\/main$/u.exec(branch);
+  const match = /^ga\/([a-z0-9][a-z0-9_-]{0,63})\/main$/u.exec(branch);
   return match?.[1] ?? null;
 }
 
 function pendingDagBranches(workspace        )           {
   return gitOutput(
     workspace,
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads/dev/"],
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads/ga/"],
     "DAG branch listing",
   ).split(/\r?\n/u).filter((branch) => developmentKeyFromDagBranch(branch) !== null && branchConfig(
     workspace,
@@ -14819,7 +14819,7 @@ function ownerBranchName(dagBranch        , ownerId        )         {
   if (ownerId === "main" || ownerId.includes("..") || ownerId.endsWith(".") || ownerId.endsWith(".lock")) {
     fail(`owner id cannot form a Git branch: ${ownerId}`);
   }
-  return `dev/${developmentKey}/${ownerId}`;
+  return `ga/${developmentKey}/${ownerId}`;
 }
 
 function workflowOwnerSyncCommand(goalDirectoryArgument        , ownerIdArgument        )       {
