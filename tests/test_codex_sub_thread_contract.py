@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
+SKILLS_PLUGIN = ROOT / "codex-market/plugins/ghost-agent-skills"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
 LOCAL_DIRECT_MODEL_TEST = ROOT / ".codex/skills/git-commit-direct-model-test"
 AGENTS = ROOT / "AGENTS.md"
@@ -14,6 +15,10 @@ WORKFLOW_CONFIG_UPDATER = ROOT / "tooling/goal-dag/update-thread-workflow-config
 
 def read(relative: str) -> str:
     return (PLUGIN / relative).read_text(encoding="utf-8")
+
+
+def read_standalone(relative: str) -> str:
+    return (SKILLS_PLUGIN / relative).read_text(encoding="utf-8")
 
 
 class CodexWorkflowContractTests(unittest.TestCase):
@@ -39,10 +44,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         cls.setup = read("skills/setup-sub-thread-workflow/SKILL.md")
         cls.setup_metadata = read("skills/setup-sub-thread-workflow/agents/openai.yaml")
-        cls.git_commit = read("skills/git-commit/SKILL.md")
-        cls.git_commit_metadata = read("skills/git-commit/agents/openai.yaml")
-        cls.direct_model_test = read("skills/git-commit-direct-model-test/SKILL.md")
-        cls.direct_model_test_metadata = read(
+        cls.git_commit = read_standalone("skills/git-commit/SKILL.md")
+        cls.git_commit_metadata = read_standalone(
+            "skills/git-commit/agents/openai.yaml"
+        )
+        cls.direct_model_test = read_standalone(
+            "skills/git-commit-direct-model-test/SKILL.md"
+        )
+        cls.direct_model_test_metadata = read_standalone(
             "skills/git-commit-direct-model-test/agents/openai.yaml"
         )
 
@@ -199,8 +208,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             actual_skills,
             {
-                "git-commit",
-                "git-commit-direct-model-test",
                 "parallel-task-planner",
                 "planner-reviewer",
                 "setup-sub-thread-workflow",
@@ -209,6 +216,15 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 "sub-thread-goal-worker",
                 "sub-thread-task-supervisor",
             },
+        )
+        standalone_skills = {
+            path.name
+            for path in (SKILLS_PLUGIN / "skills").iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        }
+        self.assertEqual(
+            standalone_skills,
+            {"git-commit", "git-commit-direct-model-test"},
         )
 
     def test_git_commit_uses_simple_read_only_subagent_flow(self) -> None:
@@ -291,7 +307,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
             self.git_commit_metadata,
         )
         self.assertEqual(
-            (ROOT / "claude-code-market/skills/git-commit/SKILL.md").read_text(
+            (
+                ROOT
+                / "claude-code-market/plugins/ghost-agent-skills/skills/git-commit/SKILL.md"
+            ).read_text(
                 encoding="utf-8"
             ),
             self.git_commit,
@@ -299,14 +318,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             (
                 ROOT
-                / "kimi-market/plugins/ghost-agent-workflow/skills/git-commit/SKILL.md"
+                / "kimi-market/plugins/ghost-agent-skills/skills/git-commit/SKILL.md"
             ).read_text(encoding="utf-8"),
             self.git_commit,
         )
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.5\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.6\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
@@ -315,11 +334,43 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。",
         )
         self.assertNotIn("首次建图", prompt)
+        self.assertFalse(
+            any("$git-commit" in item for item in manifest["interface"]["defaultPrompt"])
+        )
+        standalone_manifest = json.loads(
+            read_standalone(".codex-plugin/plugin.json")
+        )
+        self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.0\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit-direct-model-test" in item
-                for item in manifest["interface"]["defaultPrompt"]
+                for item in standalone_manifest["interface"]["defaultPrompt"]
             )
+        )
+        codex_marketplace = json.loads(
+            (
+                ROOT / "codex-market/.agents/plugins/marketplace.json"
+            ).read_text(encoding="utf-8")
+        )
+        codex_entries = {
+            entry["name"]: entry for entry in codex_marketplace["plugins"]
+        }
+        self.assertEqual(
+            codex_entries["ghost-agent-skills"]["source"]["path"],
+            "./plugins/ghost-agent-skills",
+        )
+        claude_marketplace = json.loads(
+            (
+                ROOT / "claude-code-market/.claude-plugin/marketplace.json"
+            ).read_text(encoding="utf-8")
+        )
+        claude_entries = {
+            entry["name"]: entry for entry in claude_marketplace["plugins"]
+        }
+        self.assertEqual(
+            claude_entries["ghost-agent-skills"]["source"],
+            "./plugins/ghost-agent-skills",
         )
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)

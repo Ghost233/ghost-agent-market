@@ -33,10 +33,18 @@ git config user.email
 
 ## Skill 同步规则
 
-更新任意 skill 内容时，必须同时更新 Claude Code、Codex 和 Kimi Code 三端对应内容：
+更新三端共有的 skill 内容时，必须按其所属插件同步 Claude Code、Codex 和 Kimi Code 对应内容。
+
+工作流 skill：
 
 - Claude Code：`claude-code-market/skills/<skill>/`
 - Codex：`codex-market/plugins/ghost-agent-workflow/skills/<skill>/`
 - Kimi Code：`kimi-market/plugins/ghost-agent-workflow/skills/<skill>/`
 
-只有用户明确要求单端差异化实现时，才允许两端内容不同；这种差异必须在对应 skill 中写清平台原因。
+普通 skill：
+
+- Claude Code：`claude-code-market/plugins/ghost-agent-skills/skills/<skill>/`
+- Codex：`codex-market/plugins/ghost-agent-skills/skills/<skill>/`
+- Kimi Code：`kimi-market/plugins/ghost-agent-skills/skills/<skill>/`
+
+只有用户明确要求单端差异化实现时，才允许三端内容不同；这种差异必须在对应 skill 中写清平台原因。`git-commit-direct-model-test` 依赖 Codex App 的直接模型与线程工具，是已注明原因的 Codex 单端 skill。

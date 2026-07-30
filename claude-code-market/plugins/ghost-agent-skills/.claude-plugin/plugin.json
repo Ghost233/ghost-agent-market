@@ -1,0 +1,18 @@
+{
+  "name": "ghost-agent-skills",
+  "description": "与 Owner/DAG 工作流解耦的通用 Git 提交分析 skill。",
+  "version": "0.1.0",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "homepage": "https://github.com/Ghost233/ghost-agent-market",
+  "repository": "https://github.com/Ghost233/ghost-agent-market",
+  "license": "MIT",
+  "keywords": [
+    "git-commit",
+    "agent-skills",
+    "claude-code",
+    "read-only-analysis"
+  ]
+}

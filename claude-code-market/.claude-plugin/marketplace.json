@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "ghost-agent-market",
-  "description": "Ghost Agent Workflow plugins for Claude Code",
+  "description": "Ghost Agent Workflow and standalone skills for Claude Code",
   "owner": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -11,7 +11,7 @@
       "name": "ghost-agent-workflow",
       "source": "./",
       "description": "A script-driven Owner workflow that requires choosing serial Quick or a minimal DAG with up to eight persistent sub-threads.",
-      "version": "0.9.3",
+      "version": "0.9.4",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -30,6 +30,25 @@
         "workflow-setup",
         "planner-reviewer",
         "task-supervisor"
+      ]
+    },
+    {
+      "name": "ghost-agent-skills",
+      "source": "./plugins/ghost-agent-skills",
+      "description": "Standalone skills that do not depend on the Ghost Agent Owner/DAG workflow.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ghost233",
+        "email": "only.yesc@gmail.com"
+      },
+      "category": "productivity",
+      "homepage": "https://github.com/Ghost233/ghost-agent-market",
+      "license": "MIT",
+      "keywords": [
+        "git-commit",
+        "agent-skills",
+        "claude-code",
+        "read-only-analysis"
       ]
     }
   ]

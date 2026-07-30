@@ -5,6 +5,11 @@
       "id": "ghost-agent-workflow",
       "displayName": "Ghost Agent Workflow",
       "source": "./plugins/ghost-agent-workflow"
+    },
+    {
+      "id": "ghost-agent-skills",
+      "displayName": "Ghost Agent Skills",
+      "source": "./plugins/ghost-agent-skills"
     }
   ]
 }

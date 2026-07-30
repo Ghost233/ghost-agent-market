@@ -14,6 +14,11 @@ RELEASE_ZIP_URL = (
     "/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip"
 )
 PLUGIN = MARKET / "plugins/ghost-agent-workflow"
+SKILLS_PLUGIN = MARKET / "plugins/ghost-agent-skills"
+SKILLS_RELEASE_ZIP_URL = (
+    "https://github.com/Ghost233/ghost-agent-market"
+    "/releases/download/kimi-latest/ghost-agent-skills-kimi.zip"
+)
 RUNTIME = PLUGIN / "scripts/goal-dag.mjs"
 SKILLS = (
     "parallel-task-planner",
@@ -22,7 +27,6 @@ SKILLS = (
     "sub-thread-coordination",
     "sub-thread-task-supervisor",
     "sub-thread-goal-worker",
-    "git-commit",
     "start-dag-dashboard",
 )
 
@@ -40,7 +44,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
     def test_kimi_plugin_manifest_is_current(self) -> None:
         manifest = json.loads(read("kimi.plugin.json"))
         self.assertEqual(manifest["name"], "ghost-agent-workflow")
-        self.assertEqual(manifest["version"], "0.6.2")
+        self.assertEqual(manifest["version"], "0.6.3")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("最小 DAG", manifest["description"])
@@ -48,9 +52,27 @@ class KimiWorkflowContractTests(unittest.TestCase):
     def test_marketplace_manifest_points_at_existing_plugin(self) -> None:
         marketplace = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
         self.assertEqual(marketplace["version"], "2")
-        source = (MARKET / marketplace["plugins"][0]["source"]).resolve()
-        self.assertEqual(source, PLUGIN.resolve())
-        self.assertTrue((source / "kimi.plugin.json").is_file())
+        entries = {entry["id"]: entry for entry in marketplace["plugins"]}
+        self.assertEqual(set(entries), {"ghost-agent-workflow", "ghost-agent-skills"})
+        for plugin_id, expected in (
+            ("ghost-agent-workflow", PLUGIN),
+            ("ghost-agent-skills", SKILLS_PLUGIN),
+        ):
+            source = (MARKET / entries[plugin_id]["source"]).resolve()
+            self.assertEqual(source, expected.resolve())
+            self.assertTrue((source / "kimi.plugin.json").is_file())
+
+    def test_standalone_skills_plugin_is_current(self) -> None:
+        manifest = json.loads(
+            (SKILLS_PLUGIN / "kimi.plugin.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["name"], "ghost-agent-skills")
+        self.assertEqual(manifest["version"], "0.1.0")
+        self.assertEqual(manifest["skills"], "./skills/")
+        skill = (SKILLS_PLUGIN / "skills/git-commit/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertTrue(skill.startswith("---\nname: git-commit\n"))
 
     def test_skill_frontmatter_matches_directories(self) -> None:
         for name in SKILLS:
@@ -125,14 +147,17 @@ class KimiWorkflowContractTests(unittest.TestCase):
 
     def test_remote_marketplace_points_at_release_zip(self) -> None:
         marketplace = json.loads(REMOTE_MARKETPLACE.read_text(encoding="utf-8"))
-        entry = marketplace["plugins"][0]
-        self.assertEqual(entry["id"], "ghost-agent-workflow")
-        self.assertEqual(entry["source"], RELEASE_ZIP_URL)
+        entries = {entry["id"]: entry for entry in marketplace["plugins"]}
+        self.assertEqual(entries["ghost-agent-workflow"]["source"], RELEASE_ZIP_URL)
+        self.assertEqual(
+            entries["ghost-agent-skills"]["source"], SKILLS_RELEASE_ZIP_URL
+        )
 
     def test_release_workflow_builds_rolling_zip_release(self) -> None:
         text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('"kimi-market/**"', text)
         self.assertIn("ghost-agent-workflow-kimi.zip", text)
+        self.assertIn("ghost-agent-skills-kimi.zip", text)
         self.assertIn("kimi-latest", text)
         self.assertIn("contents: write", text)
         self.assertIn("sync-thread-skills.mjs", text)

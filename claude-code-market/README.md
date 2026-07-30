@@ -1,6 +1,8 @@
 # Claude Code Market
 
-这个目录提供 Claude Code 可安装插件，包含八个 skill：
+这个目录提供两个 Claude Code 可安装插件。
+
+`ghost-agent-workflow` 包含七个工作流 skill：
 
 - `parallel-task-planner`
 - `planner-reviewer`
@@ -9,6 +11,9 @@
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
 - `start-dag-dashboard`
+
+`ghost-agent-skills` 包含不依赖 Owner/DAG 的普通 skill：
+
 - `git-commit`
 
 Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `standalone_thread`。首次运行使用平台的显式 skill 调用：
@@ -51,4 +56,5 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 
 ```text
 /plugin install ghost-agent-workflow@ghost-agent-market
+/plugin install ghost-agent-skills@ghost-agent-market
 ```

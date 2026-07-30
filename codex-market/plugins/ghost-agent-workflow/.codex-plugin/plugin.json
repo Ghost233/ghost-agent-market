@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.4.5+codex.20260729174158",
+  "version": "1.4.6+codex.20260730022514",
   "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。",
   "author": {
     "name": "Ghost233",
@@ -15,7 +15,6 @@
     "task-dag",
     "dag-dashboard",
     "parallel-planning",
-    "git-commit",
     "agent-skills",
     "codex",
     "thread-coordination",
@@ -37,8 +36,6 @@
     ],
     "defaultPrompt": [
       "使用 $sub-thread-coordination 执行 `./plan.md`；如果我未指定 Quick 或 DAG，先要求我选择运行模式。",
-      "使用 $git-commit 检查当前改动，并按职责创建清晰的 Git 提交。",
-      "使用 $git-commit-direct-model-test 按固定顺序运行全部四项直接模型测试并汇总结果。",
       "使用 $start-dag-dashboard 在后台启动当前 Goal 的只读 DAG 进度网页。",
       "使用 $setup-sub-thread-workflow 初始化当前仓库的子线程模型与八路并行配置。"
     ]

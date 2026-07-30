@@ -36,9 +36,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 for path in (root / "skills").iterdir()
                 if path.is_dir() and (path / "SKILL.md").is_file()
             }
-            expected = {"git-commit", "start-dag-dashboard", *ACTIVE_DAG_SKILLS}
-            if platform == "codex":
-                expected.add("git-commit-direct-model-test")
+            expected = {"start-dag-dashboard", *ACTIVE_DAG_SKILLS}
             self.assertEqual(actual, expected, platform)
 
     def test_main_uses_one_scripted_state_machine(self) -> None:

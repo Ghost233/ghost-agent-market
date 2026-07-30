@@ -2,7 +2,7 @@
 
 这是一个 agent marketplace 工作区，包含 Claude Code / Codex / Kimi Code 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
-内置 skill：
+`ghost-agent-workflow` 内置工作流 skill：
 
 - `parallel-task-planner`
 - `planner-reviewer`
@@ -11,9 +11,12 @@
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
 - `start-dag-dashboard`
+
+`ghost-agent-skills` 内置普通 skill：
+
 - `git-commit`
 
-Codex App 专用测试 skill：
+`ghost-agent-skills` 的 Codex App 专用测试 skill：
 
 - `git-commit-direct-model-test`
 
@@ -65,13 +68,16 @@ ghost-agent-market/
 ├── claude-code-market/
 │   ├── .claude-plugin/plugin.json
 │   ├── .claude-plugin/marketplace.json
-│   └── skills/
-│       ├── parallel-task-planner/
-│       ├── planner-reviewer/
-│       ├── setup-sub-thread-workflow/
-│       ├── sub-thread-coordination/
-│       ├── sub-thread-goal-worker/
-│       └── git-commit/
+│   ├── skills/
+│   │   ├── parallel-task-planner/
+│   │   ├── planner-reviewer/
+│   │   ├── setup-sub-thread-workflow/
+│   │   ├── sub-thread-coordination/
+│   │   └── sub-thread-goal-worker/
+│   └── plugins/
+│       └── ghost-agent-skills/
+│           ├── .claude-plugin/plugin.json
+│           └── skills/git-commit/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
     └── plugins/
@@ -83,7 +89,10 @@ ghost-agent-market/
         │       ├── setup-sub-thread-workflow/
         │       ├── sub-thread-coordination/
         │       ├── sub-thread-goal-worker/
-        │       ├── start-dag-dashboard/
+        │       └── start-dag-dashboard/
+        ├── ghost-agent-skills/
+        │   ├── .codex-plugin/plugin.json
+        │   └── skills/
         │       ├── git-commit/
         │       └── git-commit-direct-model-test/
         └── rtk-hook/
@@ -99,17 +108,19 @@ ghost-agent-market/
 kimi-market/
 ├── .kimi-plugin/marketplace.json
 └── plugins/
-    └── ghost-agent-workflow/
+    ├── ghost-agent-workflow/
+    │   ├── kimi.plugin.json
+    │   ├── scripts/goal-dag.mjs
+    │   └── skills/
+    │       ├── parallel-task-planner/
+    │       ├── planner-reviewer/
+    │       ├── setup-sub-thread-workflow/
+    │       ├── sub-thread-coordination/
+    │       ├── sub-thread-goal-worker/
+    │       └── start-dag-dashboard/
+    └── ghost-agent-skills/
         ├── kimi.plugin.json
-        ├── scripts/goal-dag.mjs
-        └── skills/
-            ├── parallel-task-planner/
-            ├── planner-reviewer/
-            ├── setup-sub-thread-workflow/
-            ├── sub-thread-coordination/
-            ├── sub-thread-goal-worker/
-            ├── start-dag-dashboard/
-            └── git-commit/
+        └── skills/git-commit/
 ```
 
 ## 安装 Claude Code Market
@@ -124,6 +135,7 @@ kimi-market/
 
 ```text
 /plugin install ghost-agent-workflow@ghost-agent-market
+/plugin install ghost-agent-skills@ghost-agent-market
 ```
 
 ## 安装 Codex Marketplace
@@ -138,6 +150,7 @@ codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 
 ```bash
 codex plugin add ghost-agent-workflow@ghost-agent-market
+codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 
@@ -155,17 +168,19 @@ GitHub 一键安装（CI 从 `main` 分支构建的滚动 release zip，免克�
 
 ```text
 /plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip
+/plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-skills-kimi.zip
 ```
 
 或克隆本仓库后本地安装：
 
 ```text
 /plugins install <仓库路径>/kimi-market/plugins/ghost-agent-workflow
+/plugins install <仓库路径>/kimi-market/plugins/ghost-agent-skills
 ```
 
 也可以通过 marketplace 清单安装（远程用 `kimi-market/.kimi-plugin/marketplace-remote.json` 的 raw URL，本地用 `marketplace.json`）。注意 Kimi 不支持仓库整库 URL（含 `/tree/...`）安装 monorepo 子目录插件，必须走 release zip 或本地路径。
 
-插件为用户级安装，对所有项目生效；安装或更新后需要 `/reload` 或开启新会话。Goal DAG 相关 skill 需要用户机器安装 Node.js（`git-commit` 不依赖）。推荐入口：
+插件为用户级安装，对所有项目生效；安装或更新后需要 `/reload` 或开启新会话。只有 `ghost-agent-workflow` 的 Goal DAG skill 需要用户机器安装 Node.js。推荐入口：
 
 ```text
 /skill:sub-thread-coordination 以 Owner 工作流执行 `./plan.md`；需要时单向升级为最小 DAG。

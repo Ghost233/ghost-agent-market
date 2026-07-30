@@ -3,9 +3,10 @@
 这个目录提供 Codex 可安装的 marketplace 条目：
 
 - `ghost-agent-workflow`
+- `ghost-agent-skills`
 - `rtk-hook`
 
-`ghost-agent-workflow` 包含九个 skill：
+`ghost-agent-workflow` 包含七个工作流 skill：
 
 - `parallel-task-planner`
 - `planner-reviewer`
@@ -14,8 +15,11 @@
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
 - `start-dag-dashboard`
+
+`ghost-agent-skills` 包含两个不依赖 Owner/DAG 的 skill：
+
 - `git-commit`
-- `git-commit-direct-model-test`
+- `git-commit-direct-model-test`（Codex App 专用）
 
 ## 推荐入口
 
@@ -39,7 +43,7 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 
 初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 调用 `$start-dag-dashboard` 的后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。网页通过文件监听和 SSE 接收 runtime 数据更新。初始化脚本自动生成 `.ghost-agent-workflow/.gitignore`，只跟踪自身、配置与 Owner 数据并忽略 runtime；已有文件不覆盖。
 
-`git-commit` 固定使用 `gpt-5.6-terra/medium` 的只读子代理分析当前变更，并禁止 fork 主线程上下文，再由主线程复核并完成 Git 写入；不依赖 Goal、Owner、DAG 或子线程工作流。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+独立 `ghost-agent-skills` 插件中的 `git-commit` 固定使用 `gpt-5.6-terra/medium` 的只读子代理分析当前变更，并禁止 fork 主线程上下文，再由主线程复核并完成 Git 写入；不依赖 Goal、Owner、DAG 或子线程工作流。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 `git-commit-direct-model-test` 是 Codex App 专用的只读运行时探测：严格串行直接测试 `spawn_agent` / `create_thread` 与 Spark / Luna 的四种组合，不读取自定义 agent 定义。
 
@@ -48,6 +52,7 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 ```bash
 codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 codex plugin add ghost-agent-workflow@ghost-agent-market
+codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 

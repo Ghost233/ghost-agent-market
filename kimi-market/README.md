@@ -3,8 +3,9 @@
 这个目录提供 Kimi Code 可安装的插件：
 
 - `ghost-agent-workflow`
+- `ghost-agent-skills`
 
-`ghost-agent-workflow` 包含八个 skill：
+`ghost-agent-workflow` 包含七个工作流 skill：
 
 - `parallel-task-planner`
 - `planner-reviewer`
@@ -13,6 +14,9 @@
 - `sub-thread-goal-worker`
 - `sub-thread-task-supervisor`
 - `start-dag-dashboard`
+
+`ghost-agent-skills` 包含不依赖 Owner/DAG 的普通 skill：
+
 - `git-commit`
 
 ## 推荐入口
@@ -47,6 +51,7 @@ CI 会把 `main` 分支的 `kimi-market/` 构建成滚动 release（tag `kimi-la
 
 ```text
 /plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip
+/plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-skills-kimi.zip
 ```
 
 或者通过远程 marketplace 清单安装：
@@ -55,7 +60,7 @@ CI 会把 `main` 分支的 `kimi-market/` 构建成滚动 release（tag `kimi-la
 /plugins marketplace https://raw.githubusercontent.com/Ghost233/ghost-agent-market/main/kimi-market/.kimi-plugin/marketplace-remote.json
 ```
 
-然后在插件面板中安装 `ghost-agent-workflow`。
+然后在插件面板中按需安装 `ghost-agent-workflow` 和 `ghost-agent-skills`。
 
 注意：仓库整库 URL（含 `/tree/...`）不支持安装——Kimi 只认 zip 根部的 manifest，monorepo 子目录不会被发现，所以必须走上面的 release zip。第三方来源首次安装会弹信任确认（默认取消，需手动选择信任）。zip 安装不参与自动更新检查，重新执行同一命令即可更新到最新构建。
 
@@ -65,6 +70,7 @@ CI 会把 `main` 分支的 `kimi-market/` 构建成滚动 release（tag `kimi-la
 
 ```text
 /plugins install <仓库路径>/kimi-market/plugins/ghost-agent-workflow
+/plugins install <仓库路径>/kimi-market/plugins/ghost-agent-skills
 ```
 
 或者：
@@ -73,11 +79,11 @@ CI 会把 `main` 分支的 `kimi-market/` 构建成滚动 release（tag `kimi-la
 /plugins marketplace <仓库路径>/kimi-market/.kimi-plugin/marketplace.json
 ```
 
-然后在插件面板中安装 `ghost-agent-workflow`。
+然后在插件面板中按需安装 `ghost-agent-workflow` 和 `ghost-agent-skills`。
 
 通用注意事项：
 
 - 插件安装在用户级 `$KIMI_CODE_HOME/plugins/managed/<id>/`，对全部项目生效。
 - 安装或更新后需要 `/reload` 或开启新会话才会生效。
 - 本地安装会把插件复制到 managed 目录；修改源目录后需要重新安装才能同步改动。
-- Goal DAG 相关 skill 通过 `node` 执行 runtime 脚本，需要用户机器安装 Node.js；`git-commit` 不依赖 Node。
+- 只有 `ghost-agent-workflow` 的 Goal DAG skill 通过 `node` 执行 runtime 脚本，需要用户机器安装 Node.js；`ghost-agent-skills` 不依赖 Node。
