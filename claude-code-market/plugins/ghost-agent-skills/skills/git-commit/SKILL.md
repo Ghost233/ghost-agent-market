@@ -1,37 +1,39 @@
 ---
 name: git-commit
-description: 分析当前仓库的 staged、unstaged、untracked 和 submodule 变更，创建规范的中文 Git 提交。用户明确要求"提交代码""提交当前改动"、$git-commit 或 "commit these changes" 时使用；不用于只讨论 Git、解释提交或仅请求 push。
+description: Use when 用户明确要求“提交代码”“提交当前改动”、`$git-commit` 或 “commit these changes”；不用于只讨论 Git、解释提交或仅请求 push。
 ---
 
 # Git 智能提交
 
-提交用户已授权的现有改动。不创建 worktree，不切换分支，不 push，不改写历史。
+在当前 checkout 提交用户已授权的改动；不创建 worktree、不切分支、不 push、不改写历史。
 
 ## 主线程
 
-主线程只做调度：不运行 Git 命令，不读 diff。
+主线程只调度，整个 git-commit 流程必须在一个子代理中运行。
 
-1. 创建一个 ROLE=executor 执行子代理，只传 SKILL.md 路径、scripts/git_commit.py 路径、起始目录、授权范围。Codex: spawn_agent task_name="git_commit_executor" model="gpt-5.6-terra" reasoning_effort="medium" fork_turns: "none"。平台不支持子代理时停止。
-2. 一次长 wait_agent 等待返回，不轮询。不得重复检查仓库、复核 diff。
-3. 转发子代理的阻塞原因或最终汇总。
+1. 创建一个 ROLE=executor 子代理，只传 SKILL.md 路径、scripts/git_commit.py 路径、起始目录和授权范围。Codex 使用 spawn_agent：task_name="git_commit_executor"、model="gpt-5.6-terra"、reasoning_effort="medium"、fork_turns: "none"。
+2. 主线程不运行 Git 命令，不读 diff，不规划或执行提交。平台不能创建上述子代理时停止，不得在主线程降级。
+3. 一次长等待 executor；只转发其阻塞原因或最终结果。
 
-## 执行子代理
+## Executor
 
-所有 Git 写操作只通过 git_commit.py apply，不得直接运行 git add 或 git commit。
+executor 不得创建任何代理；所有 Git 写操作只通过 `python3 <script> apply`。
 
-1. 读本 SKILL.md + AGENTS.md。不读 references/reviewer.md。
-2. 运行 git_commit.py inspect，获取 JSON。has_changes=false 时结束。identity_ok=false 时停止报告。
-3. 根据 numstat 和文件状态确定批次边界，为每批写中文 Conventional Commit。保留已有 staged 内容，排除不属于授权范围的文件并在回报中列明。
-4. dirty_submodules 非空时：停止并报告，要求先单独提交 submodule。
-5. review_recommended=true 或用户明确要求时，创建只读审查子代理（fork_turns: "none"，传 SKILL.md 路径、references/reviewer.md 路径、inspect JSON、仓库根目录、授权范围；审查规则见 references/reviewer.md）。返回 block 时停止。
-6. 构造 plan JSON（fingerprint、head、batches[{paths,message}]），写入临时文件。
-7. 运行 git_commit.py apply <plan.json>。
-8. 检查返回 JSON：ok=true 时汇总；partial/ok=false 时如实报告，不重试不回滚。
+1. 完整读取本文件和适用的 AGENTS.md。
+2. 运行 `python3 <script> inspect --diff --repo <start-directory>`。无改动时结束；identity 不匹配、dirty_submodules 非空、授权范围不明或敏感文件未经确认时停止。
+3. 审查完整 diff，排除未授权文件，按职责生成中文 Conventional Commit 批次。
+4. 写入临时 plan JSON：
 
-## 通用规则
+```json
+{"head":"<inspect.head>","fingerprint":"<inspect.fingerprint>","batches":[{"paths":["file"],"message":"fix(scope): 中文说明"}]}
+```
 
-- 中文 Conventional Commit：<type>(<scope>): <描述>
-- 每笔提交保留 Co-Authored-By: Nexus <nexus@xfinite.global>
-- 不使用 --no-verify。hook 失败时保留现场报告，不回滚。
-- 平台如有命令前缀 hook（如 rtk），从第一条命令开始使用。
-- 不使用 && ; | 拼接命令。
+5. 运行 `python3 <script> apply --repo <repo-root> <plan.json>`，读取一次 JSON 结果；失败或部分完成时不重试、不回滚。
+6. 返回每笔提交的 cwd/hash/message/paths、检查结果、剩余及排除文件。
+
+## 硬规则
+
+- 不直接运行 git add 或 git commit；不使用 --no-verify。
+- 每笔提交保留 `Co-Authored-By: Nexus <nexus@xfinite.global>`。
+- hook 或脚本失败时保留现场并如实报告；不得 amend、push 或自动清理用户改动。
+- 平台要求命令前缀时保留 `python3` 调用语义并按平台规则执行。

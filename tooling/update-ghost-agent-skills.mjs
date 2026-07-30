@@ -39,17 +39,22 @@ function bumpBase(version) {
   return parts.join(".");
 }
 
+function skillKeywords(keywords) {
+  return [...new Set([
+    ...keywords.filter((keyword) => keyword !== "conditional-review"),
+    "deterministic-script",
+    "single-executor",
+    "explicit-paths",
+    "content-fingerprint",
+  ])];
+}
+
 const codexManifestPath = "codex-market/plugins/ghost-agent-skills/.codex-plugin/plugin.json";
 const codexManifest = readJson(codexManifestPath);
 const codexBase = bumpRequested ? bumpBase(codexManifest.version) : baseVersion(codexManifest.version);
 codexManifest.version = codexBase + "+codex." + timestamp;
 codexManifest.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
-codexManifest.keywords = [...new Set([
-  ...codexManifest.keywords,
-  "deterministic-script",
-  "single-executor",
-  "conditional-review",
-])];
+codexManifest.keywords = skillKeywords(codexManifest.keywords);
 codexManifest.interface.shortDescription = "检查当前改动并创建规范的中文 Git 提交。";
 codexManifest.interface.longDescription = "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。";
 writeJson(codexManifestPath, codexManifest);
@@ -58,24 +63,14 @@ const claudePluginPath = "claude-code-market/plugins/ghost-agent-skills/.claude-
 const claudePlugin = readJson(claudePluginPath);
 claudePlugin.version = bumpRequested ? bumpBase(claudePlugin.version) : baseVersion(claudePlugin.version);
 claudePlugin.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
-claudePlugin.keywords = [...new Set([
-  ...claudePlugin.keywords,
-  "deterministic-script",
-  "single-executor",
-  "conditional-review",
-])];
+claudePlugin.keywords = skillKeywords(claudePlugin.keywords);
 writeJson(claudePluginPath, claudePlugin);
 
 const kimiManifestPath = "kimi-market/plugins/ghost-agent-skills/kimi.plugin.json";
 const kimiManifest = readJson(kimiManifestPath);
 kimiManifest.version = bumpRequested ? bumpBase(kimiManifest.version) : baseVersion(kimiManifest.version);
 kimiManifest.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
-kimiManifest.keywords = [...new Set([
-  ...kimiManifest.keywords,
-  "deterministic-script",
-  "single-executor",
-  "conditional-review",
-])];
+kimiManifest.keywords = skillKeywords(kimiManifest.keywords);
 kimiManifest.interface.shortDescription = "检查当前改动并创建规范的中文 Git 提交。";
 kimiManifest.interface.longDescription = "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。";
 writeJson(kimiManifestPath, kimiManifest);

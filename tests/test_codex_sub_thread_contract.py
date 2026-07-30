@@ -216,21 +216,20 @@ class CodexWorkflowContractTests(unittest.TestCase):
         }
         self.assertEqual(standalone_skills, {"git-commit"})
 
-    def test_git_commit_uses_script_driven_executor_flow(self) -> None:
+    def test_git_commit_uses_single_executor_python3_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
         for requirement in (
             "ROLE=executor",
             "gpt-5.6-terra",
-            "git_commit.py inspect",
-            "git_commit.py apply",
-            "review_recommended",
+            "python3 <script> inspect --diff",
+            "python3 <script> apply",
             'task_name="git_commit_executor"',
             'fork_turns: "none"',
             "只传 SKILL.md 路径",
-            "不得重复检查仓库、复核 diff",
-            "所有 Git 写操作只通过 git_commit.py apply",
+            "主线程不运行 Git 命令",
+            "executor 不得创建任何代理",
+            "所有 Git 写操作只通过 `python3 <script> apply`",
             "Co-Authored-By: Nexus <nexus@xfinite.global>",
-            "references/reviewer.md",
         ):
             self.assertIn(requirement, combined)
         for removed_constraint in (
@@ -244,6 +243,8 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "multi_agent_v1",
             "delivery-validate",
             "ROLE=reviewer",
+            "review_recommended",
+            "references/reviewer.md",
             "Promise.all",
         ):
             self.assertNotIn(removed_constraint, combined)
@@ -277,10 +278,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             ).read_text(encoding="utf-8"),
             self.git_commit,
         )
-        for rel_path in (
-            "scripts/git_commit.py",
-            "references/reviewer.md",
-        ):
+        for rel_path in ("scripts/git_commit.py",):
             source_content = (
                 SKILLS_PLUGIN / "skills/git-commit" / rel_path
             ).read_text(encoding="utf-8")
@@ -304,6 +302,30 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 ).read_text(encoding="utf-8"),
                 source_content,
             )
+        for skill_root in (
+            LOCAL_GIT_COMMIT,
+            SKILLS_PLUGIN / "skills/git-commit",
+            ROOT
+            / "claude-code-market/plugins/ghost-agent-skills/skills/git-commit",
+            ROOT / "kimi-market/plugins/ghost-agent-skills/skills/git-commit",
+        ):
+            self.assertFalse((skill_root / "references/reviewer.md").exists())
+
+    def test_git_commit_plugin_versions_and_keywords_are_current(self) -> None:
+        manifests = (
+            ROOT
+            / "codex-market/plugins/ghost-agent-skills/.codex-plugin/plugin.json",
+            ROOT
+            / "claude-code-market/plugins/ghost-agent-skills/.claude-plugin/plugin.json",
+            ROOT / "kimi-market/plugins/ghost-agent-skills/kimi.plugin.json",
+        )
+        for path in manifests:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.3")
+            self.assertIn("single-executor", manifest["keywords"])
+            self.assertIn("explicit-paths", manifest["keywords"])
+            self.assertIn("content-fingerprint", manifest["keywords"])
+            self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
@@ -323,7 +345,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.2\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.3\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
