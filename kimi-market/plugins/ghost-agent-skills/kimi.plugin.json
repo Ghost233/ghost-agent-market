@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.0",
-  "description": "与 Owner/DAG 工作流解耦的通用 Git 提交分析 skill。",
+  "version": "0.1.1",
+  "description": "与 Owner/DAG 工作流解耦的嵌套审查 Git 提交 skill。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "独立的 Git 提交分析 skill。",
-    "longDescription": "提供不依赖 Owner、Goal 或 DAG 的 Git 提交分析与提交流程。",
+    "shortDescription": "独立的嵌套审查 Git 提交 skill。",
+    "longDescription": "提供不依赖 Owner、Goal 或 DAG 的执行子代理提交与嵌套只读审查流程。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

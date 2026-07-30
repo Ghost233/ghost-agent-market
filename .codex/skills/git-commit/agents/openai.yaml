@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "只读子代理分析变更，主线程复核并创建中文提交"
-  default_prompt: "使用 $git-commit，以 gpt-5.6-terra/medium 且不 fork 主线程上下文的只读子代理分析变更，再由主线程复核并提交。"
+  short_description: "Terra 执行子代理提交，嵌套只读子代理独立审查"
+  default_prompt: "使用 $git-commit，由 gpt-5.6-terra/medium 执行子代理完成提交，并由其嵌套只读审查子代理复核。"

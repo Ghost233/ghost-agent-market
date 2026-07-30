@@ -227,17 +227,26 @@ class CodexWorkflowContractTests(unittest.TestCase):
             {"git-commit", "git-commit-direct-model-test"},
         )
 
-    def test_git_commit_uses_simple_read_only_subagent_flow(self) -> None:
+    def test_git_commit_uses_nested_executor_reviewer_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
         for requirement in (
-            "只读分析子代理",
+            "ROLE=dispatcher",
+            "ROLE=executor",
+            "ROLE=reviewer",
             "gpt-5.6-terra",
             "思考强度固定为 `medium`",
             'fork_turns: "none"',
             "fork_context",
+            'task_name: "git_commit_executor"',
+            'task_name: "git_commit_reviewer"',
+            "followup_task",
             "不复制主线程聊天历史",
-            "子代理不得修改文件、暂存、提交、push",
-            "主线程负责复核分析",
+            "主线程不得重复检查仓库",
+            "执行全部暂存、提交和最终核验",
+            "不得创建任何代理",
+            "默认最多使用 6 个工具回合",
+            "Promise.all",
+            "优先复用原 executor 和 reviewer",
             "git diff --cached --check",
             "git add -- <paths>",
             "Co-Authored-By: Nexus <nexus@xfinite.global>",
@@ -341,7 +350,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.0\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.1\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit-direct-model-test" in item

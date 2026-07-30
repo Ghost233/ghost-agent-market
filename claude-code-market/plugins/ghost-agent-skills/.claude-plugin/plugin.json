@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "与 Owner/DAG 工作流解耦的通用 Git 提交分析 skill。",
-  "version": "0.1.0",
+  "description": "与 Owner/DAG 工作流解耦的嵌套审查 Git 提交 skill。",
+  "version": "0.1.1",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

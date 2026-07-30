@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.0+codex.20260730022514",
-  "description": "与 Owner/DAG 工作流解耦的通用 Git 提交分析 skill，以及 Codex App 专用的直接模型矩阵测试。",
+  "version": "0.1.1+codex.20260730110538",
+  "description": "与 Owner/DAG 工作流解耦的嵌套审查 Git 提交 skill，以及 Codex App 专用的直接模型矩阵测试。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "独立的 Git 提交分析与 Codex 运行时测试 skill。",
-    "longDescription": "提供不依赖 Owner、Goal 或 DAG 的 Git 提交工作流；Codex App 额外提供直接模型调用矩阵测试。",
+    "shortDescription": "独立的嵌套审查 Git 提交与 Codex 运行时测试 skill。",
+    "longDescription": "提供不依赖 Owner、Goal 或 DAG 的执行子代理提交与嵌套只读审查工作流；Codex App 额外提供直接模型调用矩阵测试。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
