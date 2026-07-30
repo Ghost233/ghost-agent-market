@@ -143,7 +143,7 @@ kimi-market/
 把远程 marketplace 添加到 Codex：
 
 ```bash
-codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
+codex plugin marketplace add Ghost233/ghost-agent-market
 ```
 
 安装插件：

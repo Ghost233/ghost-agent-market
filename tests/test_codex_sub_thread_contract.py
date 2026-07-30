@@ -360,6 +360,16 @@ class CodexWorkflowContractTests(unittest.TestCase):
             codex_entries["ghost-agent-skills"]["source"]["path"],
             "./plugins/ghost-agent-skills",
         )
+        root_marketplace = json.loads(
+            (ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
+        )
+        root_entries = {
+            entry["name"]: entry for entry in root_marketplace["plugins"]
+        }
+        self.assertEqual(
+            root_entries["ghost-agent-skills"]["source"]["path"],
+            "./codex-market/plugins/ghost-agent-skills",
+        )
         claude_marketplace = json.loads(
             (
                 ROOT / "claude-code-market/.claude-plugin/marketplace.json"
