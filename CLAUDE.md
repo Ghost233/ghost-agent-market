@@ -41,4 +41,4 @@ git config user.email only.yesc@gmail.com
 - Codex：`codex-market/plugins/ghost-agent-skills/skills/<skill>/`
 - Kimi Code：`kimi-market/plugins/ghost-agent-skills/skills/<skill>/`
 
-只有用户明确要求单端差异化实现时，才允许三端内容不同；这种差异必须在对应 skill 中写清平台原因。`git-commit-direct-model-test` 依赖 Codex App 的直接模型与线程工具，是已注明原因的 Codex 单端 skill。
+只有用户明确要求单端差异化实现时，才允许三端内容不同；这种差异必须在对应 skill 中写清平台原因。

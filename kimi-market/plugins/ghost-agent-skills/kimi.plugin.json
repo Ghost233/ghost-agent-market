@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.1",
-  "description": "与 Owner/DAG 工作流解耦的嵌套审查 Git 提交 skill。",
+  "version": "0.1.2",
+  "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -14,13 +14,16 @@
     "agent-skills",
     "kimi",
     "kimi-code",
-    "read-only-analysis"
+    "read-only-analysis",
+    "deterministic-script",
+    "single-executor",
+    "conditional-review"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "独立的嵌套审查 Git 提交 skill。",
-    "longDescription": "提供不依赖 Owner、Goal 或 DAG 的执行子代理提交与嵌套只读审查流程。",
+    "shortDescription": "检查当前改动并创建规范的中文 Git 提交。",
+    "longDescription": "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

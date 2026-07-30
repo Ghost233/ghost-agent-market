@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 SKILLS_PLUGIN = ROOT / "codex-market/plugins/ghost-agent-skills"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
-LOCAL_DIRECT_MODEL_TEST = ROOT / ".codex/skills/git-commit-direct-model-test"
 AGENTS = ROOT / "AGENTS.md"
 WORKFLOW_CONFIG_UPDATER = ROOT / "tooling/goal-dag/update-thread-workflow-configs.mjs"
 
@@ -48,13 +47,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
         cls.git_commit_metadata = read_standalone(
             "skills/git-commit/agents/openai.yaml"
         )
-        cls.direct_model_test = read_standalone(
-            "skills/git-commit-direct-model-test/SKILL.md"
-        )
-        cls.direct_model_test_metadata = read_standalone(
-            "skills/git-commit-direct-model-test/agents/openai.yaml"
-        )
-
     def test_codex_workflow_uses_quick_owner_and_dag_supervisor(self) -> None:
         combined = (
             f"{self.coordinator}\n{self.coordinator_metadata}\n"
@@ -222,34 +214,23 @@ class CodexWorkflowContractTests(unittest.TestCase):
             for path in (SKILLS_PLUGIN / "skills").iterdir()
             if path.is_dir() and (path / "SKILL.md").is_file()
         }
-        self.assertEqual(
-            standalone_skills,
-            {"git-commit", "git-commit-direct-model-test"},
-        )
+        self.assertEqual(standalone_skills, {"git-commit"})
 
-    def test_git_commit_uses_nested_executor_reviewer_flow(self) -> None:
+    def test_git_commit_uses_script_driven_executor_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
         for requirement in (
-            "ROLE=dispatcher",
             "ROLE=executor",
-            "ROLE=reviewer",
             "gpt-5.6-terra",
-            "思考强度固定为 `medium`",
+            "git_commit.py inspect",
+            "git_commit.py apply",
+            "review_recommended",
+            'task_name="git_commit_executor"',
             'fork_turns: "none"',
-            "fork_context",
-            'task_name: "git_commit_executor"',
-            'task_name: "git_commit_reviewer"',
-            "followup_task",
-            "不复制主线程聊天历史",
-            "主线程不得重复检查仓库",
-            "执行全部暂存、提交和最终核验",
-            "不得创建任何代理",
-            "默认最多使用 6 个工具回合",
-            "Promise.all",
-            "优先复用原 executor 和 reviewer",
-            "git diff --cached --check",
-            "git add -- <paths>",
+            "只传 SKILL.md 路径",
+            "不得重复检查仓库、复核 diff",
+            "所有 Git 写操作只通过 git_commit.py apply",
             "Co-Authored-By: Nexus <nexus@xfinite.global>",
+            "references/reviewer.md",
         ):
             self.assertIn(requirement, combined)
         for removed_constraint in (
@@ -262,49 +243,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "GIT_COMMIT_ANALYSIS_V1",
             "multi_agent_v1",
             "delivery-validate",
+            "ROLE=reviewer",
+            "Promise.all",
         ):
             self.assertNotIn(removed_constraint, combined)
 
     def test_git_commit_has_no_dedicated_agent_config(self) -> None:
         matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
         self.assertEqual(matching_configs, [])
-
-    def test_direct_model_test_uses_fixed_serial_matrix_without_custom_agents(self) -> None:
-        skill = self.direct_model_test
-        expected_order = (
-            '1. `spawn_agent` + `gpt-5.3-codex-spark`',
-            '2. `create_thread` + `gpt-5.3-codex-spark`',
-            '3. `spawn_agent` + `gpt-5.6-luna`',
-            '4. `create_thread` + `gpt-5.6-luna`',
-        )
-        positions = [skill.index(item) for item in expected_order]
-        self.assertEqual(positions, sorted(positions))
-        for invariant in (
-            'agent_type: "default"',
-            'fork_turns: "none"',
-            "不得读取 agent 配置",
-            "必须进行一次真实 `spawn_agent` 调用",
-            "任何单项失败都必须记录并继续后续 case",
-            "DIRECT_MODEL_TEST_V1",
-            "wait_agent",
-            "wait_threads",
-            "不自动归档",
-        ):
-            self.assertIn(invariant, skill)
-        self.assertNotIn("git_commit_worker", skill)
-        self.assertIn("$git-commit-direct-model-test", self.direct_model_test_metadata)
-
-    def test_project_direct_model_test_copy_matches_marketplace_source(self) -> None:
-        self.assertEqual(
-            (LOCAL_DIRECT_MODEL_TEST / "SKILL.md").read_text(encoding="utf-8"),
-            self.direct_model_test,
-        )
-        self.assertEqual(
-            (LOCAL_DIRECT_MODEL_TEST / "agents/openai.yaml").read_text(
-                encoding="utf-8"
-            ),
-            self.direct_model_test_metadata,
-        )
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -331,10 +277,37 @@ class CodexWorkflowContractTests(unittest.TestCase):
             ).read_text(encoding="utf-8"),
             self.git_commit,
         )
+        for rel_path in (
+            "scripts/git_commit.py",
+            "references/reviewer.md",
+        ):
+            source_content = (
+                SKILLS_PLUGIN / "skills/git-commit" / rel_path
+            ).read_text(encoding="utf-8")
+            self.assertEqual(
+                (LOCAL_GIT_COMMIT / rel_path).read_text(encoding="utf-8"),
+                source_content,
+            )
+            self.assertEqual(
+                (
+                    ROOT
+                    / "claude-code-market/plugins/ghost-agent-skills/skills/git-commit"
+                    / rel_path
+                ).read_text(encoding="utf-8"),
+                source_content,
+            )
+            self.assertEqual(
+                (
+                    ROOT
+                    / "kimi-market/plugins/ghost-agent-skills/skills/git-commit"
+                    / rel_path
+                ).read_text(encoding="utf-8"),
+                source_content,
+            )
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.6\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.7\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
@@ -350,10 +323,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.1\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.2\+codex\.")
         self.assertTrue(
             any(
-                "$git-commit-direct-model-test" in item
+                "$git-commit" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )

@@ -2,7 +2,7 @@
 
 包含七个工作流 skill：`sub-thread-coordination`、`parallel-task-planner`、`planner-reviewer`、`sub-thread-goal-worker`、`sub-thread-task-supervisor`、`setup-sub-thread-workflow` 和 `start-dag-dashboard`。
 
-通用 `git-commit` 与 Codex App 专用的 `git-commit-direct-model-test` 已迁移到独立的 `ghost-agent-skills` 插件。
+通用 `git-commit` 已迁移到独立的 `ghost-agent-skills` 插件。
 
 Codex 推荐入口只有这一行：
 

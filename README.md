@@ -16,10 +16,6 @@
 
 - `git-commit`
 
-`ghost-agent-skills` 的 Codex App 专用测试 skill：
-
-- `git-commit-direct-model-test`
-
 ## Goal DAG 入口
 
 Codex 默认不需要原生 `/goal`，直接输入：
@@ -93,8 +89,7 @@ ghost-agent-market/
         ├── ghost-agent-skills/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
-        │       ├── git-commit/
-        │       └── git-commit-direct-model-test/
+        │       └── git-commit/
         └── rtk-hook/
             ├── .codex-plugin/plugin.json
             ├── hooks/

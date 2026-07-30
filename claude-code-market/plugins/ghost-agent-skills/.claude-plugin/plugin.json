@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "与 Owner/DAG 工作流解耦的嵌套审查 Git 提交 skill。",
-  "version": "0.1.1",
+  "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
+  "version": "0.1.2",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -13,6 +13,9 @@
     "git-commit",
     "agent-skills",
     "claude-code",
-    "read-only-analysis"
+    "read-only-analysis",
+    "deterministic-script",
+    "single-executor",
+    "conditional-review"
   ]
 }
