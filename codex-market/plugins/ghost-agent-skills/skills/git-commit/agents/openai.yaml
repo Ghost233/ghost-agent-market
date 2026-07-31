@@ -1,7 +1,7 @@
 interface:
   display_name: "Git 智能提交"
-  short_description: "检查当前改动并创建规范的中文 Git 提交"
-  default_prompt: "使用 $git-commit 检查当前改动，按职责创建规范的中文 Git 提交。"
+  short_description: "递归提交仓库及子模块并记录最新指针"
+  default_prompt: "使用 $git-commit 递归检查当前仓库及已授权子模块，从最深层开始创建规范的中文 Git 提交并记录最新 gitlink。"
 
 policy:
   allow_implicit_invocation: false

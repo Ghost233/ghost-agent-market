@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
-  "version": "0.1.3",
+  "description": "递归检查当前仓库及子模块改动并创建规范的中文 Git 提交。",
+  "version": "0.1.5",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -17,6 +17,8 @@
     "deterministic-script",
     "single-executor",
     "explicit-paths",
-    "content-fingerprint"
+    "content-fingerprint",
+    "recursive-submodules",
+    "gitlink-updates"
   ]
 }

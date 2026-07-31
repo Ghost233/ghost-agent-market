@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.3",
-  "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
+  "version": "0.1.5",
+  "description": "递归检查当前仓库及子模块改动并创建规范的中文 Git 提交。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -18,13 +18,15 @@
     "deterministic-script",
     "single-executor",
     "explicit-paths",
-    "content-fingerprint"
+    "content-fingerprint",
+    "recursive-submodules",
+    "gitlink-updates"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "检查当前改动并创建规范的中文 Git 提交。",
-    "longDescription": "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。",
+    "shortDescription": "递归检查仓库及子模块并创建规范的中文 Git 提交。",
+    "longDescription": "从最深层 submodule 开始提交已授权改动，逐层记录 clean gitlink，并按职责创建规范的中文 Git 提交。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

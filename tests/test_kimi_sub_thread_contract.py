@@ -67,7 +67,7 @@ class KimiWorkflowContractTests(unittest.TestCase):
             (SKILLS_PLUGIN / "kimi.plugin.json").read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["name"], "ghost-agent-skills")
-        self.assertEqual(manifest["version"], "0.1.3")
+        self.assertEqual(manifest["version"], "0.1.5")
         self.assertEqual(manifest["skills"], "./skills/")
         skill = (SKILLS_PLUGIN / "skills/git-commit/SKILL.md").read_text(
             encoding="utf-8"

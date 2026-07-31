@@ -229,6 +229,13 @@ class CodexWorkflowContractTests(unittest.TestCase):
             "主线程不运行 Git 命令",
             "executor 不得创建任何代理",
             "所有 Git 写操作只通过 `python3 <script> apply`",
+            "blocking_submodules",
+            "gitlink_updates",
+            "has_changes=false",
+            "始终先提交最深层仓库",
+            "staged-pointer-not-checked-out",
+            "sandbox_permissions=require_escalated",
+            "`git_dir`/`git_common_dir`",
             "Co-Authored-By: Nexus <nexus@xfinite.global>",
         ):
             self.assertIn(requirement, combined)
@@ -321,10 +328,12 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.3")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.5")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
+            self.assertIn("recursive-submodules", manifest["keywords"])
+            self.assertIn("gitlink-updates", manifest["keywords"])
             self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
@@ -345,7 +354,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.3\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.5\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item

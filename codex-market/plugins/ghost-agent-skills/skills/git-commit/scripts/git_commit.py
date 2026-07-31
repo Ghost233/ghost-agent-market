@@ -69,6 +69,21 @@ def head(repo):
     return text(repo, "rev-parse", "--verify", "HEAD").strip()
 
 
+def git_metadata(repo):
+    git_dir = Path(
+        text(repo, "rev-parse", "--absolute-git-dir").strip()
+    ).resolve()
+    common_dir = Path(text(repo, "rev-parse", "--git-common-dir").strip())
+    if not common_dir.is_absolute():
+        common_dir = repo / common_dir
+    common_dir = common_dir.resolve()
+    return {
+        "git_dir": str(git_dir),
+        "git_common_dir": str(common_dir),
+        "linked_worktree": git_dir != common_dir,
+    }
+
+
 def find_agents(repo):
     while True:
         candidate = repo / "AGENTS.md"
@@ -119,8 +134,19 @@ def status(repo):
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
+        "--ignore-submodules=none",
         "--no-renames",
     )
+
+
+def status_summary(repo):
+    return text(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    ).strip()
 
 
 def collect_changes(repo):
@@ -269,6 +295,13 @@ def risks(repo, changes):
 
 
 def submodule_changes(repo, changes):
+    recorded = {}
+    for record in raw(repo, "ls-tree", "-r", "-z", "HEAD").split(b"\0"):
+        header, separator, path = record.partition(b"\t")
+        fields = header.split()
+        if separator and len(fields) == 3 and fields[0] == b"160000":
+            recorded[os.fsdecode(path)] = fields[2].decode()
+
     links = {}
     for record in raw(repo, "ls-files", "--stage", "-z").split(b"\0"):
         header, separator, path = record.partition(b"\t")
@@ -288,9 +321,14 @@ def submodule_changes(repo, changes):
     result = []
     for path, item in sorted(links.items()):
         nested = repo / path
-        initialized = nested.is_dir() and (nested / ".git").exists() and (
-            text(nested, "rev-parse", "--is-inside-work-tree", check=False).strip()
-            == "true"
+        nested_root = (
+            text(nested, "rev-parse", "--show-toplevel", check=False).strip()
+            if nested.is_dir()
+            else ""
+        )
+        initialized = bool(
+            nested_root
+            and Path(nested_root).resolve() == nested.resolve()
         )
         actual = (
             text(nested, "rev-parse", "HEAD", check=False).strip() if initialized else ""
@@ -302,16 +340,50 @@ def submodule_changes(repo, changes):
                 "--porcelain=v1",
                 "-z",
                 "--untracked-files=all",
+                "--ignore-submodules=none",
                 check=False,
             )
         )
+        recorded_head = recorded.get(path)
         pointer_dirty = bool(actual and actual != item["index_head"])
-        if path in changed or not initialized or nested_dirty or pointer_dirty or item["merge_conflict"]:
+        pointer_update = bool(actual and actual != recorded_head)
+        staged_pointer = bool(
+            recorded_head and item["index_head"] != recorded_head
+        )
+        blocking_reasons = []
+        if item["merge_conflict"]:
+            blocking_reasons.append("merge-conflict")
+        if path in changed and not initialized:
+            blocking_reasons.append("uninitialized-changed")
+        if nested_dirty:
+            blocking_reasons.append("worktree-dirty")
+        if (
+            initialized
+            and staged_pointer
+            and actual == recorded_head
+            and item["index_head"] != actual
+        ):
+            blocking_reasons.append("staged-pointer-not-checked-out")
+        if (
+            path in changed
+            or nested_dirty
+            or pointer_dirty
+            or pointer_update
+            or staged_pointer
+            or item["merge_conflict"]
+        ):
             result.append(
                 {
                     **item,
+                    "recorded_head": recorded_head,
                     "head": actual or None,
-                    "dirty": nested_dirty or pointer_dirty,
+                    "worktree_dirty": nested_dirty,
+                    "pointer_dirty": pointer_dirty,
+                    "pointer_update": pointer_update,
+                    "staged_pointer": staged_pointer,
+                    "blocking": bool(blocking_reasons),
+                    "blocking_reasons": blocking_reasons,
+                    "dirty": bool(blocking_reasons),
                     "uninitialized": not initialized,
                 }
             )
@@ -361,12 +433,23 @@ def inspect(repo, include_diff=False):
     identity_ok, required = identity(repo)
     stats, sensitive, large, binary, reasons = risks(repo, changes)
     submodules = submodule_changes(repo, changes)
+    blocking_submodules = [item for item in submodules if item["blocking"]]
+    gitlink_updates = [
+        item
+        for item in submodules
+        if not item["blocking"] and item["pointer_update"]
+    ]
     if submodules:
         reasons.append("submodule-changes")
+    if blocking_submodules:
+        reasons.append("blocking-submodules")
+    if gitlink_updates:
+        reasons.append("gitlink-updates")
     payload = {
         "ok": True,
         "command": "inspect",
         "repo_root": str(repo),
+        **git_metadata(repo),
         "head": head(repo),
         "fingerprint": fingerprint(repo, changes),
         "identity_ok": identity_ok,
@@ -377,7 +460,10 @@ def inspect(repo, include_diff=False):
         "has_changes": bool(changes),
         "changes": changes,
         "numstat": stats,
-        "dirty_submodules": submodules,
+        "submodules": submodules,
+        "blocking_submodules": blocking_submodules,
+        "gitlink_updates": gitlink_updates,
+        "dirty_submodules": blocking_submodules,
         "sensitive_paths": sensitive,
         "large_files": large,
         "binary_files": binary,
@@ -402,13 +488,38 @@ def path_fingerprint(repo, path):
             "--porcelain=v1",
             "-z",
             "--untracked-files=all",
+            "--ignore-submodules=none",
             "--no-renames",
             "--",
             spec,
         )
     )
-    digest.update(raw(repo, "ls-files", "--stage", "-z", "--", spec))
+    index_entry = raw(repo, "ls-files", "--stage", "-z", "--", spec)
+    digest.update(index_entry)
     hash_path(digest, repo / path)
+    is_gitlink = any(
+        record.partition(b"\t")[0].split()[:1] == [b"160000"]
+        for record in index_entry.split(b"\0")
+        if record
+    )
+    if is_gitlink:
+        nested = repo / path
+        digest.update(b"GITLINK\0")
+        digest.update(
+            text(nested, "rev-parse", "HEAD", check=False).strip().encode()
+            + b"\0"
+        )
+        digest.update(
+            raw(
+                nested,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+                check=False,
+            )
+        )
     return digest.hexdigest()
 
 
@@ -509,7 +620,7 @@ def report(error, repo=None, results=None, batch_count=0):
         "committed_count": count,
         "batch_count": batch_count,
         "final_head": head(repo) if repo else None,
-        "final_status": text(repo, "status", "--porcelain").strip() if repo else None,
+        "final_status": status_summary(repo) if repo else None,
     }
 
 
@@ -530,8 +641,14 @@ def apply_plan(repo, plan_path):
         snapshot = inspect(repo)
         if not snapshot["identity_ok"]:
             raise PlanError("git identity does not match AGENTS.md requirement")
-        if snapshot["dirty_submodules"]:
-            raise PlanError("dirty submodules detected; commit submodules separately first")
+        if snapshot["blocking_submodules"]:
+            details = ", ".join(
+                f"{item['path']}[{','.join(item['blocking_reasons'])}]"
+                for item in snapshot["blocking_submodules"]
+            )
+            raise PlanError(
+                "blocking submodules detected: " + details
+            )
         batches = validate(read_plan(plan_path), snapshot)
     except (OSError, PlanError) as exc:
         emit(report(str(exc), repo))
@@ -617,7 +734,7 @@ def apply_plan(repo, plan_path):
                 "hash": commit,
                 "message": message,
                 "paths": paths,
-                "remaining_status": text(repo, "status", "--porcelain").strip(),
+                "remaining_status": status_summary(repo),
             }
         )
 
@@ -633,7 +750,7 @@ def apply_plan(repo, plan_path):
             "committed_count": len(results),
             "batch_count": len(batches),
             "final_head": head(repo),
-            "final_status": text(repo, "status", "--porcelain").strip(),
+            "final_status": status_summary(repo),
         }
     )
     return 0
