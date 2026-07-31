@@ -53,7 +53,7 @@ Claude Code 与 Kimi Code 只有在宿主提供可创建、发送和等待的长
 
 Codex hook 插件：
 
-- `rtk-hook`：基于 `Ghost233/rtk-hook` 的 PreToolUse hook，对未通过 `rtk` 前缀执行的 shell 命令给出重试提示
+- `rtk-hook`：基于 `Ghost233/rtk-hook` 的 PreToolUse hook，通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行
 
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
