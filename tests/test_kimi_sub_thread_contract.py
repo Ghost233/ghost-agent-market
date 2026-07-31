@@ -67,12 +67,19 @@ class KimiWorkflowContractTests(unittest.TestCase):
             (SKILLS_PLUGIN / "kimi.plugin.json").read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["name"], "ghost-agent-skills")
-        self.assertEqual(manifest["version"], "0.1.5")
+        self.assertEqual(manifest["version"], "0.1.6")
         self.assertEqual(manifest["skills"], "./skills/")
-        skill = (SKILLS_PLUGIN / "skills/git-commit/SKILL.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertTrue(skill.startswith("---\nname: git-commit\n"))
+        standalone_skills = {
+            path.name
+            for path in (SKILLS_PLUGIN / "skills").iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        }
+        self.assertEqual(standalone_skills, {"git-commit", "git-merge-conflict"})
+        for name in standalone_skills:
+            skill = (SKILLS_PLUGIN / f"skills/{name}/SKILL.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertTrue(skill.startswith(f"---\nname: {name}\n"))
 
     def test_skill_frontmatter_matches_directories(self) -> None:
         for name in SKILLS:

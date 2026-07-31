@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Merge Conflict"
+  short_description: "通过两侧提交历史考古安全解决复杂且高风险的 Git 合并冲突"
+  default_prompt: "使用 $git-merge-conflict 考古两侧提交历史，安全解决当前严重的 Git 合并冲突并完成验证。"

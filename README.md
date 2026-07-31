@@ -15,6 +15,7 @@
 `ghost-agent-skills` 内置普通 skill：
 
 - `git-commit`
+- `git-merge-conflict`
 
 ## Goal DAG 入口
 
@@ -73,7 +74,9 @@ ghost-agent-market/
 │   └── plugins/
 │       └── ghost-agent-skills/
 │           ├── .claude-plugin/plugin.json
-│           └── skills/git-commit/
+│           └── skills/
+│               ├── git-commit/
+│               └── git-merge-conflict/
 └── codex-market/
     ├── .agents/plugins/marketplace.json
     └── plugins/
@@ -89,7 +92,8 @@ ghost-agent-market/
         ├── ghost-agent-skills/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
-        │       └── git-commit/
+        │       ├── git-commit/
+        │       └── git-merge-conflict/
         └── rtk-hook/
             ├── .codex-plugin/plugin.json
             ├── hooks/
@@ -115,7 +119,9 @@ kimi-market/
     │       └── start-dag-dashboard/
     └── ghost-agent-skills/
         ├── kimi.plugin.json
-        └── skills/git-commit/
+        └── skills/
+            ├── git-commit/
+            └── git-merge-conflict/
 ```
 
 ## 安装 Claude Code Market

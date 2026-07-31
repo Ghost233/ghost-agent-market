@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "递归检查当前仓库及子模块改动并创建规范的中文 Git 提交。",
-  "version": "0.1.5",
+  "description": "提供递归 Git 提交与基于历史考古的高风险冲突解决 skill。",
+  "version": "0.1.6",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -19,6 +19,9 @@
     "explicit-paths",
     "content-fingerprint",
     "recursive-submodules",
-    "gitlink-updates"
+    "gitlink-updates",
+    "git-merge-conflict",
+    "merge-conflict",
+    "history-archaeology"
   ]
 }

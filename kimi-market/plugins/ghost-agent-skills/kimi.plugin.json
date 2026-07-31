@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.5",
-  "description": "递归检查当前仓库及子模块改动并创建规范的中文 Git 提交。",
+  "version": "0.1.6",
+  "description": "提供递归 Git 提交与基于历史考古的高风险冲突解决 skill。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -20,13 +20,16 @@
     "explicit-paths",
     "content-fingerprint",
     "recursive-submodules",
-    "gitlink-updates"
+    "gitlink-updates",
+    "git-merge-conflict",
+    "merge-conflict",
+    "history-archaeology"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "递归检查仓库及子模块并创建规范的中文 Git 提交。",
-    "longDescription": "从最深层 submodule 开始提交已授权改动，逐层记录 clean gitlink，并按职责创建规范的中文 Git 提交。",
+    "shortDescription": "提供递归提交与高风险 Git 冲突历史考古。",
+    "longDescription": "包含递归 submodule 提交工作流，以及在 merge、rebase、cherry-pick 严重冲突中先锁定 index 三方、考古两侧提交意图再安全解决的只读辅助脚本。",
     "developerName": "Ghost233",
     "websiteURL": "https://github.com/Ghost233/ghost-agent-market"
   }

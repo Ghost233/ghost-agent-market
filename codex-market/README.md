@@ -19,6 +19,7 @@
 `ghost-agent-skills` 包含不依赖 Owner/DAG 的 skill：
 
 - `git-commit`
+- `git-merge-conflict`
 
 ## 推荐入口
 
@@ -42,7 +43,7 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 
 初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 调用 `$start-dag-dashboard` 的后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。网页通过文件监听和 SSE 接收 runtime 数据更新。初始化脚本自动生成 `.ghost-agent-workflow/.gitignore`，只跟踪自身、配置与 Owner 数据并忽略 runtime；已有文件不覆盖。
 
-独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
+独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突。`rtk-hook` 对未通过 `rtk` 前缀执行的 shell 命令给出重试提示。
 
 ## 安装
 

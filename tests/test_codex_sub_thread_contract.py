@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 SKILLS_PLUGIN = ROOT / "codex-market/plugins/ghost-agent-skills"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
+LOCAL_GIT_MERGE_CONFLICT = ROOT / ".codex/skills/git-merge-conflict"
 AGENTS = ROOT / "AGENTS.md"
 WORKFLOW_CONFIG_UPDATER = ROOT / "tooling/goal-dag/update-thread-workflow-configs.mjs"
 
@@ -46,6 +47,15 @@ class CodexWorkflowContractTests(unittest.TestCase):
         cls.git_commit = read_standalone("skills/git-commit/SKILL.md")
         cls.git_commit_metadata = read_standalone(
             "skills/git-commit/agents/openai.yaml"
+        )
+        cls.git_merge_conflict = read_standalone(
+            "skills/git-merge-conflict/SKILL.md"
+        )
+        cls.git_merge_conflict_metadata = read_standalone(
+            "skills/git-merge-conflict/agents/openai.yaml"
+        )
+        cls.git_merge_conflict_script = read_standalone(
+            "skills/git-merge-conflict/scripts/archaeology.sh"
         )
     def test_codex_workflow_uses_quick_owner_and_dag_supervisor(self) -> None:
         combined = (
@@ -214,7 +224,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             for path in (SKILLS_PLUGIN / "skills").iterdir()
             if path.is_dir() and (path / "SKILL.md").is_file()
         }
-        self.assertEqual(standalone_skills, {"git-commit"})
+        self.assertEqual(standalone_skills, {"git-commit", "git-merge-conflict"})
 
     def test_git_commit_uses_single_executor_python3_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
@@ -259,6 +269,56 @@ class CodexWorkflowContractTests(unittest.TestCase):
     def test_git_commit_has_no_dedicated_agent_config(self) -> None:
         matching_configs = list((ROOT / ".codex/agents").glob("*git*commit*"))
         self.assertEqual(matching_configs, [])
+
+    def test_git_merge_conflict_uses_bounded_read_only_archaeology(self) -> None:
+        combined = f"{self.git_merge_conflict}\n{self.git_merge_conflict_script}"
+        for requirement in (
+            "NO RESOLUTION WITHOUT ARCHAEOLOGY FIRST",
+            "scripts/archaeology.sh",
+            "CHERRY_PICK_HEAD",
+            "REBASE_HEAD",
+            "git diff-files",
+            "stage 1",
+            "stage 2",
+            "stage 3",
+            "--base",
+            "与按分支名称理解的两侧相反",
+            "宿主环境及上层指令允许子代理",
+        ):
+            self.assertIn(requirement, combined)
+        self.assertNotIn("SKILLOPT-SLEEP", combined)
+        self.assertNotIn(".codex/memories", combined)
+        self.assertNotIn("./archaeology.sh", self.git_merge_conflict)
+
+    def test_git_merge_conflict_copies_match_marketplace_source(self) -> None:
+        source_root = SKILLS_PLUGIN / "skills/git-merge-conflict"
+        for rel_path in (
+            "SKILL.md",
+            "agents/openai.yaml",
+            "scripts/archaeology.sh",
+        ):
+            source_content = (source_root / rel_path).read_text(encoding="utf-8")
+            self.assertEqual(
+                (LOCAL_GIT_MERGE_CONFLICT / rel_path).read_text(encoding="utf-8"),
+                source_content,
+            )
+            self.assertEqual(
+                (
+                    ROOT
+                    / "claude-code-market/plugins/ghost-agent-skills/skills/git-merge-conflict"
+                    / rel_path
+                ).read_text(encoding="utf-8"),
+                source_content,
+            )
+            if rel_path != "agents/openai.yaml":
+                self.assertEqual(
+                    (
+                        ROOT
+                        / "kimi-market/plugins/ghost-agent-skills/skills/git-merge-conflict"
+                        / rel_path
+                    ).read_text(encoding="utf-8"),
+                    source_content,
+                )
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -318,7 +378,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         ):
             self.assertFalse((skill_root / "references/reviewer.md").exists())
 
-    def test_git_commit_plugin_versions_and_keywords_are_current(self) -> None:
+    def test_standalone_skills_plugin_versions_and_keywords_are_current(self) -> None:
         manifests = (
             ROOT
             / "codex-market/plugins/ghost-agent-skills/.codex-plugin/plugin.json",
@@ -328,12 +388,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.5")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.6")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
             self.assertIn("recursive-submodules", manifest["keywords"])
             self.assertIn("gitlink-updates", manifest["keywords"])
+            self.assertIn("git-merge-conflict", manifest["keywords"])
+            self.assertIn("history-archaeology", manifest["keywords"])
             self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
@@ -354,10 +416,16 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.5\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.6\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
+                for item in standalone_manifest["interface"]["defaultPrompt"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "$git-merge-conflict" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )

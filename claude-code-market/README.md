@@ -15,6 +15,7 @@
 `ghost-agent-skills` 包含不依赖 Owner/DAG 的普通 skill：
 
 - `git-commit`
+- `git-merge-conflict`
 
 Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `standalone_thread`。首次运行使用平台的显式 skill 调用：
 

@@ -18,6 +18,7 @@
 `ghost-agent-skills` 包含不依赖 Owner/DAG 的普通 skill：
 
 - `git-commit`
+- `git-merge-conflict`
 
 ## 推荐入口
 
