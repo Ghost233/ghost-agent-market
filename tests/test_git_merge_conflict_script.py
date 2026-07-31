@@ -144,7 +144,7 @@ class GitMergeConflictScriptTests(unittest.TestCase):
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("operation = merge", output)
+        self.assertIn("操作类型 = merge", output)
         self.assertIn(f"= {current[:7]}", output)
         self.assertIn(f"= {incoming[:7]}", output)
         self.assertIn(f"= {base[:7]}", output)
@@ -170,7 +170,7 @@ class GitMergeConflictScriptTests(unittest.TestCase):
         result = self.run_script("--context")
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("operation = cherry-pick", output)
+        self.assertIn("操作类型 = cherry-pick", output)
         self.assertIn("CHERRY_PICK_HEAD", output)
         self.assertIn(f"= {base[:7]}", output)
         self.assertIn("被重放提交的父提交", output)
@@ -191,7 +191,7 @@ class GitMergeConflictScriptTests(unittest.TestCase):
         result = self.run_script("--context")
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("operation = rebase", output)
+        self.assertIn("操作类型 = rebase", output)
         self.assertIn("REBASE_HEAD", output)
         self.assertIn(topic[:7], output)
         self.assertIn(base[:7], output)

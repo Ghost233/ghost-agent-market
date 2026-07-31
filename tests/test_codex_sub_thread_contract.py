@@ -273,19 +273,43 @@ class CodexWorkflowContractTests(unittest.TestCase):
     def test_git_merge_conflict_uses_bounded_read_only_archaeology(self) -> None:
         combined = f"{self.git_merge_conflict}\n{self.git_merge_conflict_script}"
         for requirement in (
-            "NO RESOLUTION WITHOUT ARCHAEOLOGY FIRST",
+            "没有历史考古，不得解决冲突",
+            "# Git 合并冲突（基于历史考古的解决流程）",
+            "## 概述",
+            "## 快速参考",
+            "## 常见错误",
+            "## 危险信号",
             "scripts/archaeology.sh",
             "CHERRY_PICK_HEAD",
             "REBASE_HEAD",
             "git diff-files",
-            "stage 1",
-            "stage 2",
-            "stage 3",
+            "索引阶段 1",
+            "索引阶段 2",
+            "索引阶段 3",
             "--base",
             "与按分支名称理解的两侧相反",
             "宿主环境及上层指令允许子代理",
         ):
             self.assertIn(requirement, combined)
+        self.assertIn(
+            'display_name: "Git 合并冲突考古"',
+            self.git_merge_conflict_metadata,
+        )
+        for english_surface in (
+            "Use when",
+            "# Git Merge Conflict",
+            "## Overview",
+            "## Quick Reference",
+            "## Common Mistakes",
+            "## Red Flags",
+            "### Step ",
+            "NO RESOLUTION WITHOUT ARCHAEOLOGY FIRST",
+            'display_name: "Git Merge Conflict"',
+        ):
+            self.assertNotIn(
+                english_surface,
+                f"{combined}\n{self.git_merge_conflict_metadata}",
+            )
         self.assertNotIn("SKILLOPT-SLEEP", combined)
         self.assertNotIn(".codex/memories", combined)
         self.assertNotIn("./archaeology.sh", self.git_merge_conflict)
@@ -388,7 +412,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.6")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.7")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -416,7 +440,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.6\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.7\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item

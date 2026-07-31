@@ -177,10 +177,10 @@ done < <(git diff-files --name-only --diff-filter=U -z 2>/dev/null || true)
 # ============================================================
 print_context() {
   printf "\n${C_HEAD}═══ 冲突上下文 ═══${C_RST}\n"
-  printf "operation = %s\n" "$OPERATION"
-  printf "${C_OURS}ours/current (stage 2)${C_RST}   = %s  (%s)\n" "$OURS_SHORT" "$BRANCH_OURS"
-  printf "${C_THEIRS}theirs/incoming (stage 3)${C_RST} = %s  (%s)\n" "$THEIRS_SHORT" "$THEIRS_REF"
-  printf "${C_BASE}history base${C_RST}              = %s  ${C_DIM}(%s，考古上界；index stage 1 内容用 git show :1:<file> 查看)${C_RST}\n" "$BASE_SHORT" "$BASE_KIND"
+  printf "操作类型 = %s\n" "$OPERATION"
+  printf "${C_OURS}当前侧 ours（索引阶段 2）${C_RST} = %s  (%s)\n" "$OURS_SHORT" "$BRANCH_OURS"
+  printf "${C_THEIRS}传入侧 theirs（索引阶段 3）${C_RST} = %s  (%s)\n" "$THEIRS_SHORT" "$THEIRS_REF"
+  printf "${C_BASE}历史基点${C_RST}                 = %s  ${C_DIM}(%s，考古上界；索引阶段 1 的内容用 git show :1:<file> 查看)${C_RST}\n" "$BASE_SHORT" "$BASE_KIND"
   if [ "$OPERATION" = "rebase" ]; then
     printf "${C_WARN}注意: rebase 中 ours 是已重放到 upstream 的当前序列，theirs 是正在重放的工作分支 commit；与按分支名称理解的两侧相反。${C_RST}\n"
   fi

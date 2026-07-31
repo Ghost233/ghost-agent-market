@@ -1,11 +1,11 @@
 ---
 name: git-merge-conflict
-description: Use when 用户明确要求处理严重、复杂或高风险的 merge、rebase 或 cherry-pick 冲突，需要在解决前考古两侧提交历史、理解各自修改意图并避免简单选择 ours/theirs；不用于空白、生成文件或 1–2 处 trivial 冲突。
+description: 用于用户明确要求处理严重、复杂或高风险的 merge、rebase 或 cherry-pick 冲突，需要在解决前考古两侧提交历史、理解各自修改意图并避免简单选择 ours/theirs；不用于空白、生成文件或只有 1–2 处的简单冲突。
 ---
 
-# Git Merge Conflict (Archaeology-Based Resolution)
+# Git 合并冲突（基于历史考古的解决流程）
 
-## Overview
+## 概述
 
 手动调用的 skill。专门处理「非常严重」的分支合并冲突。
 
@@ -44,7 +44,7 @@ description: Use when 用户明确要求处理严重、复杂或高风险的 mer
 ## 核心铁律
 
 ```
-NO RESOLUTION WITHOUT ARCHAEOLOGY FIRST
+没有历史考古，不得解决冲突
 ```
 
 **在解决任何一处冲突之前，必须先完成历史考古。**
@@ -60,7 +60,7 @@ NO RESOLUTION WITHOUT ARCHAEOLOGY FIRST
 
 ## 完整流程
 
-### Step 0: 评估冲突全貌（先侦察，不动手）
+### 步骤 0：评估冲突全貌（先侦察，不动手）
 
 **不要急着改任何文件。** 先建立全局认识。
 
@@ -100,7 +100,7 @@ git merge-base HEAD MERGE_HEAD                 # 共同祖先 = 考古上界
 - 两侧累计 < 50 提交 → 逐文件考古即可
 - 冲突文件 > 20 或跨多个子系统 → 跳到 Step 1b 用子代理并行分析
 
-### Step 1: 对每处冲突做历史考古
+### 步骤 1：对每处冲突做历史考古
 
 这是本 skill 的核心。对**每一个冲突文件**（或每一处冲突块），都要回答三个问题：
 
@@ -111,8 +111,8 @@ bash "<skill-dir>/scripts/archaeology.sh" <file> # 该文件的两侧 base 后�
 
 # 精确读取 index 中的三方内容；先看这三份，再判断冲突意图
 git show :1:<file>                               # base
-git show :2:<file>                               # ours/current
-git show :3:<file>                               # theirs/incoming
+git show :2:<file>                               # 当前侧（ours）
+git show :3:<file>                               # 传入侧（theirs）
 ```
 
 然后对需要深挖的**单个冲突块**用精确命令：
@@ -159,7 +159,7 @@ git mergetool --tool=vimdiff                     # 或 meld / kdiff3 / VS Code
 | `file.py:42-58` | commit abc：修复 race condition | commit xyz：添加新功能参数 | **正交**，需 union |
 | `config.ts:10` | commit def：本地多 relay | commit ghi：上游单 socket | **冲突**，需设计取舍 |
 
-### Step 1b: 大型合并用子代理并行分析（强烈推荐）
+### 步骤 1b：大型合并用子代理并行分析（强烈推荐）
 
 **当冲突跨多个子系统或文件数 >20，且宿主环境及上层指令允许子代理时，用多个只读子代理并行考古。** 如果当前环境禁止代理委派，则按同样的子系统切分串行分析，不要因为无法并行而跳过考古。
 
@@ -182,7 +182,7 @@ git mergetool --tool=vimdiff                     # 或 meld / kdiff3 / VS Code
 
 **为什么要用子代理：** 单线程读 20 个文件的 git log 会消耗巨量 token 和时间；并行能把时间从小时级压到分钟级，且每个子代理上下文更聚焦、考古更深。
 
-### Step 2: 制定综合判断策略（逐文件）
+### 步骤 2：制定综合判断策略（逐文件）
 
 根据考古结果，对**每个冲突文件**选择策略。注意是「按文件按冲突块」，不是整个 merge 一刀切：
 
@@ -199,7 +199,7 @@ git mergetool --tool=vimdiff                     # 或 meld / kdiff3 / VS Code
 
 **Union 策略的判定标准（严）：** 只有当考古证明两侧改动作用于**不同的代码路径/变量/逻辑分支**时才能 union。如果两侧改了同一个函数体的同一行，那不是 union 场景，必须做语义判断。
 
-### Step 3: 执行解决
+### 步骤 3：执行解决
 
 ```bash
 # 方式一：逐文件手动编辑（最可控，推荐用于严重合并）
@@ -227,7 +227,7 @@ git merge -Xtheirs             # ❌ 同上
 
 **rebase 特别警告：** rebase 的 ours/theirs 与按分支名称理解的两侧相反。执行 `checkout --ours/--theirs` 前必须再次对照脚本输出和 `git show :2:<file>` / `:3:<file>`，不能仅凭分支名选择。
 
-### Step 4: 验证（三层验证，缺一不可）
+### 步骤 4：验证（三层验证，缺一不可）
 
 **第一层：冲突标记清零**
 
@@ -256,7 +256,7 @@ npm test / cargo test / pytest / go test ./...
 
 **若测试失败：** 不要急着"修"——重新考古失败点。可能是 union 策略漏了某一侧的依赖，或某个 side effect 被丢掉。回到 Step 1 重新分析失败的冲突块。
 
-### Step 5: 提交 + 记录
+### 步骤 5：提交与记录
 
 **commit message 必须记录考古结论**，方便未来 review 和回溯：
 
@@ -281,7 +281,7 @@ Merge <theirs-branch> into <ours-branch>: resolve <N> conflicts
 
 ---
 
-## Quick Reference
+## 快速参考
 
 | 阶段 | 关键命令 | 目的 |
 |------|---------|------|
@@ -299,7 +299,7 @@ Merge <theirs-branch> into <ours-branch>: resolve <N> conflicts
 
 ---
 
-## Common Mistakes
+## 常见错误
 
 **无限回溯远古历史**
 - **问题：** 一路 `git log` 追到几年前，淹没在无关噪音里，反而看不清分叉后的真实原因
@@ -335,7 +335,7 @@ Merge <theirs-branch> into <ours-branch>: resolve <N> conflicts
 
 ---
 
-## Red Flags
+## 危险信号
 
 **绝不：**
 - 在 Step 1 考古完成前修改任何冲突文件
