@@ -30,12 +30,15 @@ executor 不得创建任何代理；所有 Git 写操作只通过 `python3 <scri
 {"head":"<inspect.head>","fingerprint":"<inspect.fingerprint>","batches":[{"paths":["file"],"message":"fix(scope): 中文说明"}]}
 ```
 
-7. 运行 `python3 <script> apply --repo <repo-root> <plan.json>`，读取一次 JSON 结果。Codex managed sandbox 首次 apply 即使用 `sandbox_permissions=require_escalated` 请求写入 inspect 返回的 `git_dir`/`git_common_dir`；其他平台首次 apply 也按其沙箱规则取得 Git 元数据写权限，不先进行注定失败的无权限试跑。
-8. 每层提交后核对父仓库记录的 gitlink 等于子模块 HEAD；最终核对所有参与仓库的工作区。返回每笔提交的 cwd/hash/message/paths、指针、检查结果、剩余及排除文件。
+7. 运行 `python3 <script> apply --repo <repo-root> <plan.json>`，读取 JSON 结果。脚本先用临时 index 预检全部批次，再触碰真实 index；可自动修复已授权普通 UTF-8 文本的尾随空白和 EOF 多余空行，保留 Markdown 行尾恰好两个空格的换行语法。首笔提交前若 hook 只修改本批路径且其他路径未变，脚本重新预检并重试一次。
+8. Codex managed sandbox 首次 apply 即使用 `sandbox_permissions=require_escalated` 请求写入 inspect 返回的 `git_dir`/`git_common_dir`；其他平台也先按其沙箱规则取得 Git 元数据写权限。若仍仅因 Git 元数据权限失败，且 `committed_count=0`、HEAD 与授权范围未变，可取得正确权限后原样重试一次。
+9. 每层提交后核对父仓库记录的 gitlink 等于子模块 HEAD；最终核对所有参与仓库的工作区。返回每笔提交的 cwd/hash/message/paths、自动修复、重试次数、指针、检查结果、剩余及排除文件。
 
 ## 硬规则
 
 - 不直接运行 git add 或 git commit；不使用 --no-verify。
 - 每笔提交保留 `Co-Authored-By: Nexus <nexus@xfinite.global>`。
-- apply、hook 或脚本失败时保留现场并如实报告；即使子模块已提交而父仓库失败，也不得重试、回滚、amend、push 或自动清理用户改动。
+- 简单补救不得扩大授权范围：只允许处理本批普通 UTF-8 文本的尾随空白/EOF 多余空行、仅修改本批路径的 hook 自动格式化，以及尚未产生提交时的 Git 元数据权限问题；每类最多重试一次，并如实报告修复内容。
+- 冲突标记、space-before-tab、非 UTF-8/符号链接、身份不匹配、敏感文件未确认、范围或内容漂移、hook 修改批次外路径、未知失败均停止，不得自动修复。
+- 当前仓库本次 apply 已产生任一提交后，后续失败必须保留现场并停止。子模块已成功提交而父仓库尚未提交时，父仓库仍可执行上述简单补救；若不满足简单补救条件则停止，且不得回滚、amend、push 或自动清理用户改动。
 - 平台要求命令前缀时保留 `python3` 调用语义并按平台规则执行。

@@ -574,6 +574,93 @@ class GitCommitScriptTest(unittest.TestCase):
         self.assertIn("fingerprint", str(payload["error"]))
         self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
 
+    def test_apply_repairs_simple_whitespace_before_staging(self) -> None:
+        self.write_text("target.txt", "target change   \n\n")
+        snapshot = self.inspect()
+        plan = self.plan(
+            snapshot,
+            [{"paths": ["target.txt"], "message": "fix(test): 修复简单空白"}],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual((self.repo / "target.txt").read_text(), "target change\n")
+        actions = {item["action"] for item in payload["batches"][0]["repairs"]}
+        self.assertEqual(
+            actions,
+            {"remove-trailing-whitespace", "remove-extra-eof-blank-lines"},
+        )
+
+    def test_apply_preserves_markdown_two_space_hard_break(self) -> None:
+        self.write_text("notes.md", "第一行。  \n第二行。\n")
+        snapshot = self.inspect()
+        plan = self.plan(
+            snapshot,
+            [{"paths": ["notes.md"], "message": "docs(test): 保留换行语法"}],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual(
+            (self.repo / "notes.md").read_text(),
+            "第一行。  \n第二行。\n",
+        )
+        self.assertEqual(
+            payload["batches"][0]["allowed_whitespace"][0]["action"],
+            "preserve-markdown-hard-break",
+        )
+
+    def test_apply_rejects_conflict_marker_without_touching_real_index(self) -> None:
+        self.write_text(
+            "target.txt",
+            "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> branch\n",
+        )
+        snapshot = self.inspect()
+        initial_head = self.git("rev-parse", "HEAD").stdout.strip()
+        plan = self.plan(
+            snapshot,
+            [{"paths": ["target.txt"], "message": "fix(test): 检查冲突标记"}],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("leftover conflict marker", str(payload["error"]))
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
+        self.assertEqual(self.git("diff", "--cached", "--name-only").stdout, "")
+
+    def test_apply_retries_once_when_hook_updates_only_selected_paths(self) -> None:
+        self.write_text("target.txt", "needs-format\n")
+        snapshot = self.inspect()
+        hook = self.repo / ".git/hooks/pre-commit"
+        hook.write_text(
+            "#!/bin/sh\n"
+            "if grep -q needs-format target.txt; then\n"
+            "  sed 's/needs-format/formatted/' target.txt > target.tmp\n"
+            "  mv target.tmp target.txt\n"
+            "  exit 1\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        os.chmod(hook, 0o755)
+        plan = self.plan(
+            snapshot,
+            [{"paths": ["target.txt"], "message": "style(test): 应用自动格式化"}],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual(payload["batches"][0]["retry_count"], 1)
+        self.assertEqual((self.repo / "target.txt").read_text(), "formatted\n")
+        self.assertIn(
+            "retry-after-hook-updated-selected-paths",
+            {item["action"] for item in payload["batches"][0]["repairs"]},
+        )
+
     def test_apply_reports_hook_failure_without_retry_or_rollback(self) -> None:
         self.write_text("target.txt", "target change\n")
         snapshot = self.inspect()

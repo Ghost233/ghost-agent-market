@@ -36,7 +36,7 @@
       "name": "ghost-agent-skills",
       "source": "./plugins/ghost-agent-skills",
       "description": "Standalone skills that do not depend on the Ghost Agent Owner/DAG workflow.",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"

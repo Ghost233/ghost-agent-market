@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.7+codex.20260731132138",
+  "version": "0.1.8+codex.20260731202252",
   "description": "\u63d0\u4f9b\u9012\u5f52 Git \u63d0\u4ea4\u4e0e\u57fa\u4e8e\u5386\u53f2\u8003\u53e4\u7684\u9ad8\u98ce\u9669\u51b2\u7a81\u89e3\u51b3 skill\u3002",
   "author": {
     "name": "Ghost233",

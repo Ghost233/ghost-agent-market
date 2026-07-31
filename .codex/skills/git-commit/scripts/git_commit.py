@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 
@@ -27,6 +28,14 @@ SENSITIVE = (
     re.compile(r"(^|/)(\.npmrc|\.pypirc|\.netrc)$", re.I),
     re.compile(r"(^|/)token", re.I),
 )
+MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdx"}
+DIFF_CHECK_RE = re.compile(
+    r"^(.+):(\d+): "
+    r"(trailing whitespace\.|new blank line at EOF\.|"
+    r"space before tab in indent\.|leftover conflict marker)$"
+)
+HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+CONFLICT_MARKER_RE = re.compile(r"^(?:<{7}|={7}|>{7})(?: |$)")
 
 
 class GitError(RuntimeError):
@@ -37,10 +46,17 @@ class PlanError(RuntimeError):
     pass
 
 
-def git(repo, *args, check=True):
+def git(repo, *args, check=True, env=None):
+    process_env = None
+    if env:
+        process_env = os.environ.copy()
+        process_env.update(env)
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo), *args], capture_output=True, check=False
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            check=False,
+            env=process_env,
         )
     except FileNotFoundError as exc:
         raise GitError("git executable not found") from exc
@@ -50,12 +66,12 @@ def git(repo, *args, check=True):
     return result
 
 
-def raw(repo, *args, check=True):
-    return git(repo, *args, check=check).stdout
+def raw(repo, *args, check=True, env=None):
+    return git(repo, *args, check=check, env=env).stdout
 
 
-def text(repo, *args, check=True):
-    return raw(repo, *args, check=check).decode("utf-8", "replace")
+def text(repo, *args, check=True, env=None):
+    return raw(repo, *args, check=check, env=env).decode("utf-8", "replace")
 
 
 def root(start):
@@ -478,6 +494,232 @@ def literal(path):
     return f":(literal){path}"
 
 
+def stage_paths(repo, paths, env=None):
+    for path in paths:
+        spec = literal(path)
+        if os.path.lexists(repo / path):
+            raw(repo, "add", "--", spec, env=env)
+        elif not git(
+            repo,
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            spec,
+            check=False,
+            env=env,
+        ).returncode:
+            raw(repo, "add", "-u", "--", spec, env=env)
+
+
+def added_conflict_markers(repo, paths, env):
+    issues = []
+    for path in paths:
+        patch = text(
+            repo,
+            "diff",
+            "--cached",
+            "--unified=0",
+            "--no-ext-diff",
+            "--no-renames",
+            "--",
+            literal(path),
+            env=env,
+        )
+        line_number = None
+        for line in patch.splitlines():
+            match = HUNK_RE.match(line)
+            if match:
+                line_number = int(match.group(1))
+                continue
+            if line_number is None or line.startswith(("diff ", "index ", "---", "+++")):
+                continue
+            if line.startswith("+"):
+                if CONFLICT_MARKER_RE.match(line[1:]):
+                    issues.append(
+                        {
+                            "path": path,
+                            "line": line_number,
+                            "kind": "leftover conflict marker",
+                        }
+                    )
+                line_number += 1
+            elif not line.startswith("-"):
+                line_number += 1
+    return issues
+
+
+def diff_check(repo, paths):
+    with tempfile.TemporaryDirectory(prefix="git-commit-index-") as directory:
+        env = {
+            "GIT_INDEX_FILE": str(Path(directory) / "index"),
+            "LC_ALL": "C",
+        }
+        raw(repo, "read-tree", "HEAD", env=env)
+        stage_paths(repo, paths, env=env)
+        result = git(
+            repo,
+            "diff",
+            "--cached",
+            "--check",
+            "--",
+            *(literal(path) for path in paths),
+            check=False,
+            env=env,
+        )
+        return result, added_conflict_markers(repo, paths, env)
+
+
+def parse_diff_check(result):
+    detail = (result.stdout + result.stderr).decode("utf-8", "replace").strip()
+    issues, unknown = [], []
+    for line in detail.splitlines():
+        match = DIFF_CHECK_RE.match(line)
+        if match:
+            issues.append(
+                {
+                    "path": match.group(1),
+                    "line": int(match.group(2)),
+                    "kind": match.group(3)[:-1],
+                }
+            )
+        elif not line.startswith(("+", "-")):
+            unknown.append(line)
+    return issues, unknown, detail
+
+
+def line_ending(line):
+    if line.endswith("\r\n"):
+        return line[:-2], "\r\n"
+    if line.endswith(("\n", "\r")):
+        return line[:-1], line[-1]
+    return line, ""
+
+
+def repair_simple_whitespace(repo, paths, issues):
+    selected = set(paths)
+    grouped = {}
+    blocked = []
+    for issue in issues:
+        if issue["path"] not in selected:
+            blocked.append(issue)
+            continue
+        grouped.setdefault(issue["path"], []).append(issue)
+
+    repairs, allowed = [], []
+    for relative, path_issues in grouped.items():
+        path = repo / relative
+        if not path.is_file() or path.is_symlink():
+            blocked.extend(path_issues)
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            blocked.extend(path_issues)
+            continue
+
+        lines = source.splitlines(keepends=True)
+        changed = False
+        for issue in path_issues:
+            kind, number = issue["kind"], issue["line"]
+            if kind == "leftover conflict marker" or kind == "space before tab in indent":
+                blocked.append(issue)
+                continue
+            if kind == "trailing whitespace":
+                if not 1 <= number <= len(lines):
+                    blocked.append(issue)
+                    continue
+                body, ending = line_ending(lines[number - 1])
+                match = re.search(r"[ \t]+$", body)
+                if not match:
+                    blocked.append(issue)
+                    continue
+                suffix = match.group(0)
+                if path.suffix.lower() in MARKDOWN_SUFFIXES and suffix == "  ":
+                    allowed.append(
+                        {
+                            "path": relative,
+                            "line": number,
+                            "action": "preserve-markdown-hard-break",
+                        }
+                    )
+                    continue
+                lines[number - 1] = body[: match.start()] + ending
+                changed = True
+                repairs.append(
+                    {
+                        "path": relative,
+                        "line": number,
+                        "action": "remove-trailing-whitespace",
+                    }
+                )
+
+        eof_issues = [
+            issue
+            for issue in path_issues
+            if issue["kind"] == "new blank line at EOF"
+        ]
+        if eof_issues:
+            original_length = len(lines)
+            while len(lines) > 1:
+                body, _ = line_ending(lines[-1])
+                if body:
+                    break
+                lines.pop()
+            if len(lines) != original_length:
+                changed = True
+                repairs.append(
+                    {
+                        "path": relative,
+                        "line": eof_issues[0]["line"],
+                        "action": "remove-extra-eof-blank-lines",
+                    }
+                )
+            else:
+                blocked.extend(eof_issues)
+
+        if changed:
+            path.write_text("".join(lines), encoding="utf-8", newline="")
+    return repairs, allowed, blocked
+
+
+def preflight_batch(repo, paths):
+    repairs, allowed = [], []
+    for _ in range(2):
+        result, conflict_issues = diff_check(repo, paths)
+        if result.returncode == 0 and not conflict_issues:
+            return repairs, allowed
+        issues, unknown, detail = parse_diff_check(result)
+        issues.extend(conflict_issues)
+        if conflict_issues:
+            marker_detail = "\n".join(
+                f"{issue['path']}:{issue['line']}: leftover conflict marker"
+                for issue in conflict_issues
+            )
+            detail = "\n".join(part for part in (detail, marker_detail) if part)
+        if unknown or not issues:
+            raise GitError("whitespace or conflict marker check failed: " + detail)
+        fixed, accepted, blocked = repair_simple_whitespace(repo, paths, issues)
+        repairs.extend(fixed)
+        allowed.extend(accepted)
+        if blocked:
+            raise GitError("whitespace or conflict marker check failed: " + detail)
+        if not fixed:
+            return repairs, allowed
+    result, conflict_issues = diff_check(repo, paths)
+    if result.returncode or conflict_issues:
+        _, _, detail = parse_diff_check(result)
+        if conflict_issues:
+            detail = "\n".join(
+                [detail]
+                + [
+                    f"{issue['path']}:{issue['line']}: leftover conflict marker"
+                    for issue in conflict_issues
+                ]
+            ).strip()
+        raise GitError("whitespace or conflict marker check failed: " + detail)
+    return repairs, allowed
+
+
 def path_fingerprint(repo, path):
     digest = hashlib.sha256()
     spec = literal(path)
@@ -521,6 +763,14 @@ def path_fingerprint(repo, path):
             )
         )
     return digest.hexdigest()
+
+
+def workspace_state(repo, excluded):
+    return {
+        item["path"]: path_fingerprint(repo, item["path"])
+        for item in collect_changes(repo)
+        if item["path"] not in excluded
+    }
 
 
 def staged(repo, paths=None):
@@ -654,6 +904,15 @@ def apply_plan(repo, plan_path):
         emit(report(str(exc), repo))
         return 2
 
+    preflight = []
+    try:
+        for batch in batches:
+            repairs, allowed = preflight_batch(repo, batch["paths"])
+            preflight.append({"repairs": repairs, "allowed": allowed})
+    except GitError as exc:
+        emit(report(str(exc), repo, batch_count=len(batches)))
+        return 1
+
     expected = {
         path: path_fingerprint(repo, path)
         for batch in batches
@@ -673,37 +932,75 @@ def apply_plan(repo, plan_path):
             )
             break
 
+        repairs = list(preflight[index]["repairs"])
+        allowed = list(preflight[index]["allowed"])
+        retry_count = 0
         unrelated, specs = staged(repo) - set(paths), [literal(path) for path in paths]
         try:
-            for path, spec in zip(paths, specs):
-                if os.path.lexists(repo / path):
-                    raw(repo, "add", "--", spec)
-                elif not git(
-                    repo, "ls-files", "--error-unmatch", "--", spec, check=False
-                ).returncode:
-                    raw(repo, "add", "-u", "--", spec)
+            stage_paths(repo, paths)
             actual = staged(repo, paths)
             if actual != set(paths):
                 raise GitError(
                     f"staged content mismatch; expected {sorted(paths)}, got {sorted(actual)}"
                 )
-            check = git(
-                repo, "diff", "--cached", "--check", "--", *specs, check=False
-            )
-            if check.returncode:
-                detail = (check.stdout + check.stderr).decode("utf-8", "replace").strip()
-                raise GitError("whitespace or conflict marker check failed: " + detail)
-            raw(
-                repo,
-                "commit",
-                "--only",
-                "-m",
-                message,
-                "-m",
-                CO_AUTHOR,
-                "--",
-                *specs,
-            )
+            while True:
+                selected_before = {
+                    path: path_fingerprint(repo, path) for path in paths
+                }
+                unrelated_before = workspace_state(repo, set(paths))
+                commit_result = git(
+                    repo,
+                    "commit",
+                    "--only",
+                    "-m",
+                    message,
+                    "-m",
+                    CO_AUTHOR,
+                    "--",
+                    *specs,
+                    check=False,
+                )
+                if commit_result.returncode == 0:
+                    break
+                detail = (commit_result.stdout + commit_result.stderr).decode(
+                    "utf-8", "replace"
+                ).strip()
+                if head(repo) != before_head:
+                    raise GitError(
+                        "git commit returned failure after creating a commit; "
+                        "refusing automatic retry: " + detail
+                    )
+                selected_changed = any(
+                    path_fingerprint(repo, path) != selected_before[path]
+                    for path in paths
+                )
+                unrelated_unchanged = (
+                    workspace_state(repo, set(paths)) == unrelated_before
+                )
+                if results or retry_count or not selected_changed or not unrelated_unchanged:
+                    raise GitError(
+                        f"git commit failed ({commit_result.returncode}): {detail}"
+                    )
+
+                retry_count = 1
+                hook_repairs, hook_allowed = preflight_batch(repo, paths)
+                repairs.extend(hook_repairs)
+                allowed.extend(hook_allowed)
+                repairs.append(
+                    {
+                        "paths": paths,
+                        "action": "retry-after-hook-updated-selected-paths",
+                    }
+                )
+                for path in paths:
+                    expected[path] = path_fingerprint(repo, path)
+                stage_paths(repo, paths)
+                actual = staged(repo, paths)
+                if actual != set(paths):
+                    raise GitError(
+                        "staged content mismatch after hook repair; "
+                        f"expected {sorted(paths)}, got {sorted(actual)}"
+                    )
             commit = head(repo)
             actual = committed(repo, commit)
             if actual != set(paths):
@@ -724,6 +1021,9 @@ def apply_plan(repo, plan_path):
                     "committed": head(repo) != before_head,
                     "paths": paths,
                     "error": failure,
+                    "repairs": repairs,
+                    "allowed_whitespace": allowed,
+                    "retry_count": retry_count,
                 }
             )
             break
@@ -734,6 +1034,9 @@ def apply_plan(repo, plan_path):
                 "hash": commit,
                 "message": message,
                 "paths": paths,
+                "repairs": repairs,
+                "allowed_whitespace": allowed,
+                "retry_count": retry_count,
                 "remaining_status": status_summary(repo),
             }
         )

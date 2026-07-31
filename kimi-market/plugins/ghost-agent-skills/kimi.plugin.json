@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "提供递归 Git 提交与基于历史考古的高风险冲突解决 skill。",
   "author": {
     "name": "Ghost233",
