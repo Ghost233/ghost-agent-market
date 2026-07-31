@@ -2,7 +2,7 @@
 
 Codex plugin marketplace entry for the RTK `PreToolUse` hook.
 
-This ports `Ghost233/rtk-hook` into `ghost-agent-market`. The hook reads `rules.json`. Any shell command that is not already prefixed with `rtk` is blocked with a retry suggestion.
+This ports `Ghost233/rtk-hook` into `ghost-agent-market`. The hook asks `rtk rewrite` to classify every shell command and uses RTK's returned rewrite when one is supported. Unsupported and already-rewritten commands are left unchanged. Codex executes the result directly, without a denial or retry message.
 
 ## Install
 

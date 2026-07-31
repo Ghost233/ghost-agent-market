@@ -7,7 +7,6 @@
           {
             "type": "command",
             "command": "python3 ${PLUGIN_ROOT}/scripts/rtk-codex-hook.py",
-            "statusMessage": "Applying RTK hook rules",
             "timeout": 5
           }
         ]

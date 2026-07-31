@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,51 +28,97 @@ def find_command(payload):
     )
 
 
-def first_token(command):
+def rewritten_command(command, rules, runner=subprocess.run):
+    prefix = rules.get("prefix", "rtk")
+    timeout = rules.get("rewrite_timeout_seconds", 3)
+
+    if not command or not isinstance(prefix, str) or not prefix:
+        return None
+
     try:
-        return shlex.split(command)[0]
-    except (IndexError, ValueError):
-        return ""
+        result = runner(
+            [prefix, "rewrite", command],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+    # RTK's rewrite protocol uses 0 for an explicitly allowed rewrite and 3
+    # for a supported rewrite that should retain the host's normal permission
+    # flow. Codex currently requires an allow decision alongside updatedInput,
+    # so both supported outcomes use the same rewrite response here.
+    if result.returncode not in (0, 3):
+        return None
+
+    rewritten = result.stdout.strip()
+    if not rewritten:
+        return None
+    if rules.get("skip_unchanged", True) and rewritten == command:
+        return None
+    return rewritten
 
 
-def hook_output(reason):
+def hook_output(command):
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
+            "permissionDecision": "allow",
+            "updatedInput": {"command": command},
         }
     }
 
 
-def denied_reason(command, rules):
-    prefix = rules.get("prefix", "rtk")
-    return f"RTK requires shell commands to run through `{prefix}`. Rerun as: {prefix} {command}"
-
-
-def should_deny(command, rules):
-    prefix = rules.get("prefix", "rtk")
-    token = first_token(command)
-
-    if rules.get("allow_prefixed", True) and token == prefix:
-        return False
-    if command in set(rules.get("allow_exact", [])):
-        return False
-    return bool(command)
-
-
-def decide(payload, rules):
+def decide(payload, rules, runner=subprocess.run):
     command = find_command(payload).strip()
-    if should_deny(command, rules):
-        return hook_output(denied_reason(command, rules))
-    return None
+    rewritten = rewritten_command(command, rules, runner=runner)
+    return hook_output(rewritten) if rewritten is not None else None
 
 
 def self_test():
-    rules = {"prefix": "rtk", "allow_prefixed": True, "allow_exact": ["which rtk"]}
-    assert decide({"tool_input": {"command": "git status"}}, rules)
-    assert decide({"tool_input": {"command": "rtk git status"}}, rules) is None
-    assert decide({"tool_input": {"command": "which rtk"}}, rules) is None
+    rules = {"prefix": "rtk", "skip_unchanged": True}
+
+    def result(exit_code, stdout=""):
+        return lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], exit_code, stdout=stdout, stderr=""
+        )
+
+    assert decide(
+        {"tool_input": {"command": "git status"}},
+        rules,
+        runner=result(3, "rtk git status"),
+    ) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": "rtk git status"},
+        }
+    }
+    assert (
+        decide(
+            {"tool_input": {"command": "pwd"}}, rules, runner=result(1)
+        )
+        is None
+    )
+    assert (
+        decide(
+            {"tool_input": {"command": "rm -rf /tmp/example"}},
+            rules,
+            runner=result(2),
+        )
+        is None
+    )
+    assert (
+        decide(
+            {"tool_input": {"command": "rtk git status"}},
+            rules,
+            runner=result(3, "rtk git status"),
+        )
+        is None
+    )
+    assert decide({"tool_input": {"command": ""}}, rules, runner=result(1)) is None
 
 
 def main():

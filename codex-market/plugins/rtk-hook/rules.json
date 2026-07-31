@@ -1,10 +1,7 @@
 {
   "prefix": "rtk",
-  "mode": "deny-retry",
+  "mode": "rewrite-supported",
   "scope": "all-shell",
-  "allow_prefixed": true,
-  "allow_exact": [
-    "which rtk",
-    "command -v rtk"
-  ]
+  "rewrite_timeout_seconds": 3,
+  "skip_unchanged": true
 }
