@@ -1,0 +1,7 @@
+{
+  "prefix": "rtk",
+  "mode": "rewrite-supported",
+  "scope": "all-shell",
+  "rewrite_timeout_seconds": 3,
+  "skip_unchanged": true
+}

@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-market",
-  "description": "Ghost Agent workflow and standalone skills for ZCode",
+  "description": "Ghost Agent workflow, standalone skills, and hooks for ZCode",
   "pluginRoot": "zcode-market/plugins",
   "plugins": [
     {
@@ -26,6 +26,19 @@
         "agent-skills",
         "git-commit",
         "git-merge-conflict"
+      ]
+    },
+    {
+      "name": "rtk-hook",
+      "source": "./rtk-hook",
+      "description": "ZCode PreToolUse hook，通过 rtk rewrite 透明改写受支持的 shell 命令。",
+      "version": "0.1.0",
+      "category": "Developer Tools",
+      "tags": [
+        "zcode",
+        "hooks",
+        "rtk",
+        "shell"
       ]
     }
   ]

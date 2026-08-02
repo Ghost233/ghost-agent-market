@@ -1,0 +1,19 @@
+{
+  "name": "rtk-hook",
+  "version": "0.1.0",
+  "description": "ZCode hook that transparently rewrites RTK-supported shell commands.",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com",
+    "url": "https://github.com/Ghost233"
+  },
+  "homepage": "https://github.com/Ghost233/rtk-hook",
+  "repository": "https://github.com/Ghost233/ghost-agent-market",
+  "license": "MIT",
+  "keywords": [
+    "zcode",
+    "hooks",
+    "rtk",
+    "shell"
+  ]
+}

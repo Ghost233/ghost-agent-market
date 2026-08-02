@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unittest
 
 
@@ -29,6 +31,11 @@ EXPECTED_AGENTS = {
         "sub-thread-goal-worker",
     },
     "ghost-agent-skills": {"git-commit", "git-merge-conflict"},
+}
+EXPECTED_PLUGINS = {
+    "ghost-agent-workflow",
+    "ghost-agent-skills",
+    "rtk-hook",
 }
 FORBIDDEN_ZCODE_TEXT = (
     "sub-thread-task-supervisor",
@@ -82,6 +89,16 @@ def referenced_files(skill_path: Path) -> set[Path]:
 
 
 class ZCodeMarketplaceTests(unittest.TestCase):
+    def test_rtk_hook_script_self_test(self) -> None:
+        script = ROOT / "zcode-market/plugins/rtk-hook/scripts/rtk-zcode-hook.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--self-test"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_marketplace_points_to_zcode_compatible_plugins(self) -> None:
         manifest = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
 
@@ -89,7 +106,7 @@ class ZCodeMarketplaceTests(unittest.TestCase):
         self.assertEqual(manifest["pluginRoot"], "zcode-market/plugins")
         self.assertEqual(
             {entry["name"] for entry in manifest["plugins"]},
-            {"ghost-agent-workflow", "ghost-agent-skills"},
+            EXPECTED_PLUGINS,
         )
 
         for entry in manifest["plugins"]:
@@ -106,8 +123,33 @@ class ZCodeMarketplaceTests(unittest.TestCase):
             )
             self.assertEqual(plugin_manifest["name"], entry["name"])
             self.assertEqual(plugin_manifest["version"], entry["version"])
-            self.assertEqual(plugin_manifest["skills"], "skills")
-            self.assertEqual(plugin_manifest["agents"], "agents")
+            if entry["name"] == "rtk-hook":
+                self.assertNotIn("skills", plugin_manifest)
+                self.assertNotIn("agents", plugin_manifest)
+                hook_path = plugin_root / "hooks/hooks.json"
+                self.assertTrue(hook_path.is_file())
+                hook_manifest = json.loads(hook_path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    list(hook_manifest["hooks"]),
+                    ["PreToolUse"],
+                )
+                hook_entry = hook_manifest["hooks"]["PreToolUse"][0]
+                self.assertEqual(hook_entry["matcher"], "Bash")
+                hook = hook_entry["hooks"][0]
+                self.assertEqual(hook["type"], "process")
+                self.assertEqual(hook["command"], "python3")
+                self.assertEqual(
+                    hook["args"],
+                    ["${ZCODE_PLUGIN_ROOT}/scripts/rtk-zcode-hook.py"],
+                )
+                self.assertEqual(hook["timeoutMs"], 5000)
+                self.assertTrue(
+                    (plugin_root / "scripts/rtk-zcode-hook.py").is_file()
+                )
+                self.assertTrue((plugin_root / "rules.json").is_file())
+            else:
+                self.assertEqual(plugin_manifest["skills"], "skills")
+                self.assertEqual(plugin_manifest["agents"], "agents")
 
             if entry["name"] == "ghost-agent-workflow":
                 self.assertEqual(plugin_manifest["commands"], "commands")
@@ -121,17 +163,18 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 })
                 for agent_name in EXPECTED_AGENTS[entry["name"]]:
                     self.assertIn(f"`{agent_name}`", command_text)
-            self.assertEqual(
-                {path.stem for path in (plugin_root / "agents").glob("*.md")},
-                EXPECTED_AGENTS[entry["name"]],
-            )
-            for agent_path in (plugin_root / "agents").glob("*.md"):
-                agent_text = agent_path.read_text(encoding="utf-8")
-                self.assertTrue(agent_text.startswith("---\n"), agent_path)
-                self.assertEqual(frontmatter(agent_text)["name"], agent_path.stem)
-                self.assertEqual(set(frontmatter(agent_text)), {"name", "description"})
-                self.assertTrue(frontmatter(agent_text)["description"].strip())
-                self.assertIn(f"${agent_path.stem}", agent_text)
+            if entry["name"] != "rtk-hook":
+                self.assertEqual(
+                    {path.stem for path in (plugin_root / "agents").glob("*.md")},
+                    EXPECTED_AGENTS[entry["name"]],
+                )
+                for agent_path in (plugin_root / "agents").glob("*.md"):
+                    agent_text = agent_path.read_text(encoding="utf-8")
+                    self.assertTrue(agent_text.startswith("---\n"), agent_path)
+                    self.assertEqual(frontmatter(agent_text)["name"], agent_path.stem)
+                    self.assertEqual(set(frontmatter(agent_text)), {"name", "description"})
+                    self.assertTrue(frontmatter(agent_text)["description"].strip())
+                    self.assertIn(f"${agent_path.stem}", agent_text)
 
             if entry["name"] == "ghost-agent-workflow":
                 actual_runtime_files = {
@@ -144,30 +187,31 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 }
                 self.assertEqual(actual_runtime_files, RUNTIME_FILES)
 
-            skill_root = plugin_root / "skills"
-            skill_names = {
-                skill_dir.name
-                for skill_dir in skill_root.iterdir()
-                if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file()
-            }
-            self.assertEqual(skill_names, EXPECTED_SKILLS[entry["name"]])
+            if entry["name"] != "rtk-hook":
+                skill_root = plugin_root / "skills"
+                skill_names = {
+                    skill_dir.name
+                    for skill_dir in skill_root.iterdir()
+                    if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file()
+                }
+                self.assertEqual(skill_names, EXPECTED_SKILLS[entry["name"]])
 
-            for skill_name in skill_names:
-                skill_dir = skill_root / skill_name
-                self.assertFalse(skill_dir.is_symlink(), skill_name)
-                self.assertFalse((skill_dir / "agents").exists(), skill_name)
+                for skill_name in skill_names:
+                    skill_dir = skill_root / skill_name
+                    self.assertFalse(skill_dir.is_symlink(), skill_name)
+                    self.assertFalse((skill_dir / "agents").exists(), skill_name)
 
-                skill_text = (skill_root / skill_name / "SKILL.md").read_text(
-                    encoding="utf-8"
-                )
-                self.assertTrue(skill_text.startswith("---\n"), skill_name)
-                skill_metadata = frontmatter(skill_text)
-                self.assertEqual(skill_metadata["name"], skill_name, skill_name)
-                self.assertEqual(set(skill_metadata), {"name", "description"}, skill_name)
-                self.assertTrue(skill_metadata["description"].strip(), skill_name)
-                self.assertIn("ZCode 独立副本", skill_text, skill_name)
-                for referenced_path in referenced_files(skill_root / skill_name / "SKILL.md"):
-                    self.assertTrue(referenced_path.is_file(), referenced_path)
+                    skill_text = (skill_root / skill_name / "SKILL.md").read_text(
+                        encoding="utf-8"
+                    )
+                    self.assertTrue(skill_text.startswith("---\n"), skill_name)
+                    skill_metadata = frontmatter(skill_text)
+                    self.assertEqual(skill_metadata["name"], skill_name, skill_name)
+                    self.assertEqual(set(skill_metadata), {"name", "description"}, skill_name)
+                    self.assertTrue(skill_metadata["description"].strip(), skill_name)
+                    self.assertIn("ZCode 独立副本", skill_text, skill_name)
+                    for referenced_path in referenced_files(skill_root / skill_name / "SKILL.md"):
+                        self.assertTrue(referenced_path.is_file(), referenced_path)
 
             self.assertFalse(list(plugin_root.rglob("openai.yaml")))
 

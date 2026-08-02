@@ -63,8 +63,10 @@ Codex hook 插件：
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
 ZCode 使用仓库根目录的 `AGENTS.md` 作为工作区说明，并通过根目录的
-`marketplace.json` 发布两个独立插件。ZCode 插件和 skill 副本位于
-`zcode-market/plugins/`，初始从 Claude Code skill 复制，之后可以单独修改；
+`marketplace.json` 发布三个独立插件：workflow、普通 skills 和 `rtk-hook`。
+ZCode 插件和 skill 副本位于 `zcode-market/plugins/`；两个 skill 插件的副本
+初始从 Claude Code skill 复制，`rtk-hook` 则按 ZCode hook 协议单独构造，之后
+都可以独立修改；
 不会自动同步回 Claude Code 或 Codex。ZCode 的每个 plugin-level agent
 都与一个同名 skill 一一对应，agent 的第一条规则是先加载该 skill；一次调用只
 完成一个 bounded action，不创建、等待或转发给其他 agent。workflow plugin 提供
@@ -89,7 +91,7 @@ ghost-agent-market/
 │   │   ├── sub-thread-coordination/
 │   │   └── sub-thread-goal-worker/
 │   └── plugins/
-│       └── ghost-agent-skills/
+│       ├── ghost-agent-skills/
 │           ├── .claude-plugin/plugin.json
 │           └── skills/
 │               ├── git-commit/
@@ -123,6 +125,12 @@ ghost-agent-market/
 │           └── skills/
 │               ├── git-commit/
 │               └── git-merge-conflict/
+│       └── rtk-hook/
+│           ├── .zcode-plugin/plugin.json
+│           ├── hooks/hooks.json
+│           ├── rules.json
+│           ├── scripts/rtk-zcode-hook.py
+│           └── README.md
 └── codex-market/
     ├── .agents/plugins/marketplace.json
     └── plugins/
@@ -191,19 +199,21 @@ codex-market/.agents/plugins/marketplace.json
 在 ZCode 中打开 `Settings -> Plugins -> Create -> Add marketplace`，添加在线 GitHub
 marketplace `Ghost233/ghost-agent-market`，或输入完整地址
 `https://github.com/Ghost233/ghost-agent-market`。找到
-`ghost-agent-workflow` 和 `ghost-agent-skills` 后分别点击 `Get` 安装并启用。
+`ghost-agent-workflow`、`ghost-agent-skills` 和 `rtk-hook` 后，分别点击 `Get`
+安装并启用。
 
-安装后，ZCode 会从这两个独立插件中加载全部 skill；在任务输入框使用 `/` 的 Skills
+安装后，ZCode 会从两个 skill 插件中加载全部 skill，并从 `rtk-hook` 加载
+PreToolUse hook；在任务输入框使用 `/` 的 Skills
 分组，或输入 `$sub-thread-coordination`、`$git-commit`、
 `$git-merge-conflict` 等名称调用；对应的 plugin-level agent 会强制先加载同名
 skill。workflow 插件还可以使用 `/parallel-workflow` 作为统一入口。修改 skill、agent
-或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新加载插件。后续只修改
-`zcode-market/plugins/` 下的副本即可。
+或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新加载插件；修改 hook
+后还要开启新的 session。后续只修改 `zcode-market/plugins/` 下的副本即可。
 
 ## 在线部署 ZCode Marketplace
 
 ZCode 不需要单独的服务器或构建产物，也不需要用户下载或选择本地仓库。根目录的
-`marketplace.json` 是在线插件目录，`zcode-market/plugins/` 是两个插件的实际内容；
+`marketplace.json` 是在线插件目录，`zcode-market/plugins/` 是三个插件的实际内容；
 把这两个部分推送到公开 GitHub 仓库后，ZCode 就可以在线读取并安装。详细的目录和
 字段约束见
 [ZCode Plugin 文档](https://zcode.z.ai/en/docs/plugin)。
@@ -245,7 +255,7 @@ git push origin main
    `https://github.com/Ghost233/ghost-agent-market`。不要选择本地目录或本地
    `marketplace.json` 作为部署来源。
 3. 在 Personal marketplace 中点击刷新，安装并启用
-   `ghost-agent-workflow` 与 `ghost-agent-skills`。
+   `ghost-agent-workflow`、`ghost-agent-skills` 与 `rtk-hook`。
 4. 后续发布新版本后，在 Marketplace sources 中点击 Refresh，再点击插件详情里的
    `Check for updates`。如果 plugin 内容发生变化，先确认 plugin 版本已递增，再
    重新加载 Agent。

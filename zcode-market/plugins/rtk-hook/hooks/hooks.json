@@ -1,0 +1,21 @@
+{
+  "description": "RTK ZCode command rewrite hook",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": [
+              "${ZCODE_PLUGIN_ROOT}/scripts/rtk-zcode-hook.py"
+            ],
+            "timeoutMs": 5000,
+            "statusMessage": "Rewriting supported shell commands with RTK…"
+          }
+        ]
+      }
+    ]
+  }
+}
