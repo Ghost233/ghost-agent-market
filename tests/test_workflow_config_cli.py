@@ -10,7 +10,6 @@ SOURCE = ROOT / "tooling/workflow-config/workflow-config.mjs"
 PUBLISHED = (
     ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/workflow-config.mjs",
     ROOT / "claude-code-market/scripts/workflow-config.mjs",
-    ROOT / "kimi-market/plugins/ghost-agent-workflow/scripts/workflow-config.mjs",
 )
 
 

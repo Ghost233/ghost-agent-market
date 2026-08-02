@@ -17,13 +17,11 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"
 CLAUDE_SCRIPT = ROOT / "claude-code-market/scripts/goal-dag.mjs"
-KIMI_SCRIPT = ROOT / "kimi-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"
 WORKFLOW_CONFIG_SCRIPT = ROOT / "tooling/workflow-config/workflow-config.mjs"
 DASHBOARD_SOURCE = ROOT / "tooling/goal-dag/dashboard.html"
 DASHBOARD_STARTER_SOURCE = ROOT / "tooling/goal-dag/start-dashboard.mjs"
 CODEX_DASHBOARD_STARTER = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/start-dashboard.mjs"
 CLAUDE_DASHBOARD_STARTER = ROOT / "claude-code-market/scripts/start-dashboard.mjs"
-KIMI_DASHBOARD_STARTER = ROOT / "kimi-market/plugins/ghost-agent-workflow/scripts/start-dashboard.mjs"
 FIXTURES = ROOT / "tests/fixtures/goal-dag"
 
 
@@ -171,7 +169,7 @@ class GoalDagCliTests(unittest.TestCase):
             {"reason": "plan_invalid", "action": "revise_plan"},
             {"reason": "runtime_failed", "action": "retry_runtime"},
         ]
-        for script in (CODEX_SCRIPT, CLAUDE_SCRIPT, KIMI_SCRIPT):
+        for script in (CODEX_SCRIPT, CLAUDE_SCRIPT):
             result = self.run_cli("workflow", "lifecycle-contract", script=script)
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
@@ -189,11 +187,9 @@ class GoalDagCliTests(unittest.TestCase):
         docs = [
             ROOT / "codex-market/plugins/ghost-agent-workflow/skills" / relative,
             ROOT / "claude-code-market/skills" / relative,
-            ROOT / "kimi-market/plugins/ghost-agent-workflow/skills" / relative,
         ]
         contents = [path.read_text(encoding="utf-8") for path in docs]
         self.assertEqual(contents[0], contents[1])
-        self.assertEqual(contents[0], contents[2])
         for item in expected_matrix:
             self.assertIn(f"`{item['reason']}`", contents[0])
             self.assertIn(f"`{item['action']}`", contents[0])
@@ -6398,7 +6394,6 @@ const template = [
 process.stdout.write(JSON.stringify({
   codex: template.replaceAll("__EXECUTION_PLATFORM__", "codex"),
   claude_code: template.replaceAll("__EXECUTION_PLATFORM__", "claude_code"),
-  kimi: template.replaceAll("__EXECUTION_PLATFORM__", "kimi"),
 }));
 """
         built = subprocess.run(
@@ -6411,11 +6406,9 @@ process.stdout.write(JSON.stringify({
         expected = json.loads(built.stdout)
         self.assertEqual(expected["codex"], CODEX_SCRIPT.read_text(encoding="utf-8"))
         self.assertEqual(expected["claude_code"], CLAUDE_SCRIPT.read_text(encoding="utf-8"))
-        self.assertEqual(expected["kimi"], KIMI_SCRIPT.read_text(encoding="utf-8"))
         starter = DASHBOARD_STARTER_SOURCE.read_text(encoding="utf-8")
         self.assertEqual(starter, CODEX_DASHBOARD_STARTER.read_text(encoding="utf-8"))
         self.assertEqual(starter, CLAUDE_DASHBOARD_STARTER.read_text(encoding="utf-8"))
-        self.assertEqual(starter, KIMI_DASHBOARD_STARTER.read_text(encoding="utf-8"))
         dashboard = DASHBOARD_SOURCE.read_text(encoding="utf-8")
         self.assertIn('new EventSource(sourceUrl("/api/live"))', dashboard)
         self.assertIn('id="project-tabs"', dashboard)
@@ -6432,11 +6425,6 @@ process.stdout.write(JSON.stringify({
         self.assertEqual(
             dashboard,
             (ROOT / "claude-code-market/assets/goal-dag-dashboard.html")
-            .read_text(encoding="utf-8"),
-        )
-        self.assertEqual(
-            dashboard,
-            (ROOT / "kimi-market/plugins/ghost-agent-workflow/assets/goal-dag-dashboard.html")
             .read_text(encoding="utf-8"),
         )
 

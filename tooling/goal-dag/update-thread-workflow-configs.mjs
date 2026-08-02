@@ -89,21 +89,6 @@ claudeEntry.keywords = [...new Set([
 ])];
 writeJson(claudeMarketplacePath, claudeMarketplace);
 
-const kimiManifestPath = "kimi-market/plugins/ghost-agent-workflow/kimi.plugin.json";
-const kimiManifest = readJson(kimiManifestPath);
-kimiManifest.version = bumpRequested ? bumpBase(kimiManifest.version) : baseVersion(kimiManifest.version);
-kimiManifest.description = "由用户选择串行 Quick Owner 或最多八线程的最小 DAG；缺少持久子线程 API 时 fail closed。";
-kimiManifest.keywords.push("sub-thread-coordination", "thread-coordination", "explicit-review-dag");
-kimiManifest.keywords = [...new Set([
-  ...kimiManifest.keywords,
-  "workflow-setup",
-  "planner-reviewer",
-  "task-supervisor",
-])];
-kimiManifest.interface.shortDescription = "先选择 Quick 或 DAG，再运行脚本化 Owner 工作流。";
-kimiManifest.interface.longDescription = "启动前要求用户明确选择串行 Quick 或最小 DAG；DAG Supervisor 在宿主长期线程内持续监督最多八个真实 ready 线程。";
-writeJson(kimiManifestPath, kimiManifest);
-
 const openaiYaml = `interface:\n  display_name: "Owner 工作流协调器"\n  short_description: "要求用户选择 Quick 或 DAG，再协调长期 Owner 线程。"\n  default_prompt: "使用 $sub-thread-coordination；如果我没有明确指定 Quick 或 DAG，先要求我选择运行模式，确认后再启动。"\n\npolicy:\n  allow_implicit_invocation: false\n`;
 for (const relativePath of [
   "codex-market/plugins/ghost-agent-workflow/skills/sub-thread-coordination/agents/openai.yaml",
@@ -156,5 +141,5 @@ for (const { path: relativePath, shortDescription } of supervisorMetadata) {
 
 process.stdout.write(
   `thread workflow configs updated; versions codex=${codexManifest.version} ` +
-  `claude=${claudeVersion} kimi=${kimiManifest.version}\n`,
+  `claude=${claudeVersion}\n`,
 );

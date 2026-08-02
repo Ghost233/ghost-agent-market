@@ -63,4 +63,4 @@
 
 ## 发布范围
 
-同步更新 Claude Code、Codex、Kimi Code 和仓库 `.codex` 副本。`ghost-agent-skills` 基础版本从 `0.1.2` 升到 `0.1.3`，随后运行 cachebuster，只更新 Codex 的时间戳后缀。
+同步更新 Claude Code、Codex 和仓库 `.codex` 副本。`ghost-agent-skills` 基础版本从 `0.1.2` 升到 `0.1.3`，随后运行 cachebuster，只更新 Codex 的时间戳后缀。

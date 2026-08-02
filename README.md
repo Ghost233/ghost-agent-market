@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-这是一个 agent marketplace 工作区，包含 Claude Code / Codex / Kimi Code / ZCode 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
+这是一个 agent marketplace 工作区，包含 Claude Code / Codex / ZCode 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 `ghost-agent-workflow` 内置工作流 skill：
 
@@ -17,10 +17,10 @@
 - `git-commit`
 - `git-merge-conflict`
 
-上面列出的 workflow 是 Claude Code / Codex / Kimi Code 的共享版本；ZCode 使用后文
+上面列出的 workflow 是 Claude Code / Codex 的共享版本；ZCode 使用后文
 单独维护的副本，副本不包含监督 skill。
 
-## 共享 Workflow 入口（Claude Code / Codex / Kimi Code）
+## 共享 Workflow 入口（Claude Code / Codex）
 
 以下 Goal DAG 说明针对三端共享 workflow，不适用于 ZCode 的独立副本；ZCode 入口与 agent 映射见后文的 ZCode 说明。
 
@@ -48,7 +48,7 @@ DAG 使用 `workflow start-dag <workspace> <development-key>`，脚本创建 `ga
 
 原生 Goal 是可选桥接：默认使用 `standalone_thread`，用户可以直接回答 Owner 变化。只有用户已启动或明确要求 Goal 时才使用 `codex_native`。Goal 模式遇到 Owner 变化时返回 `owner_action_required`，通知用户暂停 Goal 并处理精确变更；应用后提示“可以继续 Goal”，不通过空模型回合累计 blocked 次数。
 
-Claude Code 与 Kimi Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才执行该工作流；标准 Agent 禁止作为回退，缺少能力时 fail closed。
+Claude Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才执行该工作流；标准 Agent 禁止作为回退，缺少能力时 fail closed。
 
 初始化脚本会生成 `.ghost-agent-workflow/.gitignore`，只保留自身、`config.json` 与 `owners/**`，并忽略 `runtime/**` 和临时 Owner interface；已有文件不覆盖。使用工作流的项目应提交这份 `.gitignore`、配置与 Owner 数据。
 
@@ -65,7 +65,7 @@ Codex hook 插件：
 ZCode 使用仓库根目录的 `AGENTS.md` 作为工作区说明，并通过根目录的
 `marketplace.json` 发布两个独立插件。ZCode 插件和 skill 副本位于
 `zcode-market/plugins/`，初始从 Claude Code skill 复制，之后可以单独修改；
-不会自动同步回 Claude Code、Codex 或 Kimi Code。ZCode 的每个 plugin-level agent
+不会自动同步回 Claude Code 或 Codex。ZCode 的每个 plugin-level agent
 都与一个同名 skill 一一对应，agent 的第一条规则是先加载该 skill；一次调用只
 完成一个 bounded action，不创建、等待或转发给其他 agent。workflow plugin 提供
 `parallel-task-planner`、`planner-reviewer`、`setup-sub-thread-workflow`、
@@ -145,29 +145,6 @@ ghost-agent-market/
             ├── hooks/
             ├── scripts/
             └── rules.json
-```
-
-`kimi-market/` 提供 Kimi Code 可安装插件：
-
-```text
-kimi-market/
-├── .kimi-plugin/marketplace.json
-└── plugins/
-    ├── ghost-agent-workflow/
-    │   ├── kimi.plugin.json
-    │   ├── scripts/goal-dag.mjs
-    │   └── skills/
-    │       ├── parallel-task-planner/
-    │       ├── planner-reviewer/
-    │       ├── setup-sub-thread-workflow/
-    │       ├── sub-thread-coordination/
-    │       ├── sub-thread-goal-worker/
-    │       └── start-dag-dashboard/
-    └── ghost-agent-skills/
-        ├── kimi.plugin.json
-        └── skills/
-            ├── git-commit/
-            └── git-merge-conflict/
 ```
 
 ## 安装 Claude Code Market
@@ -275,27 +252,3 @@ git push origin main
 
 启用第三方 plugin 等同于授予其脚本本地执行权限；部署前应检查 `agents/`、`skills/`
 和 `scripts/` 内容，只启用信任的来源。
-
-## 安装 Kimi Code Market
-
-GitHub 一键安装（CI 从 `main` 分支构建的滚动 release zip，免克隆）：
-
-```text
-/plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-workflow-kimi.zip
-/plugins install https://github.com/Ghost233/ghost-agent-market/releases/download/kimi-latest/ghost-agent-skills-kimi.zip
-```
-
-或克隆本仓库后本地安装：
-
-```text
-/plugins install <仓库路径>/kimi-market/plugins/ghost-agent-workflow
-/plugins install <仓库路径>/kimi-market/plugins/ghost-agent-skills
-```
-
-也可以通过 marketplace 清单安装（远程用 `kimi-market/.kimi-plugin/marketplace-remote.json` 的 raw URL，本地用 `marketplace.json`）。注意 Kimi 不支持仓库整库 URL（含 `/tree/...`）安装 monorepo 子目录插件，必须走 release zip 或本地路径。
-
-插件为用户级安装，对所有项目生效；安装或更新后需要 `/reload` 或开启新会话。只有 `ghost-agent-workflow` 的 Goal DAG skill 需要用户机器安装 Node.js。推荐入口：
-
-```text
-/skill:sub-thread-coordination 以 Owner 工作流执行 `./plan.md`；需要时单向升级为最小 DAG。
-```

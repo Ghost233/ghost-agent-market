@@ -16,7 +16,7 @@
 - Git writes are allowed only through `python3 <script> apply`.
 - Do not push, amend, rewrite history, bypass hooks, or automatically roll back partial failure.
 - Keep `Co-Authored-By: Nexus <nexus@xfinite.global>` on every commit.
-- Synchronize the shared skill across Claude Code, Codex, Kimi Code, and `.codex/skills/git-commit`.
+- Synchronize the shared skill across Claude Code, Codex, and `.codex/skills/git-commit`.
 - Bump `ghost-agent-skills` from `0.1.2` to `0.1.3`, then replace only the Codex cachebuster suffix.
 - Do not create a Git commit for this implementation unless the user separately authorizes it.
 
@@ -267,14 +267,9 @@ Expected: all Codex contract tests pass.
 - Modify: `claude-code-market/plugins/ghost-agent-skills/skills/git-commit/SKILL.md`
 - Modify: `claude-code-market/plugins/ghost-agent-skills/skills/git-commit/scripts/git_commit.py`
 - Delete: `claude-code-market/plugins/ghost-agent-skills/skills/git-commit/references/reviewer.md`
-- Modify: `kimi-market/plugins/ghost-agent-skills/skills/git-commit/SKILL.md`
-- Modify: `kimi-market/plugins/ghost-agent-skills/skills/git-commit/scripts/git_commit.py`
-- Delete: `kimi-market/plugins/ghost-agent-skills/skills/git-commit/references/reviewer.md`
 - Modify: `tooling/update-ghost-agent-skills.mjs`
 - Modify: `codex-market/plugins/ghost-agent-skills/.codex-plugin/plugin.json`
 - Modify: `claude-code-market/plugins/ghost-agent-skills/.claude-plugin/plugin.json`
-- Modify: `kimi-market/plugins/ghost-agent-skills/kimi.plugin.json`
-- Modify: `tests/test_kimi_sub_thread_contract.py`
 
 **Interfaces:**
 - All four skill/script copies are byte-identical.
@@ -286,7 +281,7 @@ Replace `conditional-review` with keywords describing the remaining architecture
 
 - [ ] **Step 2: Mechanically synchronize the canonical skill and script**
 
-Copy the canonical Codex marketplace `SKILL.md` and `scripts/git_commit.py` to Claude, Kimi, and `.codex`; remove all four reviewer references.
+Copy the canonical Codex marketplace `SKILL.md` and `scripts/git_commit.py` to Claude and `.codex`; remove all reviewer references.
 
 - [ ] **Step 3: Bump base versions and cachebuster**
 
@@ -296,7 +291,7 @@ Run:
 node tooling/update-ghost-agent-skills.mjs --bump-base
 ```
 
-Expected: Claude and Kimi become `0.1.3`; Codex becomes `0.1.3+codex.<UTC timestamp>`.
+Expected: Claude becomes `0.1.3`; Codex becomes `0.1.3+codex.<UTC timestamp>`.
 
 - [ ] **Step 4: Update version tests and run the full relevant suite**
 
@@ -306,7 +301,7 @@ Run:
 python3 -m unittest \
   tests.test_git_commit_script \
   tests.test_codex_sub_thread_contract \
-  tests.test_kimi_sub_thread_contract -v
+  tests.test_start_dag_dashboard_skill -v
 ```
 
 Expected: all tests pass.

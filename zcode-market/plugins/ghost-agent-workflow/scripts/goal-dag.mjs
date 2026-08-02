@@ -568,9 +568,9 @@ const EXPECTED_PLATFORM = (
 )                     ;
 if (
   EXPECTED_PLATFORM !== "codex" && EXPECTED_PLATFORM !== "claude_code" &&
-  EXPECTED_PLATFORM !== "kimi" && EXPECTED_PLATFORM !== "zcode"
+  EXPECTED_PLATFORM !== "zcode"
 ) {
-  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex, claude_code, kimi or zcode for an unbuilt runtime");
+  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex, claude_code or zcode for an unbuilt runtime");
 }
 const DIFF_SCOPE_GATE_ID = "diff-scope-audit";
 const SOURCE_COVERAGE_GATE_ID = "source-coverage-audit";
@@ -4030,12 +4030,6 @@ function cleanupCompletedGoal(goalPath        )       {
 
 function continuationPayloadFor(goalPath        )                         {
   if (EXPECTED_PLATFORM === "codex") return {};
-  if (EXPECTED_PLATFORM === "kimi") {
-    return {
-      continuation_prompt:
-        `/skill:sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
-    };
-  }
   if (EXPECTED_PLATFORM === "zcode") {
     return {
       continuation_prompt:

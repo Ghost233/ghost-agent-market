@@ -5,15 +5,13 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CODEX = ROOT / "codex-market/plugins/ghost-agent-workflow/skills/start-dag-dashboard"
 CLAUDE = ROOT / "claude-code-market/skills/start-dag-dashboard"
-KIMI = ROOT / "kimi-market/plugins/ghost-agent-workflow/skills/start-dag-dashboard"
 
 
 class StartDagDashboardSkillTests(unittest.TestCase):
-    def test_skill_is_narrow_and_explicit_on_every_platform(self) -> None:
+    def test_skill_is_narrow_and_explicit_on_supported_platforms(self) -> None:
         codex = (CODEX / "SKILL.md").read_text(encoding="utf-8")
         claude = (CLAUDE / "SKILL.md").read_text(encoding="utf-8")
-        kimi = (KIMI / "SKILL.md").read_text(encoding="utf-8")
-        for text in (codex, claude, kimi):
+        for text in (codex, claude):
             self.assertIn("只负责启动", text)
             self.assertIn("不要创建 Goal", text)
             self.assertIn("不持续轮询", text)
@@ -33,12 +31,7 @@ class StartDagDashboardSkillTests(unittest.TestCase):
         self.assertIn(
             "node <plugin-root>/scripts/start-dashboard.mjs <workspace>", claude
         )
-        self.assertIn(
-            "node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs <workspace>",
-            kimi,
-        )
         self.assertIn("disable-model-invocation: true", claude)
-        self.assertIn("whenToUse:", kimi)
 
     def test_codex_and_claude_metadata_require_explicit_invocation(self) -> None:
         for root in (CODEX, CLAUDE):

@@ -20,12 +20,6 @@ const targets = [
     dashboardStarterPath: resolve(root, "claude-code-market/scripts/start-dashboard.mjs"),
     executionPlatform: "claude_code",
   },
-  {
-    path: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/goal-dag.mjs"),
-    dashboardPath: resolve(root, "kimi-market/plugins/ghost-agent-workflow/assets/goal-dag-dashboard.html"),
-    dashboardStarterPath: resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/start-dashboard.mjs"),
-    executionPlatform: "kimi",
-  },
 ];
 const source = readFileSync(sourcePath, "utf8");
 const dashboard = readFileSync(dashboardSourcePath, "utf8");

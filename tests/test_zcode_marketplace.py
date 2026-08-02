@@ -45,7 +45,6 @@ FORBIDDEN_ZCODE_TEXT = (
     "require_escalated",
     "Codex",
     "Claude",
-    "Kimi",
 )
 RUNTIME_FILES = {
     "scripts/goal-dag.mjs",

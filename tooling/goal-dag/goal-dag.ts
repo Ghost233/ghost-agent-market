@@ -31,7 +31,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-type ExecutionPlatform = "codex" | "claude_code" | "kimi";
+type ExecutionPlatform = "codex" | "claude_code" | "zcode";
 type ExecutorMode = "thread";
 type TaskRole = "work" | "review" | "verify";
 type RiskLevel = "low" | "medium" | "high";
@@ -567,9 +567,9 @@ const EXPECTED_PLATFORM = (
 ) as ExecutionPlatform;
 if (
   EXPECTED_PLATFORM !== "codex" && EXPECTED_PLATFORM !== "claude_code" &&
-  EXPECTED_PLATFORM !== "kimi"
+  EXPECTED_PLATFORM !== "zcode"
 ) {
-  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex, claude_code or kimi for an unbuilt runtime");
+  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex, claude_code or zcode for an unbuilt runtime");
 }
 const DIFF_SCOPE_GATE_ID = "diff-scope-audit";
 const SOURCE_COVERAGE_GATE_ID = "source-coverage-audit";
@@ -4035,10 +4035,10 @@ function cleanupCompletedGoal(goalPath: string): void {
 
 function continuationPayloadFor(goalPath: string): Record<string, string> {
   if (EXPECTED_PLATFORM === "codex") return {};
-  if (EXPECTED_PLATFORM === "kimi") {
+  if (EXPECTED_PLATFORM === "zcode") {
     return {
       continuation_prompt:
-        `/skill:sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
+        `$sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
     };
   }
   return {

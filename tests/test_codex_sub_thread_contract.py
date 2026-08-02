@@ -334,15 +334,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 ).read_text(encoding="utf-8"),
                 source_content,
             )
-            if rel_path != "agents/openai.yaml":
-                self.assertEqual(
-                    (
-                        ROOT
-                        / "kimi-market/plugins/ghost-agent-skills/skills/git-merge-conflict"
-                        / rel_path
-                    ).read_text(encoding="utf-8"),
-                    source_content,
-                )
 
     def test_project_git_commit_copy_matches_marketplace_source(self) -> None:
         self.assertEqual(
@@ -362,13 +353,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
             ),
             self.git_commit,
         )
-        self.assertEqual(
-            (
-                ROOT
-                / "kimi-market/plugins/ghost-agent-skills/skills/git-commit/SKILL.md"
-            ).read_text(encoding="utf-8"),
-            self.git_commit,
-        )
         for rel_path in ("scripts/git_commit.py",):
             source_content = (
                 SKILLS_PLUGIN / "skills/git-commit" / rel_path
@@ -385,20 +369,11 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 ).read_text(encoding="utf-8"),
                 source_content,
             )
-            self.assertEqual(
-                (
-                    ROOT
-                    / "kimi-market/plugins/ghost-agent-skills/skills/git-commit"
-                    / rel_path
-                ).read_text(encoding="utf-8"),
-                source_content,
-            )
         for skill_root in (
             LOCAL_GIT_COMMIT,
             SKILLS_PLUGIN / "skills/git-commit",
             ROOT
             / "claude-code-market/plugins/ghost-agent-skills/skills/git-commit",
-            ROOT / "kimi-market/plugins/ghost-agent-skills/skills/git-commit",
         ):
             self.assertFalse((skill_root / "references/reviewer.md").exists())
 
@@ -408,7 +383,6 @@ class CodexWorkflowContractTests(unittest.TestCase):
             / "codex-market/plugins/ghost-agent-skills/.codex-plugin/plugin.json",
             ROOT
             / "claude-code-market/plugins/ghost-agent-skills/.claude-plugin/plugin.json",
-            ROOT / "kimi-market/plugins/ghost-agent-skills/kimi.plugin.json",
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))

@@ -66,16 +66,7 @@ claudePlugin.description = "检查当前仓库改动并创建规范的中文 Git
 claudePlugin.keywords = skillKeywords(claudePlugin.keywords);
 writeJson(claudePluginPath, claudePlugin);
 
-const kimiManifestPath = "kimi-market/plugins/ghost-agent-skills/kimi.plugin.json";
-const kimiManifest = readJson(kimiManifestPath);
-kimiManifest.version = bumpRequested ? bumpBase(kimiManifest.version) : baseVersion(kimiManifest.version);
-kimiManifest.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
-kimiManifest.keywords = skillKeywords(kimiManifest.keywords);
-kimiManifest.interface.shortDescription = "检查当前改动并创建规范的中文 Git 提交。";
-kimiManifest.interface.longDescription = "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。";
-writeJson(kimiManifestPath, kimiManifest);
-
 process.stdout.write(
   "ghost-agent-skills configs updated; versions codex=" + codexManifest.version +
-  " claude=" + claudePlugin.version + " kimi=" + kimiManifest.version + "\n"
+  " claude=" + claudePlugin.version + "\n"
 );

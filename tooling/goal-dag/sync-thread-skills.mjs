@@ -26,10 +26,6 @@ const targets = [
     platform: "Claude Code",
     root: join(repositoryRoot, "claude-code-market/skills"),
   },
-  {
-    platform: "Kimi Code",
-    root: join(repositoryRoot, "kimi-market/plugins/ghost-agent-workflow/skills"),
-  },
 ];
 
 function write(path, contents) {
@@ -190,22 +186,5 @@ for (const skill of ["start-dag-dashboard"]) {
     readFileSync(path, "utf8").replace("\n---\n", "\ndisable-model-invocation: true\n---\n"),
   );
 }
-
-const kimiDashboardPath = join(
-  repositoryRoot,
-  "kimi-market/plugins/ghost-agent-workflow/skills/start-dag-dashboard/SKILL.md",
-);
-write(
-  kimiDashboardPath,
-  readFileSync(kimiDashboardPath, "utf8")
-    .replace(
-      "\n---\n",
-      "\nwhenToUse: 用户显式启动 Dashboard，或协调器在 Plan 激活后启动 Dashboard 时使用。\n---\n",
-    )
-    .replace(
-      "node <plugin-root>/scripts/start-dashboard.mjs",
-      "node ${KIMI_SKILL_DIR}/../../scripts/start-dashboard.mjs",
-    ),
-);
 
 process.stdout.write("thread workflow skills synchronized\n");

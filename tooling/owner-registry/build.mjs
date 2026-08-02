@@ -8,7 +8,6 @@ const sourcePath = resolve(root, "tooling/owner-registry/owner-registry.ts");
 const targets = [
   resolve(root, "claude-code-market/scripts/owner-registry.mjs"),
   resolve(root, "codex-market/plugins/ghost-agent-workflow/scripts/owner-registry.mjs"),
-  resolve(root, "kimi-market/plugins/ghost-agent-workflow/scripts/owner-registry.mjs"),
 ];
 const source = readFileSync(sourcePath, "utf8");
 const output = [

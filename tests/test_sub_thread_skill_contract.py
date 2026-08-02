@@ -6,7 +6,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PLATFORMS = {
     "codex": ROOT / "codex-market/plugins/ghost-agent-workflow",
     "claude": ROOT / "claude-code-market",
-    "kimi": ROOT / "kimi-market/plugins/ghost-agent-workflow",
 }
 ACTIVE_DAG_SKILLS = (
     "sub-thread-coordination",
@@ -159,7 +158,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         self.assertIn("没有 active 监控动作", codex)
         self.assertNotIn("runtime_ref", codex)
 
-        for platform in ("claude", "kimi"):
+        for platform in ("claude",):
             supervisor = self.skill(platform, "sub-thread-task-supervisor")
             self.assertIn("不提供 Codex 原生 Goal 工具", supervisor)
             self.assertIn("持续监督 turn", supervisor)
@@ -293,7 +292,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         codex_root = PLATFORMS["codex"] / "skills"
         for relative in portable:
             expected = (codex_root / relative).read_text(encoding="utf-8")
-            for platform in ("claude", "kimi"):
+            for platform in ("claude",):
                 actual = (PLATFORMS[platform] / "skills" / relative).read_text(encoding="utf-8")
                 self.assertEqual(actual, expected, f"{platform}:{relative}")
 

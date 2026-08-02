@@ -11,7 +11,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/owner-registry.mjs"
 CLAUDE_SCRIPT = ROOT / "claude-code-market/scripts/owner-registry.mjs"
-KIMI_SCRIPT = ROOT / "kimi-market/plugins/ghost-agent-workflow/scripts/owner-registry.mjs"
 
 
 def serialized(value: object) -> str:
@@ -588,7 +587,7 @@ process.stdout.write(built);
             check=False,
         )
         self.assertEqual(built.returncode, 0, built.stderr)
-        for published in [SCRIPT, CLAUDE_SCRIPT, KIMI_SCRIPT]:
+        for published in [SCRIPT, CLAUDE_SCRIPT]:
             self.assertEqual(built.stdout, published.read_text(encoding="utf-8"))
 
 
