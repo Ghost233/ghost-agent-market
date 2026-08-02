@@ -211,8 +211,9 @@ codex-market/.agents/plugins/marketplace.json
 
 ## 安装 ZCode Marketplace
 
-在 ZCode 中打开 `Settings -> Plugins -> Marketplace`，点击搜索框旁的 `+`，添加
-`Ghost233/ghost-agent-market`（本地开发时也可以直接添加仓库路径）。找到
+在 ZCode 中打开 `Settings -> Plugins -> Create -> Add marketplace`，添加在线 GitHub
+marketplace `Ghost233/ghost-agent-market`，或输入完整地址
+`https://github.com/Ghost233/ghost-agent-market`。找到
 `ghost-agent-workflow` 和 `ghost-agent-skills` 后分别点击 `Get` 安装并启用。
 
 安装后，ZCode 会从这两个独立插件中加载全部 skill；在任务输入框使用 `/` 的 Skills
@@ -222,16 +223,17 @@ skill。workflow 插件还可以使用 `/parallel-workflow` 作为统一入口�
 或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新加载插件。后续只修改
 `zcode-market/plugins/` 下的副本即可。
 
-## 部署 ZCode Marketplace
+## 在线部署 ZCode Marketplace
 
-ZCode 不需要单独的服务器或构建产物。根目录的 `marketplace.json` 是插件目录，
-`zcode-market/plugins/` 是两个插件的实际内容；把这两个部分一起推送到 GitHub，
-仓库就可以作为 ZCode marketplace 发布。详细的目录和字段约束见
+ZCode 不需要单独的服务器或构建产物，也不需要用户下载或选择本地仓库。根目录的
+`marketplace.json` 是在线插件目录，`zcode-market/plugins/` 是两个插件的实际内容；
+把这两个部分推送到公开 GitHub 仓库后，ZCode 就可以在线读取并安装。详细的目录和
+字段约束见
 [ZCode Plugin 文档](https://zcode.z.ai/en/docs/plugin)。
 
-### 本地验证
+### 发布前校验
 
-在仓库根目录执行：
+维护者在提交到 GitHub 前，在仓库根目录执行：
 
 ```bash
 python3 -m unittest tests.test_zcode_marketplace -v
@@ -259,15 +261,17 @@ git push origin main
 如果使用功能分支，将最后一条改为 `git push -u origin <branch>`，合并到默认分支
 后再发布。推送成功后，GitHub 仓库中的 `marketplace.json` 和插件目录即为最新版本。
 
-### 在 ZCode 中刷新部署
+### 在 ZCode 中在线安装和更新
 
 1. 打开 `Settings -> Plugins -> Create -> Add marketplace`。
-2. 添加 `Ghost233/ghost-agent-market`，或选择本地仓库根目录/
-   `marketplace.json`。
+2. 添加在线地址 `Ghost233/ghost-agent-market`，或
+   `https://github.com/Ghost233/ghost-agent-market`。不要选择本地目录或本地
+   `marketplace.json` 作为部署来源。
 3. 在 Personal marketplace 中点击刷新，安装并启用
    `ghost-agent-workflow` 与 `ghost-agent-skills`。
-4. 后续发布新版本后，在 Marketplace sources 中再次点击 Refresh；如果 plugin 内容
-   发生变化，先确认 plugin 版本已递增，再检查插件详情中的版本并重新加载 Agent。
+4. 后续发布新版本后，在 Marketplace sources 中点击 Refresh，再点击插件详情里的
+   `Check for updates`。如果 plugin 内容发生变化，先确认 plugin 版本已递增，再
+   重新加载 Agent。
 
 启用第三方 plugin 等同于授予其脚本本地执行权限；部署前应检查 `agents/`、`skills/`
 和 `scripts/` 内容，只启用信任的来源。
