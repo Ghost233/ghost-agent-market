@@ -67,9 +67,11 @@ ZCode 使用仓库根目录的 `AGENTS.md` 作为工作区说明，并通过根�
 ZCode 插件和 skill 副本位于 `zcode-market/plugins/`；两个 skill 插件的副本
 初始从 Claude Code skill 复制，`rtk-hook` 则按 ZCode hook 协议单独构造，之后
 都可以独立修改；
-不会自动同步回 Claude Code 或 Codex。ZCode 的每个 plugin-level agent
-都与一个同名 skill 一一对应，agent 的第一条规则是先加载该 skill；一次调用只
-完成一个 bounded action，不创建、等待或转发给其他 agent。workflow plugin 提供
+不会自动同步回 Claude Code 或 Codex。ZCode role agent 模板位于
+`zcode-market/agent-templates/`，通过在线脚本安装到用户级
+`~/.zcode/agents/`，因此可以单独修改 `model:`；每个 agent 都与一个同名 skill
+一一对应，第一条规则是先加载该 skill；一次调用只完成一个 bounded action，不创建、
+等待或转发给其他 agent。workflow plugin 提供
 `parallel-task-planner`、`planner-reviewer`、`setup-sub-thread-workflow`、
 `start-dag-dashboard`、`sub-thread-coordination` 和 `sub-thread-goal-worker`
 六个 agent，普通 skills plugin 提供 `git-commit` 和 `git-merge-conflict` 两个
@@ -97,16 +99,21 @@ ghost-agent-market/
 │               ├── git-commit/
 │               └── git-merge-conflict/
 ├── zcode-market/
+│   ├── install-agents.py
+│   ├── agent-templates/
+│   │   ├── ghost-agent-workflow/
+│   │   │   ├── parallel-task-planner.md
+│   │   │   ├── planner-reviewer.md
+│   │   │   ├── setup-sub-thread-workflow.md
+│   │   │   ├── start-dag-dashboard.md
+│   │   │   ├── sub-thread-coordination.md
+│   │   │   └── sub-thread-goal-worker.md
+│   │   └── ghost-agent-skills/
+│   │       ├── git-commit.md
+│   │       └── git-merge-conflict.md
 │   └── plugins/
 │       ├── ghost-agent-workflow/
 │       │   ├── .zcode-plugin/plugin.json
-│       │   ├── agents/
-│       │   │   ├── parallel-task-planner.md
-│       │   │   ├── planner-reviewer.md
-│       │   │   ├── setup-sub-thread-workflow.md
-│       │   │   ├── start-dag-dashboard.md
-│       │   │   ├── sub-thread-coordination.md
-│       │   │   └── sub-thread-goal-worker.md
 │       │   ├── commands/parallel-workflow.md
 │       │   ├── scripts/
 │       │   ├── assets/
@@ -117,14 +124,11 @@ ghost-agent-market/
 │       │       ├── sub-thread-coordination/
 │       │       ├── sub-thread-goal-worker/
 │       │       └── start-dag-dashboard/
-│       └── ghost-agent-skills/
-│           ├── .zcode-plugin/plugin.json
-│           ├── agents/
-│           │   ├── git-commit.md
-│           │   └── git-merge-conflict.md
-│           └── skills/
-│               ├── git-commit/
-│               └── git-merge-conflict/
+│       ├── ghost-agent-skills/
+│       │   ├── .zcode-plugin/plugin.json
+│       │   └── skills/
+│       │       ├── git-commit/
+│       │       └── git-merge-conflict/
 │       └── rtk-hook/
 │           ├── .zcode-plugin/plugin.json
 │           ├── hooks/hooks.json
@@ -202,19 +206,54 @@ marketplace `Ghost233/ghost-agent-market`，或输入完整地址
 `ghost-agent-workflow`、`ghost-agent-skills` 和 `rtk-hook` 后，分别点击 `Get`
 安装并启用。
 
-安装后，ZCode 会从两个 skill 插件中加载全部 skill，并从 `rtk-hook` 加载
-PreToolUse hook；在任务输入框使用 `/` 的 Skills
+安装后，ZCode 会从两个 skill 插件中加载全部 skill，并从 workflow plugin 加载
+`/parallel-workflow`，从 `rtk-hook` 加载 PreToolUse hook；在任务输入框使用 `/` 的 Skills
 分组，或输入 `$sub-thread-coordination`、`$git-commit`、
-`$git-merge-conflict` 等名称调用；对应的 plugin-level agent 会强制先加载同名
-skill。workflow 插件还可以使用 `/parallel-workflow` 作为统一入口。修改 skill、agent
-或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新加载插件；修改 hook
-后还要开启新的 session。后续只修改 `zcode-market/plugins/` 下的副本即可。
+`$git-merge-conflict` 等名称调用。role agent 不再作为 plugin profile 注册，需按下面的
+在线脚本安装。修改 skill 或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新
+加载插件；修改 hook 后还要开启新的 session。后续只修改 `zcode-market/` 下的副本即可。
+
+## 安装 ZCode 用户级 role agent
+
+role agent 使用在线脚本安装到 ZCode 的用户级目录，不需要 clone 仓库：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ghost233/ghost-agent-market/main/zcode-market/install-agents.py \
+  | python3 - --model inherit
+```
+
+安装后重启 ZCode 或开启新的 run。脚本默认安装全部 8 个 role agent；每个文件都可以
+单独编辑，例如：
+
+```text
+~/.zcode/agents/planner-reviewer.md
+```
+
+在文件头部修改模型：
+
+```yaml
+model: inherit
+```
+
+也可以在安装时统一指定模型，或只覆盖某一个 agent：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ghost233/ghost-agent-market/main/zcode-market/install-agents.py \
+  | python3 - --model sonnet
+
+curl -fsSL https://raw.githubusercontent.com/Ghost233/ghost-agent-market/main/zcode-market/install-agents.py \
+  | python3 - --model inherit --agent-model planner-reviewer=sonnet
+```
+
+已有用户文件默认不会覆盖；确认要从在线模板更新时再加 `--force`。使用前应审查
+脚本和模板内容，因为脚本会在本机写入 `~/.zcode/agents/`。
 
 ## 在线部署 ZCode Marketplace
 
 ZCode 不需要单独的服务器或构建产物，也不需要用户下载或选择本地仓库。根目录的
-`marketplace.json` 是在线插件目录，`zcode-market/plugins/` 是三个插件的实际内容；
-把这两个部分推送到公开 GitHub 仓库后，ZCode 就可以在线读取并安装。详细的目录和
+`marketplace.json` 是在线插件目录，`zcode-market/plugins/` 是三个插件的实际内容，
+`zcode-market/agent-templates/` 和 `install-agents.py` 是用户级 agent 安装源；把这些
+内容推送到公开 GitHub 仓库后，ZCode 就可以在线读取插件和 agent 模板。详细的目录和
 字段约束见
 [ZCode Plugin 文档](https://zcode.z.ai/en/docs/plugin)。
 
@@ -230,6 +269,7 @@ ZCode 不需要单独的服务器或构建产物，也不需要用户下载或�
 ```bash
 python3 -m unittest tests.test_zcode_marketplace -v
 python3 -m json.tool marketplace.json >/dev/null
+python3 zcode-market/install-agents.py --self-test
 ```
 
 如果修改了某个 plugin，必须同时更新该 plugin 的
@@ -245,7 +285,7 @@ plugin 版本。
 git status -sb
 git pull --ff-only origin main
 python3 -m unittest tests.test_zcode_marketplace -v
-git add README.md marketplace.json zcode-market tests/test_zcode_marketplace.py
+git add AGENTS.md CLAUDE.md README.md marketplace.json zcode-market tests/test_zcode_marketplace.py
 git commit -m "feat(zcode): publish marketplace"
 git push origin main
 ```
@@ -261,9 +301,11 @@ git push origin main
    `marketplace.json` 作为部署来源。
 3. 在 Personal marketplace 中点击刷新，安装并启用
    `ghost-agent-workflow`、`ghost-agent-skills` 与 `rtk-hook`。
-4. 后续发布新版本后，在 Marketplace sources 中点击 Refresh，再点击插件详情里的
+4. 按“安装 ZCode 用户级 role agent”中的在线命令安装用户级 agent。
+5. 后续发布新版本后，在 Marketplace sources 中点击 Refresh，再点击插件详情里的
    `Check for updates`。如果 plugin 内容发生变化，先确认 plugin 版本已递增，再
    重新加载 Agent。
 
-启用第三方 plugin 等同于授予其脚本本地执行权限；部署前应检查 `agents/`、`skills/`
+启用第三方 plugin 或运行在线安装脚本都等同于授予其本地执行权限；部署前应检查
+`agent-templates/`、`skills/`
 和 `scripts/` 内容，只启用信任的来源。

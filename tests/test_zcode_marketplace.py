@@ -89,6 +89,16 @@ def referenced_files(skill_path: Path) -> set[Path]:
 
 
 class ZCodeMarketplaceTests(unittest.TestCase):
+    def test_agent_installer_self_test(self) -> None:
+        script = ROOT / "zcode-market/install-agents.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--self-test"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_rtk_hook_script_self_test(self) -> None:
         script = ROOT / "zcode-market/plugins/rtk-hook/scripts/rtk-zcode-hook.py"
         result = subprocess.run(
@@ -149,7 +159,7 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 self.assertTrue((plugin_root / "rules.json").is_file())
             else:
                 self.assertEqual(plugin_manifest["skills"], "skills")
-                self.assertEqual(plugin_manifest["agents"], "agents")
+                self.assertNotIn("agents", plugin_manifest)
 
             if entry["name"] == "ghost-agent-workflow":
                 self.assertEqual(plugin_manifest["commands"], "commands")
@@ -163,19 +173,6 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 })
                 for agent_name in EXPECTED_AGENTS[entry["name"]]:
                     self.assertIn(f"`{agent_name}`", command_text)
-            if entry["name"] != "rtk-hook":
-                self.assertEqual(
-                    {path.stem for path in (plugin_root / "agents").glob("*.md")},
-                    EXPECTED_AGENTS[entry["name"]],
-                )
-                for agent_path in (plugin_root / "agents").glob("*.md"):
-                    agent_text = agent_path.read_text(encoding="utf-8")
-                    self.assertTrue(agent_text.startswith("---\n"), agent_path)
-                    self.assertEqual(frontmatter(agent_text)["name"], agent_path.stem)
-                    self.assertEqual(set(frontmatter(agent_text)), {"name", "description"})
-                    self.assertTrue(frontmatter(agent_text)["description"].strip())
-                    self.assertIn(f"${agent_path.stem}", agent_text)
-
             if entry["name"] == "ghost-agent-workflow":
                 actual_runtime_files = {
                     path.relative_to(plugin_root).as_posix()
@@ -215,12 +212,36 @@ class ZCodeMarketplaceTests(unittest.TestCase):
 
             self.assertFalse(list(plugin_root.rglob("openai.yaml")))
 
-            for text_root in (skill_root, plugin_root / "agents", plugin_root / "commands"):
+            text_roots = []
+            if entry["name"] != "rtk-hook":
+                text_roots.append(plugin_root / "skills")
+            if entry["name"] == "ghost-agent-workflow":
+                text_roots.append(plugin_root / "commands")
+            for text_root in text_roots:
                 for path in text_root.rglob("*"):
                     if path.is_file() and "__pycache__" not in path.parts:
                         text = path.read_text(encoding="utf-8")
                         for forbidden in FORBIDDEN_ZCODE_TEXT:
                             self.assertNotIn(forbidden, text, path.as_posix())
+
+    def test_agent_templates_are_independent_user_level_sources(self) -> None:
+        template_root = ROOT / "zcode-market/agent-templates"
+        for group, agent_names in EXPECTED_AGENTS.items():
+            group_root = template_root / group
+            self.assertTrue(group_root.is_dir(), group)
+            self.assertEqual(
+                {path.stem for path in group_root.glob("*.md")},
+                agent_names,
+            )
+            for agent_name in agent_names:
+                agent_path = group_root / f"{agent_name}.md"
+                agent_text = agent_path.read_text(encoding="utf-8")
+                self.assertTrue(agent_text.startswith("---\n"), agent_path)
+                metadata = frontmatter(agent_text)
+                self.assertEqual(metadata["name"], agent_name)
+                self.assertEqual(set(metadata), {"name", "description"})
+                self.assertTrue(metadata["description"].strip())
+                self.assertIn(f"${agent_name}", agent_text)
 
 
 if __name__ == "__main__":

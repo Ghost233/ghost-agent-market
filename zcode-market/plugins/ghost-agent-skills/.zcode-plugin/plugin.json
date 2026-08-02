@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.1.2",
-  "description": "ZCode 独立版普通 skills 与对应 role agent，提供递归 Git 提交与高风险 Git 冲突历史考古。",
+  "version": "0.1.3",
+  "description": "ZCode 独立版普通 skills；对应 role agent 通过在线脚本安装，提供递归 Git 提交与高风险 Git 冲突历史考古。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -17,6 +17,5 @@
     "zcode",
     "zcode-independent"
   ],
-  "skills": "skills",
-  "agents": "agents"
+  "skills": "skills"
 }

@@ -55,9 +55,11 @@ ZCode 副本初始从 Claude Code skill 复制，但之后允许单独修改，�
 Claude Code 或 Codex。每个 ZCode 副本的 `SKILL.md` 都必须保留独立
 演进说明，以明确这是用户要求的单端差异。
 
-ZCode plugin-level agent 位于各插件的 `agents/` 目录，并与同名 skill 一一对应；
-agent 必须先加载对应 skill，只执行一个明确 action，不创建、等待或转发给其他
-agent。workflow 统一入口位于 `zcode-market/plugins/ghost-agent-workflow/commands/parallel-workflow.md`；
+ZCode role agent 模板位于 `zcode-market/agent-templates/`，与同名 skill 一一对应；
+通过 `zcode-market/install-agents.py` 从在线 GitHub raw 文件安装到用户级
+`~/.zcode/agents/`。安装后的 agent 必须先加载对应 skill，只执行一个明确 action，
+不创建、等待或转发给其他 agent；每个用户级 Markdown 都可以单独设置 `model:`。
+workflow 统一入口位于 `zcode-market/plugins/ghost-agent-workflow/commands/parallel-workflow.md`；
 状态仍只能由 `scripts/` 下的 runtime 管理，不得手写替代状态文件。
 
 ## ZCode 在线连接规则
