@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-这是一个 agent marketplace 工作区，包含 Claude Code / Codex / Kimi Code 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
+这是一个 agent marketplace 工作区，包含 Claude Code / Codex / Kimi Code / ZCode 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 `ghost-agent-workflow` 内置工作流 skill：
 
@@ -17,7 +17,12 @@
 - `git-commit`
 - `git-merge-conflict`
 
-## Goal DAG 入口
+上面列出的 workflow 是 Claude Code / Codex / Kimi Code 的共享版本；ZCode 使用后文
+单独维护的副本，副本不包含监督 skill。
+
+## 共享 Workflow 入口（Claude Code / Codex / Kimi Code）
+
+以下 Goal DAG 说明针对三端共享 workflow，不适用于 ZCode 的独立副本；ZCode 入口与 agent 映射见后文的 ZCode 说明。
 
 Codex 默认不需要原生 `/goal`，直接输入：
 
@@ -57,11 +62,23 @@ Codex hook 插件：
 
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
+ZCode 使用仓库根目录的 `AGENTS.md` 作为工作区说明，并通过根目录的
+`marketplace.json` 发布两个独立插件。ZCode 插件和 skill 副本位于
+`zcode-market/plugins/`，初始从 Claude Code skill 复制，之后可以单独修改；
+不会自动同步回 Claude Code、Codex 或 Kimi Code。ZCode 的每个 plugin-level agent
+都与一个同名 skill 一一对应，agent 的第一条规则是先加载该 skill；一次调用只
+完成一个 bounded action，不创建、等待或转发给其他 agent。workflow plugin 提供
+`parallel-task-planner`、`planner-reviewer`、`setup-sub-thread-workflow`、
+`start-dag-dashboard`、`sub-thread-coordination` 和 `sub-thread-goal-worker`
+六个 agent，普通 skills plugin 提供 `git-commit` 和 `git-merge-conflict` 两个
+agent；workflow 入口 command 是 `/parallel-workflow`。
+
 ## 目录结构
 
 ```text
 ghost-agent-market/
 ├── SkillOpt/
+├── marketplace.json                  # ZCode marketplace
 ├── claude-code-market/
 │   ├── .claude-plugin/plugin.json
 │   ├── .claude-plugin/marketplace.json
@@ -74,6 +91,35 @@ ghost-agent-market/
 │   └── plugins/
 │       └── ghost-agent-skills/
 │           ├── .claude-plugin/plugin.json
+│           └── skills/
+│               ├── git-commit/
+│               └── git-merge-conflict/
+├── zcode-market/
+│   └── plugins/
+│       ├── ghost-agent-workflow/
+│       │   ├── .zcode-plugin/plugin.json
+│       │   ├── agents/
+│       │   │   ├── parallel-task-planner.md
+│       │   │   ├── planner-reviewer.md
+│       │   │   ├── setup-sub-thread-workflow.md
+│       │   │   ├── start-dag-dashboard.md
+│       │   │   ├── sub-thread-coordination.md
+│       │   │   └── sub-thread-goal-worker.md
+│       │   ├── commands/parallel-workflow.md
+│       │   ├── scripts/
+│       │   ├── assets/
+│       │   └── skills/
+│       │       ├── parallel-task-planner/
+│       │       ├── planner-reviewer/
+│       │       ├── setup-sub-thread-workflow/
+│       │       ├── sub-thread-coordination/
+│       │       ├── sub-thread-goal-worker/
+│       │       └── start-dag-dashboard/
+│       └── ghost-agent-skills/
+│           ├── .zcode-plugin/plugin.json
+│           ├── agents/
+│           │   ├── git-commit.md
+│           │   └── git-merge-conflict.md
 │           └── skills/
 │               ├── git-commit/
 │               └── git-merge-conflict/
@@ -162,6 +208,69 @@ Codex marketplace 文件位置：
 ```text
 codex-market/.agents/plugins/marketplace.json
 ```
+
+## 安装 ZCode Marketplace
+
+在 ZCode 中打开 `Settings -> Plugins -> Marketplace`，点击搜索框旁的 `+`，添加
+`Ghost233/ghost-agent-market`（本地开发时也可以直接添加仓库路径）。找到
+`ghost-agent-workflow` 和 `ghost-agent-skills` 后分别点击 `Get` 安装并启用。
+
+安装后，ZCode 会从这两个独立插件中加载全部 skill；在任务输入框使用 `/` 的 Skills
+分组，或输入 `$sub-thread-coordination`、`$git-commit`、
+`$git-merge-conflict` 等名称调用；对应的 plugin-level agent 会强制先加载同名
+skill。workflow 插件还可以使用 `/parallel-workflow` 作为统一入口。修改 skill、agent
+或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新加载插件。后续只修改
+`zcode-market/plugins/` 下的副本即可。
+
+## 部署 ZCode Marketplace
+
+ZCode 不需要单独的服务器或构建产物。根目录的 `marketplace.json` 是插件目录，
+`zcode-market/plugins/` 是两个插件的实际内容；把这两个部分一起推送到 GitHub，
+仓库就可以作为 ZCode marketplace 发布。详细的目录和字段约束见
+[ZCode Plugin 文档](https://zcode.z.ai/en/docs/plugin)。
+
+### 本地验证
+
+在仓库根目录执行：
+
+```bash
+python3 -m unittest tests.test_zcode_marketplace -v
+python3 -m json.tool marketplace.json >/dev/null
+```
+
+如果修改了某个 plugin，必须同时更新该 plugin 的
+`.zcode-plugin/plugin.json` 和根目录 `marketplace.json` 中的 `version`。按照本仓库
+约定，每次 plugin 修改将基础版本增加 `0.0.1`；只修改 README 或测试时不需要增加
+plugin 版本。
+
+### 推送到 GitHub
+
+确认本次改动都属于当前发布范围后，在仓库根目录执行：
+
+```bash
+git status -sb
+git pull --ff-only origin main
+python3 -m unittest tests.test_zcode_marketplace -v
+git add README.md marketplace.json zcode-market tests/test_zcode_marketplace.py
+git commit -m "feat(zcode): publish marketplace"
+git push origin main
+```
+
+如果使用功能分支，将最后一条改为 `git push -u origin <branch>`，合并到默认分支
+后再发布。推送成功后，GitHub 仓库中的 `marketplace.json` 和插件目录即为最新版本。
+
+### 在 ZCode 中刷新部署
+
+1. 打开 `Settings -> Plugins -> Create -> Add marketplace`。
+2. 添加 `Ghost233/ghost-agent-market`，或选择本地仓库根目录/
+   `marketplace.json`。
+3. 在 Personal marketplace 中点击刷新，安装并启用
+   `ghost-agent-workflow` 与 `ghost-agent-skills`。
+4. 后续发布新版本后，在 Marketplace sources 中再次点击 Refresh；如果 plugin 内容
+   发生变化，先确认 plugin 版本已递增，再检查插件详情中的版本并重新加载 Agent。
+
+启用第三方 plugin 等同于授予其脚本本地执行权限；部署前应检查 `agents/`、`skills/`
+和 `scripts/` 内容，只启用信任的来源。
 
 ## 安装 Kimi Code Market
 

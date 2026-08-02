@@ -1,0 +1,32 @@
+{
+  "name": "ghost-agent-market",
+  "description": "Ghost Agent workflow and standalone skills for ZCode",
+  "pluginRoot": "zcode-market/plugins",
+  "plugins": [
+    {
+      "name": "ghost-agent-workflow",
+      "source": "./ghost-agent-workflow",
+      "description": "ZCode 独立版 Ghost Agent workflow，由主 Agent 逐次调用同名角色 agent 完成 Quick 或最小 DAG action。",
+      "version": "0.1.3",
+      "category": "Productivity",
+      "tags": [
+        "agent-skills",
+        "task-dag",
+        "agent-routing",
+        "workflow"
+      ]
+    },
+    {
+      "name": "ghost-agent-skills",
+      "source": "./ghost-agent-skills",
+      "description": "ZCode 独立版普通 skills 与对应 role agent，提供递归 Git 提交与高风险 Git 冲突历史考古。",
+      "version": "0.1.2",
+      "category": "Productivity",
+      "tags": [
+        "agent-skills",
+        "git-commit",
+        "git-merge-conflict"
+      ]
+    }
+  ]
+}

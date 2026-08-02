@@ -29,6 +29,8 @@ git config user.email
 - `claude-code-market/`：Claude Code 本地插件入口
 - `codex-market/`：Codex 本地 marketplace/plugin 入口
 - `kimi-market/`：Kimi Code 本地 marketplace/plugin 入口
+- `zcode-market/`：ZCode 独立插件与 skill 副本
+- `marketplace.json`：ZCode 根 marketplace 入口，指向 `zcode-market/plugins/`
 - `SkillOpt/`：`microsoft/SkillOpt` Git submodule
 
 ## Skill 同步规则
@@ -47,4 +49,18 @@ git config user.email
 - Codex：`codex-market/plugins/ghost-agent-skills/skills/<skill>/`
 - Kimi Code：`kimi-market/plugins/ghost-agent-skills/skills/<skill>/`
 
-只有用户明确要求单端差异化实现时，才允许三端内容不同；这种差异必须在对应 skill 中写清平台原因。
+ZCode 独立副本：
+
+- 工作流：`zcode-market/plugins/ghost-agent-workflow/skills/<skill>/`
+- 普通 skill：`zcode-market/plugins/ghost-agent-skills/skills/<skill>/`
+
+ZCode 副本初始从 Claude Code skill 复制，但之后允许单独修改，不自动同步回
+Claude Code、Codex 或 Kimi Code。每个 ZCode 副本的 `SKILL.md` 都必须保留独立
+演进说明，以明确这是用户要求的单端差异。
+
+ZCode plugin-level agent 位于各插件的 `agents/` 目录，并与同名 skill 一一对应；
+agent 必须先加载对应 skill，只执行一个明确 action，不创建、等待或转发给其他
+agent。workflow 统一入口位于 `zcode-market/plugins/ghost-agent-workflow/commands/parallel-workflow.md`；
+状态仍只能由 `scripts/` 下的 runtime 管理，不得手写替代状态文件。
+
+只有用户明确要求单端差异化实现时，才允许某个平台的内容与三端共享版本不同；这种差异必须在对应 skill 中写清平台原因。

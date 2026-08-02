@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import re
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MARKETPLACE = ROOT / "marketplace.json"
+EXPECTED_SKILLS = {
+    "ghost-agent-workflow": {
+        "parallel-task-planner",
+        "planner-reviewer",
+        "setup-sub-thread-workflow",
+        "start-dag-dashboard",
+        "sub-thread-coordination",
+        "sub-thread-goal-worker",
+    },
+    "ghost-agent-skills": {"git-commit", "git-merge-conflict"},
+}
+EXPECTED_AGENTS = {
+    "ghost-agent-workflow": {
+        "parallel-task-planner",
+        "planner-reviewer",
+        "setup-sub-thread-workflow",
+        "start-dag-dashboard",
+        "sub-thread-coordination",
+        "sub-thread-goal-worker",
+    },
+    "ghost-agent-skills": {"git-commit", "git-merge-conflict"},
+}
+FORBIDDEN_ZCODE_TEXT = (
+    "sub-thread-task-supervisor",
+    "parallel-supervisor",
+    "supervisor",
+    "subagent",
+    "spawn_agent",
+    "create_thread",
+    "fork_thread",
+    "wait_threads",
+    "send_message_to_thread",
+    "read_thread",
+    "disable-model-invocation",
+    "require_escalated",
+    "Codex",
+    "Claude",
+    "Kimi",
+)
+RUNTIME_FILES = {
+    "scripts/goal-dag.mjs",
+    "scripts/owner-registry.mjs",
+    "scripts/start-dashboard.mjs",
+    "scripts/workflow-config.mjs",
+    "assets/goal-dag-dashboard.html",
+}
+
+
+def frontmatter(text: str) -> dict[str, str]:
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        raise AssertionError("missing YAML frontmatter")
+    try:
+        end = lines.index("---", 1)
+    except ValueError as exc:
+        raise AssertionError("unterminated YAML frontmatter") from exc
+    result: dict[str, str] = {}
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, separator, value = line.partition(":")
+        if not separator or key != key.strip():
+            raise AssertionError(f"invalid frontmatter line: {line}")
+        result[key] = value.strip()
+    return result
+
+
+def referenced_files(skill_path: Path) -> set[Path]:
+    references = set()
+    for value in re.findall(r"\]\((references/[^)]+)\)", skill_path.read_text(encoding="utf-8")):
+        references.add(skill_path.parent / value)
+    return references
+
+
+class ZCodeMarketplaceTests(unittest.TestCase):
+    def test_marketplace_points_to_zcode_compatible_plugins(self) -> None:
+        manifest = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["name"], "ghost-agent-market")
+        self.assertEqual(manifest["pluginRoot"], "zcode-market/plugins")
+        self.assertEqual(
+            {entry["name"] for entry in manifest["plugins"]},
+            {"ghost-agent-workflow", "ghost-agent-skills"},
+        )
+
+        for entry in manifest["plugins"]:
+            plugin_root = ROOT / manifest["pluginRoot"] / entry["source"]
+            self.assertTrue(plugin_root.is_dir(), entry["source"])
+            self.assertTrue(
+                (plugin_root / ".zcode-plugin/plugin.json").is_file(),
+                entry["source"],
+            )
+            plugin_manifest = json.loads(
+                (plugin_root / ".zcode-plugin/plugin.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(plugin_manifest["name"], entry["name"])
+            self.assertEqual(plugin_manifest["version"], entry["version"])
+            self.assertEqual(plugin_manifest["skills"], "skills")
+            self.assertEqual(plugin_manifest["agents"], "agents")
+
+            if entry["name"] == "ghost-agent-workflow":
+                self.assertEqual(plugin_manifest["commands"], "commands")
+                command_text = (
+                    plugin_root / "commands/parallel-workflow.md"
+                ).read_text(encoding="utf-8")
+                self.assertNotIn("skills:", command_text)
+                self.assertNotIn("parallel-coordinator", command_text)
+                self.assertEqual(frontmatter(command_text), {
+                    "description": "为当前 workflow action 选择一个对应的 ZCode role agent。",
+                })
+                for agent_name in EXPECTED_AGENTS[entry["name"]]:
+                    self.assertIn(f"`{agent_name}`", command_text)
+            self.assertEqual(
+                {path.stem for path in (plugin_root / "agents").glob("*.md")},
+                EXPECTED_AGENTS[entry["name"]],
+            )
+            for agent_path in (plugin_root / "agents").glob("*.md"):
+                agent_text = agent_path.read_text(encoding="utf-8")
+                self.assertTrue(agent_text.startswith("---\n"), agent_path)
+                self.assertEqual(frontmatter(agent_text)["name"], agent_path.stem)
+                self.assertEqual(set(frontmatter(agent_text)), {"name", "description"})
+                self.assertTrue(frontmatter(agent_text)["description"].strip())
+                self.assertIn(f"${agent_path.stem}", agent_text)
+
+            if entry["name"] == "ghost-agent-workflow":
+                actual_runtime_files = {
+                    path.relative_to(plugin_root).as_posix()
+                    for path in plugin_root.rglob("*")
+                    if path.is_file()
+                    and "__pycache__" not in path.parts
+                    and path.relative_to(plugin_root).as_posix()
+                    in RUNTIME_FILES
+                }
+                self.assertEqual(actual_runtime_files, RUNTIME_FILES)
+
+            skill_root = plugin_root / "skills"
+            skill_names = {
+                skill_dir.name
+                for skill_dir in skill_root.iterdir()
+                if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file()
+            }
+            self.assertEqual(skill_names, EXPECTED_SKILLS[entry["name"]])
+
+            for skill_name in skill_names:
+                skill_dir = skill_root / skill_name
+                self.assertFalse(skill_dir.is_symlink(), skill_name)
+                self.assertFalse((skill_dir / "agents").exists(), skill_name)
+
+                skill_text = (skill_root / skill_name / "SKILL.md").read_text(
+                    encoding="utf-8"
+                )
+                self.assertTrue(skill_text.startswith("---\n"), skill_name)
+                skill_metadata = frontmatter(skill_text)
+                self.assertEqual(skill_metadata["name"], skill_name, skill_name)
+                self.assertEqual(set(skill_metadata), {"name", "description"}, skill_name)
+                self.assertTrue(skill_metadata["description"].strip(), skill_name)
+                self.assertIn("ZCode 独立副本", skill_text, skill_name)
+                for referenced_path in referenced_files(skill_root / skill_name / "SKILL.md"):
+                    self.assertTrue(referenced_path.is_file(), referenced_path)
+
+            self.assertFalse(list(plugin_root.rglob("openai.yaml")))
+
+            for text_root in (skill_root, plugin_root / "agents", plugin_root / "commands"):
+                for path in text_root.rglob("*"):
+                    if path.is_file() and "__pycache__" not in path.parts:
+                        text = path.read_text(encoding="utf-8")
+                        for forbidden in FORBIDDEN_ZCODE_TEXT:
+                            self.assertNotIn(forbidden, text, path.as_posix())
+
+
+if __name__ == "__main__":
+    unittest.main()
