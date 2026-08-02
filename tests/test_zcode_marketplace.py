@@ -103,14 +103,14 @@ class ZCodeMarketplaceTests(unittest.TestCase):
         manifest = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
 
         self.assertEqual(manifest["name"], "ghost-agent-market")
-        self.assertEqual(manifest["pluginRoot"], "zcode-market/plugins")
+        self.assertNotIn("pluginRoot", manifest)
         self.assertEqual(
             {entry["name"] for entry in manifest["plugins"]},
             EXPECTED_PLUGINS,
         )
 
         for entry in manifest["plugins"]:
-            plugin_root = ROOT / manifest["pluginRoot"] / entry["source"]
+            plugin_root = ROOT / entry["source"]
             self.assertTrue(plugin_root.is_dir(), entry["source"])
             self.assertTrue(
                 (plugin_root / ".zcode-plugin/plugin.json").is_file(),

@@ -218,6 +218,11 @@ ZCode 不需要单独的服务器或构建产物，也不需要用户下载或�
 字段约束见
 [ZCode Plugin 文档](https://zcode.z.ai/en/docs/plugin)。
 
+为兼容不同版本的 ZCode marketplace 解析器，根目录 `marketplace.json` 直接使用
+`./zcode-market/plugins/<plugin>` 形式的 source 路径，不依赖 `pluginRoot` 字段。
+这些路径只在 ZCode 从在线 GitHub marketplace 读取仓库时解析；部署仍然只使用
+`Ghost233/ghost-agent-market` 在线地址。
+
 ### 发布前校验
 
 维护者在提交到 GitHub 前，在仓库根目录执行：

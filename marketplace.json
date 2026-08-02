@@ -1,11 +1,10 @@
 {
   "name": "ghost-agent-market",
   "description": "Ghost Agent workflow, standalone skills, and hooks for ZCode",
-  "pluginRoot": "zcode-market/plugins",
   "plugins": [
     {
       "name": "ghost-agent-workflow",
-      "source": "./ghost-agent-workflow",
+      "source": "./zcode-market/plugins/ghost-agent-workflow",
       "description": "ZCode 独立版 Ghost Agent workflow，由主 Agent 逐次调用同名角色 agent 完成 Quick 或最小 DAG action。",
       "version": "0.1.3",
       "category": "Productivity",
@@ -18,7 +17,7 @@
     },
     {
       "name": "ghost-agent-skills",
-      "source": "./ghost-agent-skills",
+      "source": "./zcode-market/plugins/ghost-agent-skills",
       "description": "ZCode 独立版普通 skills 与对应 role agent，提供递归 Git 提交与高风险 Git 冲突历史考古。",
       "version": "0.1.2",
       "category": "Productivity",
@@ -30,7 +29,7 @@
     },
     {
       "name": "rtk-hook",
-      "source": "./rtk-hook",
+      "source": "./zcode-market/plugins/rtk-hook",
       "description": "ZCode PreToolUse hook，通过 rtk rewrite 透明改写受支持的 shell 命令。",
       "version": "0.1.0",
       "category": "Developer Tools",
