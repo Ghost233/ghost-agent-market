@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
+import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -110,6 +113,47 @@ def print_agents() -> None:
             print(f"  {name}")
 
 
+def read_destination(path: Path) -> str | None:
+    """Read an existing destination, returning None when it does not exist."""
+
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+
+def write_atomic(path: Path, content: str) -> None:
+    """Replace one agent file atomically while preserving an existing mode."""
+
+    existing_mode = None
+    try:
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        pass
+
+    temporary_name = None
+    try:
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if existing_mode is not None:
+            os.chmod(temporary_name, existing_mode)
+        os.replace(temporary_name, path)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+
+
 def self_test() -> None:
     source = "---\nname: example\ndescription: Example\n---\n\nBody.\n"
     assert "model: inherit" in set_model(source, "inherit")
@@ -151,7 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="overwrite existing user agent files",
+        help="overwrite existing user agent files after all remote templates are fetched",
     )
     parser.add_argument(
         "--list",
@@ -186,8 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"installer error: {exc}", file=sys.stderr)
         return 2
 
-    conflicts = []
-    installed = 0
+    planned: list[tuple[Path, str]] = []
     for group, names in AGENTS.items():
         for name in names:
             destination = args.dest / f"{name}.md"
@@ -198,20 +241,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"failed to fetch {group}/{name}: {exc}", file=sys.stderr)
                 return 1
 
-            if destination.exists() and not args.force:
-                if destination.read_text(encoding="utf-8") == content:
-                    print(f"unchanged {destination}")
-                else:
-                    conflicts.append(destination)
-                continue
+            planned.append((destination, content))
 
-            try:
-                destination.write_text(content, encoding="utf-8")
-            except OSError as exc:
-                print(f"failed to write {destination}: {exc}", file=sys.stderr)
-                return 1
-            installed += 1
-            print(f"installed {destination}")
+    conflicts = []
+    for destination, content in planned:
+        try:
+            existing = read_destination(destination)
+        except (OSError, UnicodeError) as exc:
+            print(f"failed to read {destination}: {exc}", file=sys.stderr)
+            return 1
+        if existing is not None and existing != content and not args.force:
+            conflicts.append(destination)
 
     if conflicts:
         print("existing user agents were not overwritten:", file=sys.stderr)
@@ -220,7 +260,33 @@ def main(argv: list[str] | None = None) -> int:
         print("rerun with --force after reviewing the remote templates", file=sys.stderr)
         return 2
 
-    print(f"installed {installed} ZCode agents with model={args.model}")
+    installed = 0
+    overwritten = 0
+    unchanged = 0
+    for destination, content in planned:
+        try:
+            existing = read_destination(destination)
+            if existing == content:
+                unchanged += 1
+                print(f"unchanged {destination}")
+                continue
+            write_atomic(destination, content)
+        except (OSError, UnicodeError) as exc:
+            print(f"failed to write {destination}: {exc}", file=sys.stderr)
+            return 1
+
+        if existing is None:
+            installed += 1
+            print(f"installed {destination}")
+        else:
+            overwritten += 1
+            print(f"overwritten {destination}")
+
+    print(
+        "synchronized "
+        f"{installed} installed, {overwritten} overwritten, {unchanged} unchanged "
+        f"ZCode agents with model={args.model}"
+    )
     print("restart ZCode or start a new run to load the user-level agents")
     return 0
 

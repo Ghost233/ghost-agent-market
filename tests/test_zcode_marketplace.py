@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -173,6 +176,19 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 })
                 for agent_name in EXPECTED_AGENTS[entry["name"]]:
                     self.assertIn(f"`{agent_name}`", command_text)
+                sync_command = plugin_root / "commands/sync-zcode-agents.md"
+                self.assertTrue(sync_command.is_file())
+                sync_text = sync_command.read_text(encoding="utf-8")
+                self.assertEqual(
+                    frontmatter(sync_text),
+                    {
+                        "description": "从 Ghost233/ghost-agent-market 在线安装全部 ZCode 用户级 role agent；默认保护已有文件。",
+                        "argument-hint": '"[--force]"',
+                        "allowed-tools": "Bash",
+                    },
+                )
+                self.assertIn("~/.zcode/agents/", sync_text)
+                self.assertIn("--force", sync_text)
             if entry["name"] == "ghost-agent-workflow":
                 actual_runtime_files = {
                     path.relative_to(plugin_root).as_posix()
@@ -242,6 +258,47 @@ class ZCodeMarketplaceTests(unittest.TestCase):
                 self.assertEqual(set(metadata), {"name", "description"})
                 self.assertTrue(metadata["description"].strip())
                 self.assertIn(f"${agent_name}", agent_text)
+
+    def test_agent_installer_is_transactional_on_conflicts(self) -> None:
+        script_path = ROOT / "zcode-market/install-agents.py"
+        spec = importlib.util.spec_from_file_location("install_agents", script_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+
+        def fake_fetch(group: str, name: str, ref: str) -> str:
+            return f"---\nname: {name}\ndescription: Example\n---\n\nBody.\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            with mock.patch.object(installer, "fetch_template", side_effect=fake_fetch):
+                self.assertEqual(
+                    installer.main(["--dest", str(destination), "--model", "inherit"]),
+                    0,
+                )
+                protected = destination / "planner-reviewer.md"
+                untouched = destination / "parallel-task-planner.md"
+                protected.write_text("local edit\n", encoding="utf-8")
+                untouched_before = untouched.read_text(encoding="utf-8")
+
+                self.assertEqual(
+                    installer.main(["--dest", str(destination), "--model", "inherit"]),
+                    2,
+                )
+                self.assertEqual(protected.read_text(encoding="utf-8"), "local edit\n")
+                self.assertEqual(untouched.read_text(encoding="utf-8"), untouched_before)
+
+                self.assertEqual(
+                    installer.main(
+                        ["--dest", str(destination), "--model", "inherit", "--force"]
+                    ),
+                    0,
+                )
+                self.assertIn(
+                    "name: planner-reviewer",
+                    protected.read_text(encoding="utf-8"),
+                )
 
 
 if __name__ == "__main__":

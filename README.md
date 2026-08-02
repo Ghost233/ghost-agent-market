@@ -114,7 +114,9 @@ ghost-agent-market/
 │   └── plugins/
 │       ├── ghost-agent-workflow/
 │       │   ├── .zcode-plugin/plugin.json
-│       │   ├── commands/parallel-workflow.md
+│       │   ├── commands/
+│       │   │   ├── parallel-workflow.md
+│       │   │   └── sync-zcode-agents.md
 │       │   ├── scripts/
 │       │   ├── assets/
 │       │   └── skills/
@@ -207,7 +209,7 @@ marketplace `Ghost233/ghost-agent-market`，或输入完整地址
 安装并启用。
 
 安装后，ZCode 会从两个 skill 插件中加载全部 skill，并从 workflow plugin 加载
-`/parallel-workflow`，从 `rtk-hook` 加载 PreToolUse hook；在任务输入框使用 `/` 的 Skills
+`/parallel-workflow` 和 `/sync-zcode-agents`，从 `rtk-hook` 加载 PreToolUse hook；在任务输入框使用 `/` 的 Skills
 分组，或输入 `$sub-thread-coordination`、`$git-commit`、
 `$git-merge-conflict` 等名称调用。role agent 不再作为 plugin profile 注册，需按下面的
 在线脚本安装。修改 skill 或 runtime 后，在 ZCode 的 Marketplace 来源处刷新，再重新
@@ -247,6 +249,17 @@ curl -fsSL https://raw.githubusercontent.com/Ghost233/ghost-agent-market/main/zc
 
 已有用户文件默认不会覆盖；确认要从在线模板更新时再加 `--force`。使用前应审查
 脚本和模板内容，因为脚本会在本机写入 `~/.zcode/agents/`。
+
+也可以在 ZCode 输入 `/sync-zcode-agents` 执行同一个全局在线安装流程。它只写入
+`~/.zcode/agents/`，不为每个项目创建一套 agent。同步会先下载并检查全部模板；发现已有
+文件与在线版本不同就停止，不会先写入其他文件。只有明确要求覆盖时，才使用：
+
+```text
+/sync-zcode-agents --force
+```
+
+`--force` 只在用户确认要放弃本地 agent 修改后使用；写入阶段采用临时文件原子替换，
+避免覆盖过程中留下不完整的 Markdown 文件。
 
 ## 在线部署 ZCode Marketplace
 

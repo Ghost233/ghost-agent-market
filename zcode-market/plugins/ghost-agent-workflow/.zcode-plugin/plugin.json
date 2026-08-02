@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ZCode 独立版 Ghost Agent workflow，由主 Agent 逐次调用在线安装的同名角色 agent 完成 Quick 或最小 DAG action。",
   "author": {
     "name": "Ghost233",
