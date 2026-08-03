@@ -1,4 +1,4 @@
-// Generated from tooling/goal-dag/goal-dag.ts. Do not edit directly.
+// Generated from tooling/zcode-workflow/goal-dag.ts. Do not edit directly.
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
