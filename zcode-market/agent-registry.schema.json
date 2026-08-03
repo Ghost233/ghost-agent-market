@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ghost233/ghost-agent-market/zcode-market/agent-registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "contract",
+    "bundle_version",
+    "source_repository",
+    "template_root",
+    "allowed_custom_metadata",
+    "skills",
+    "agents",
+    "legacy_agents"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "./agent-registry.schema.json"
+    },
+    "contract": {
+      "const": "ZCODE_AGENT_BUNDLE_V2"
+    },
+    "bundle_version": {
+      "const": "2.0.0"
+    },
+    "source_repository": {
+      "const": "Ghost233/ghost-agent-market"
+    },
+    "template_root": {
+      "const": "zcode-market/agent-templates"
+    },
+    "allowed_custom_metadata": {
+      "const": [
+        "model",
+        "color"
+      ]
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/skill"
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    },
+    "legacy_agents": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/legacy_agent"
+      }
+    }
+  },
+  "$defs": {
+    "simple_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "agent_id": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/simple_id"
+        },
+        {
+          "enum": [
+            "workflow-planner",
+            "workflow-plan-reviewer",
+            "workflow-owner",
+            "workflow-implementation-reviewer",
+            "workflow-config-reader",
+            "workflow-config-writer",
+            "workflow-dashboard-starter",
+            "workflow-dashboard-status-reader",
+            "workflow-dashboard-stopper",
+            "git-commit",
+            "git-merge-conflict"
+          ]
+        }
+      ]
+    },
+    "skill_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$",
+      "enum": [
+        "ghost-agent-workflow:workflow-coordination",
+        "ghost-agent-workflow:workflow-planning",
+        "ghost-agent-workflow:workflow-plan-review",
+        "ghost-agent-workflow:workflow-bound-run",
+        "ghost-agent-workflow:workflow-config",
+        "ghost-agent-workflow:workflow-dashboard",
+        "ghost-agent-skills:git-commit",
+        "ghost-agent-skills:git-merge-conflict"
+      ]
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "initial_plan",
+        "revise_plan",
+        "apply_global_delta",
+        "expand_subgraph",
+        "review_plan_revision",
+        "execute_owner_run",
+        "repair_owner_run",
+        "review_implementation",
+        "show_strict",
+        "validate_strict",
+        "init",
+        "migrate",
+        "set_parallel",
+        "set_execution_class",
+        "start_dashboard",
+        "read_dashboard_status",
+        "stop_dashboard",
+        "commit_authorized_changes",
+        "resolve_high_risk_conflict"
+      ]
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "plugin",
+        "path",
+        "operations",
+        "consumers"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/skill_id"
+        },
+        "plugin": {
+          "type": "string",
+          "enum": [
+            "ghost-agent-workflow",
+            "ghost-agent-skills"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^skills/[a-z0-9][a-z0-9._-]*$"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "consumers": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/agent_id"
+          }
+        }
+      }
+    },
+    "metadata_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "color"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "template_inherit",
+            "preserve_or_global"
+          ]
+        },
+        "color": {
+          "const": "preserve"
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "plugin",
+        "skill",
+        "operations",
+        "permission_class",
+        "execution_class",
+        "execution_class_config_key",
+        "template",
+        "template_sha256",
+        "metadata_policy"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/agent_id"
+        },
+        "plugin": {
+          "type": "string",
+          "enum": [
+            "ghost-agent-workflow",
+            "ghost-agent-skills"
+          ]
+        },
+        "skill": {
+          "$ref": "#/$defs/skill_id"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "permission_class": {
+          "type": "string",
+          "enum": [
+            "plan_write",
+            "plan_review",
+            "workspace_write",
+            "workspace_review",
+            "config_read",
+            "config_write",
+            "dashboard_start",
+            "dashboard_read",
+            "dashboard_stop",
+            "git_commit",
+            "git_conflict_write"
+          ]
+        },
+        "execution_class": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "main",
+            "lite",
+            null
+          ]
+        },
+        "execution_class_config_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "planner",
+            "planner_reviewer",
+            "owner",
+            "review",
+            null
+          ]
+        },
+        "template": {
+          "type": "string",
+          "pattern": "^(ghost-agent-workflow|ghost-agent-skills)/[a-z0-9][a-z0-9._-]*\\.md$"
+        },
+        "template_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "metadata_policy": {
+          "$ref": "#/$defs/metadata_policy"
+        }
+      }
+    },
+    "legacy_agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "replacements",
+        "remove"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/simple_id"
+        },
+        "replacements": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/agent_id"
+          }
+        },
+        "remove": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
