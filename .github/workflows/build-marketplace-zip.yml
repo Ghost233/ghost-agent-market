@@ -1,0 +1,51 @@
+name: Build Ghost WorkBuddy Marketplace Zip
+
+# 触发：推送符合 workflow-marketplace-v* 格式的 tag 时，
+# 自动构建 marketplace zip 并发 GitHub Release（含 zip 资产）。
+#
+# 用法（替代手动 `gh release create`）：
+#   1. 改包内容 / bump VERSION
+#   2. git commit -am "..." && git push
+#   3. git tag workflow-marketplace-v1.0.1 && git push origin workflow-marketplace-v1.0.1
+#   → 本 Action 自动构建 ghost-workflow-marketplace.zip 并发布到 Release。
+#
+# 资产名固定为 ghost-workflow-marketplace.zip，配合 WorkBuddy 注册的
+# releases/latest/download/ghost-workflow-marketplace.zip 实现 autoUpdate。
+
+on:
+  push:
+    tags:
+      - 'workflow-marketplace-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure zip is available
+        run: command -v zip >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y zip)
+
+      - name: Build marketplace zip
+        run: bash tooling/build-workbuddy-marketplace-zip.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ghost WorkBuddy Marketplace ${{ github.ref_name }}
+          body: |
+            Automated release of the Ghost WorkBuddy marketplace zip.
+
+            Contains the `ghost-workflow-team` expert package
+            (Director / Supervisor / Developer / Reviewer) and is consumed by
+            WorkBuddy via:
+            releases/latest/download/ghost-workflow-marketplace.zip
+          files: ghost-workflow-marketplace.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
