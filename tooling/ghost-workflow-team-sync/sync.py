@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Sync the latest Ghost Workflow Delivery Team definitions from GitHub into the
-local WorkBuddy install, including the expert-market manifest injection needed
-for the team to show up in the WorkBuddy expert panel.
+local WorkBuddy install.
 
 Why this exists:
     WorkBuddy's current version does NOT scan custom plugin marketplaces and does
@@ -12,12 +11,8 @@ Why this exists:
 What it syncs:
     - Agent definitions  -> ~/.workbuddy/agents/ghost-workflow-team-*.md
     - Team instance meta -> ~/.workbuddy/teams/ghost-workflow-team/config.json
-    - Plugin package       -> ~/.workbuddy/plugins/marketplaces/experts/plugins/ghost-workflow-team/
-    - Expert manifest      -> injects/replaces the GhostWorkflowTeam entry in
-                              ~/.workbuddy/app/cache/experts/manifest.json and
-                              updates ~/.workbuddy/app/cache/experts/metadata.json hash
-    - Avatars              -> copies resized/renamed avatars to
-                              ~/.workbuddy/plugins/marketplaces/experts/avatars/
+    - Plugin package       -> ~/.workbuddy/plugins/marketplaces/my-experts/plugins/ghost-workflow-team/
+    - Marketplace listing  -> ~/.workbuddy/plugins/marketplaces/my-experts/.codebuddy-plugin/marketplace.json
 
 Safety:
     - Every overwritten file is backed up to ~/.workbuddy/.../.gwf-backup/<timestamp>/
@@ -48,11 +43,9 @@ PKG_DIR = "plugins/ghost-workflow-team"
 HOME = Path.home()
 LOCAL_AGENTS = HOME / ".workbuddy/agents"
 TEAM_DIR = HOME / ".workbuddy/teams/ghost-workflow-team"
-EXPERTS_MARKET = HOME / ".workbuddy/plugins/marketplaces/experts"
-PLUGIN_DST = EXPERTS_MARKET / "plugins/ghost-workflow-team"
-AVATARS_DST = EXPERTS_MARKET / "avatars"
-MANIFEST_PATH = HOME / ".workbuddy/app/cache/experts/manifest.json"
-METADATA_PATH = HOME / ".workbuddy/app/cache/experts/metadata.json"
+MY_EXPERTS_MARKET = HOME / ".workbuddy/plugins/marketplaces/my-experts"
+PLUGIN_DST = MY_EXPERTS_MARKET / "plugins/ghost-workflow-team"
+MARKETPLACE_JSON = MY_EXPERTS_MARKET / ".codebuddy-plugin/marketplace.json"
 
 AGENTS = [
     "ghost-workflow-team-lead",
@@ -77,11 +70,6 @@ PLUGIN_FILES = [
     "EXTENDING.md",
 ]
 
-DESCRIPTION_ZH = (
-    "面向复杂交付场景的核心专家团队：由总监拆解阶段并调度，监工跟进进度，"
-    "开发执行产出，审查验收质量。核心角色稳定；项目可按需扩展 owner agent。"
-)
-
 
 def fetch(url: str) -> bytes | None:
     req = urllib.request.Request(url, headers={"User-Agent": "gwf-sync"})
@@ -99,10 +87,6 @@ def sha(b: bytes) -> str:
 
 def stamp() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
-
-
-def kebab_to_pascal(s: str) -> str:
-    return "".join(part.capitalize() for part in s.split("-"))
 
 
 def parse_yaml_frontmatter(text: str) -> dict:
@@ -236,7 +220,7 @@ def sync_team() -> bool:
 
 
 def sync_plugin_package(backup_root: Path) -> bool:
-    """Download the full plugin package into the loaded experts marketplace."""
+    """Download the full plugin package into the my-experts marketplace."""
     changed = False
     for rel in PLUGIN_FILES:
         data = fetch(f"{RAW}/{rel}")
@@ -291,130 +275,45 @@ def sync_plugin_package(backup_root: Path) -> bool:
     return changed
 
 
-def copy_avatars_to_market_root() -> bool:
-    """Copy avatars from the plugin dir to the experts marketplace root avatars/ dir,
-    using the PascalCase naming convention observed in the cached manifest."""
-    if not PLUGIN_DST.exists():
-        return False
-    src_avatars = PLUGIN_DST / "avatars"
-    if not src_avatars.exists():
-        return False
-    AVATARS_DST.mkdir(parents=True, exist_ok=True)
-    team_id = kebab_to_pascal("ghost-workflow-team")
-    copied = []
-
-    team_src = src_avatars / "team.jpg"
-    if team_src.exists():
-        dst = AVATARS_DST / f"{team_id}.jpg"
-        shutil.copy(team_src, dst)
-        copied.append(str(dst))
-
-    for a in AGENTS:
-        src = src_avatars / f"{a}.jpg"
-        if src.exists():
-            dst = AVATARS_DST / f"{team_id}-{kebab_to_pascal(a)}.jpg"
-            shutil.copy(src, dst)
-            copied.append(str(dst))
-
-    if copied:
-        print(f"[sync] copied {len(copied)} avatars to {AVATARS_DST}")
-        return True
-    return False
-
-
-def update_expert_manifest() -> bool:
-    """Inject or replace the GhostWorkflowTeam entry in the expert cache manifest."""
-    if not MANIFEST_PATH.exists():
-        print(
-            f"[warn] expert manifest not found at {MANIFEST_PATH}; "
-            f"cannot inject expert panel entry. Skipping manifest update.",
-            file=sys.stderr,
-        )
-        return False
+def update_marketplace_listing() -> bool:
+    """Make sure the ghost-workflow-team plugin is listed in my-experts marketplace.json."""
+    MARKETPLACE_JSON.parent.mkdir(parents=True, exist_ok=True)
 
     plugin_json_path = PLUGIN_DST / ".codebuddy-plugin/plugin.json"
-    if not plugin_json_path.exists():
-        print(
-            f"[warn] plugin.json not found at {plugin_json_path}; "
-            f"cannot build manifest entry. Skipping manifest update.",
-            file=sys.stderr,
-        )
+    description = "Ghost Workflow Delivery Team"
+    if plugin_json_path.exists():
+        try:
+            pj = json.loads(plugin_json_path.read_text(encoding="utf-8"))
+            description = pj.get("description") or description
+        except Exception:
+            pass
+
+    if MARKETPLACE_JSON.exists():
+        try:
+            mp = json.loads(MARKETPLACE_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            mp = {}
+    else:
+        mp = {}
+
+    mp.setdefault("name", "my-experts")
+    mp.setdefault("description", "my-experts marketplace (auto-managed)")
+    plugins = mp.setdefault("plugins", [])
+
+    names = {p.get("name") for p in plugins}
+    if "ghost-workflow-team" in names:
+        print("[skip] ghost-workflow-team already listed in my-experts marketplace.json")
         return False
 
-    plugin = json.loads(plugin_json_path.read_text(encoding="utf-8"))
-    team_info = plugin.get("teamInfo", {})
-    lead_agent = team_info.get("leadAgent")
-    member_agents = [lead_agent] + list(team_info.get("memberAgents", []))
-
-    team_id = kebab_to_pascal("ghost-workflow-team")
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    members = []
-    for idx, agent_name in enumerate(member_agents):
-        fm = parse_yaml_frontmatter((PLUGIN_DST / f"agents/{agent_name}.md").read_text(encoding="utf-8"))
-        profession = fm.get("profession", {})
-        members.append({
-            "id": agent_name,
-            "displayName": {},
-            "profession": {
-                "en": profession.get("en", agent_name),
-                "zh": profession.get("zh", agent_name),
-            },
-            "avatar": f"/avatars/{team_id}-{kebab_to_pascal(agent_name)}.jpg",
-            "role": "lead" if idx == 0 else "member",
-            "promptFile": f"/plugins/ghost-workflow-team/agents/{agent_name}.md",
-        })
-
-    raw_desc = plugin.get("description", "")
-    description = {
-        "en": raw_desc,
-        "zh": DESCRIPTION_ZH,
-    }
-    quick_prompts = plugin.get("quickPrompts", [])
-    default_init = quick_prompts[0] if quick_prompts else {}
-
-    entry = {
-        "id": team_id,
-        "categoryId": plugin.get("categoryId", "02-Engineering"),
-        "displayName": plugin.get("displayName", {}),
-        "profession": plugin.get("profession", plugin.get("displayName", {})),
+    plugins.append({
+        "name": "ghost-workflow-team",
+        "source": "./plugins/ghost-workflow-team",
         "description": description,
-        "promptFile": f"/plugins/ghost-workflow-team/agents/{lead_agent}.md",
-        "avatar": f"/avatars/{team_id}.jpg",
-        "createdAt": now,
-        "updatedAt": now,
-        "defaultInitPrompt": default_init,
-        "expertType": plugin.get("expertType", "team"),
-        "agentName": lead_agent,
-        "plugin": "ghost-workflow-team",
-        "tags": plugin.get("tags", []),
-        "quickPrompts": quick_prompts,
-        "members": members,
-        "author": plugin.get("author", {"en": "Ghost233", "zh": "Ghost233"}),
-    }
-
-    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    manifest["experts"] = [e for e in manifest.get("experts", []) if e.get("id") != team_id]
-    manifest["experts"].append(entry)
-
-    backup_root = HOME / ".workbuddy/app/cache/experts/.gwf-backup" / stamp()
-    backup_root.mkdir(parents=True, exist_ok=True)
-    shutil.copy(MANIFEST_PATH, backup_root / "manifest.json")
-    if METADATA_PATH.exists():
-        shutil.copy(METADATA_PATH, backup_root / "metadata.json")
-
-    manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2)
-    MANIFEST_PATH.write_text(manifest_text, encoding="utf-8")
-    new_hash = sha(manifest_text.encode("utf-8"))
-
-    if METADATA_PATH.exists():
-        md = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
-        md["manifestHash"] = new_hash
-        md["cachedAt"] = now
-        METADATA_PATH.write_text(json.dumps(md, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    print(f"[sync] expert manifest entry '{team_id}' injected/replaced")
-    print(f"[sync] manifest hash updated -> {new_hash}")
+    })
+    MARKETPLACE_JSON.write_text(
+        json.dumps(mp, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print("[sync] added ghost-workflow-team to my-experts marketplace.json")
     return True
 
 
@@ -422,13 +321,12 @@ def main() -> None:
     ts = stamp()
     agents_backup = HOME / ".workbuddy/agents/.gwf-backup" / ts
     teams_backup = HOME / ".workbuddy/teams/.gwf-backup" / ts
-    plugin_backup = HOME / ".workbuddy/plugins/marketplaces/experts/.gwf-backup" / ts
+    plugin_backup = MY_EXPERTS_MARKET / ".gwf-backup" / ts
 
     a_changed = sync_agents(agents_backup)
     t_changed = sync_team()
     p_changed = sync_plugin_package(plugin_backup)
-    copy_avatars_to_market_root()
-    m_changed = update_expert_manifest()
+    m_changed = update_marketplace_listing()
 
     if not (a_changed or t_changed or p_changed or m_changed):
         print("✅ Already up to date with", f"{REPO}@{BRANCH}.")
