@@ -32,8 +32,8 @@
 
 1. 复制其 `.md` 进本包 `agents/`，重命名保持 id 唯一。
 2. 在 `.codebuddy-plugin/plugin.json` 的 `agents[]`、`teamInfo.memberAgents`、`members[]` 注册。
-3. bump `VERSION`，提交并推送 `workflow-marketplace-v*` tag（见 README「远端更新」），
-   GitHub Action 自动重建 zip 并发 Release；WorkBuddy 刷新即生效。
+3. bump `VERSION`，提交并推送 `main`（包文件改动即触发 GitHub Action，见 README「远端更新」），
+   Action 自动重建 zip 并覆盖 `latest` Release；WorkBuddy 刷新即生效。
 
 ## 约定
 

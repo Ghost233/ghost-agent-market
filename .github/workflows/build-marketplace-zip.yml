@@ -1,28 +1,29 @@
 name: Build Ghost WorkBuddy Marketplace Zip
 
-# 触发：推送符合 workflow-marketplace-v* 格式的 tag 时，
-# 自动构建 marketplace zip 并发 GitHub Release（含 zip 资产）。
-#
-# 用法（替代手动 `gh release create`）：
-#   1. 改包内容 / bump VERSION
-#   2. git commit -am "..." && git push
-#   3. git tag workflow-marketplace-v1.0.1 && git push origin workflow-marketplace-v1.0.1
-#   → 本 Action 自动构建 ghost-workflow-marketplace.zip 并发布到 Release。
-#
+# 触发：
+#   - 推送到 main，且包相关文件（plugins/ghost-workflow-team、.codebuddy-plugin、构建脚本）有改动
+#   - 手动 workflow_dispatch
+# 行为：始终维护【单一】rolling release（tag = latest），覆盖旧资产并删除上一版 release，
+#       不在 GitHub 上堆积多个 release，避免存储告警。
 # 资产名固定为 ghost-workflow-marketplace.zip，配合 WorkBuddy 注册的
 # releases/latest/download/ghost-workflow-marketplace.zip 实现 autoUpdate。
 
 on:
   push:
-    tags:
-      - 'workflow-marketplace-v*'
+    branches: [main]
+    paths:
+      - 'plugins/ghost-workflow-team/**'
+      - '.codebuddy-plugin/**'
+      - 'tooling/build-workbuddy-marketplace-zip.sh'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # 删除/创建 release、管理 tag
+  actions: write    # 清理 Actions 缓存
 
 jobs:
   build-and-release:
-    name: Build & Release
+    name: Build & Rolling Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,18 +35,36 @@ jobs:
       - name: Build marketplace zip
         run: bash tooling/build-workbuddy-marketplace-zip.sh
 
-      - name: Create GitHub Release
+      - name: Delete previous rolling release (keep only one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+
+      - name: Create / update rolling "latest" release
         uses: softprops/action-gh-release@v2
         with:
-          name: Ghost WorkBuddy Marketplace ${{ github.ref_name }}
+          tag_name: latest
+          name: Ghost WorkBuddy Marketplace (latest)
+          make_latest: true
+          generate_release_notes: false
           body: |
-            Automated release of the Ghost WorkBuddy marketplace zip.
-
+            Automated rolling release of the Ghost WorkBuddy marketplace zip.
+            This single release is overwritten on every package change; older releases are removed.
             Contains the `ghost-workflow-team` expert package
-            (Director / Supervisor / Developer / Reviewer) and is consumed by
-            WorkBuddy via:
+            (Director / Supervisor / Developer / Reviewer).
+            Consumed by WorkBuddy via:
             releases/latest/download/ghost-workflow-marketplace.zip
           files: ghost-workflow-marketplace.zip
-          generate_release_notes: true
+
+      - name: Prune old Actions caches (defensive cleanup)
+        if: always()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Pruning Actions caches on default branch..."
+          ids=$(gh cache list --ref refs/heads/main --limit 100 --json id --jq '.[].id')
+          for id in $ids; do gh cache delete "$id" || true; done
+          echo "Cache prune done."
