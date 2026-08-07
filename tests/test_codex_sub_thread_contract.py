@@ -386,7 +386,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.7")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.8")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -414,7 +414,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.7\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.8\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item

@@ -30,11 +30,21 @@ function parseArgs(argv) {
     host: "127.0.0.1",
     port: 57357,
     allowRemote: false,
+    expertId: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--allow-remote") {
       options.allowRemote = true;
+      continue;
+    }
+    if (value === "--expert-id") {
+      const argument = argv[index + 1];
+      if (argument === undefined || argument.startsWith("--")) {
+        throw new StartError("--expert-id requires a value");
+      }
+      options.expertId = argument;
+      index += 1;
       continue;
     }
     if (value === "--goal" || value === "--host" || value === "--port") {
@@ -364,7 +374,7 @@ function trackedParticipantIsValid(descriptor) {
     && existsSync(resolve(descriptor.state_path));
 }
 
-function responsePayload(status, data, sourceId, url, pid, logPath, descriptorPath, role) {
+function responsePayload(status, data, sourceId, url, pid, logPath, descriptorPath, role, expertId = null) {
   const sourceQuery = `source=${encodeURIComponent(sourceId)}`;
   return {
     contract: CONTRACT,
@@ -375,6 +385,7 @@ function responsePayload(status, data, sourceId, url, pid, logPath, descriptorPa
     descriptor_path: descriptorPath,
     role,
     source_id: sourceId,
+    expert_id: expertId,
     workspace_root: data.workspaceRoot,
     workflow_root: data.runtimeRoot,
     goal_id: data.goalId,
@@ -403,6 +414,26 @@ async function startDashboard(options) {
   const data = discoverDashboardData(options.workspace, options.goalId);
   const driverPath = join(dirname(fileURLToPath(import.meta.url)), "goal-dag.mjs");
   if (!existsSync(driverPath)) throw new StartError(`Goal DAG driver is missing: ${driverPath}`);
+
+  // §4.5 治理锚定：若显式传入 --expert-id，则该后台进程必须归属一个已注册的
+  // Dashboard 子类型专家（持有后台进程、不持有 writable scope）。注册表是权威源。
+  if (options.expertId !== null) {
+    const registryPath = join(data.runtimeRoot, "owners", "registry.json");
+    if (!existsSync(registryPath)) {
+      throw new StartError(`--expert-id ${options.expertId} given but no registry at ${registryPath}`);
+    }
+    const registry = readJson(registryPath);
+    if (registry?.contract !== "EXPERT_REGISTRY_V2" || !Array.isArray(registry.owners)) {
+      throw new StartError(`registry at ${registryPath} is not EXPERT_REGISTRY_V2`);
+    }
+    const expert = registry.owners.find((owner) => owner?.id === options.expertId);
+    if (expert === undefined) {
+      throw new StartError(`--expert-id ${options.expertId} is not a registered expert`);
+    }
+    if (expert.subtype !== "dashboard") {
+      throw new StartError(`--expert-id ${options.expertId} is subtype ${expert.subtype}, not dashboard`);
+    }
+  }
 
   const publicUrl = displayUrl(options.host, options.port);
   const healthUrl = probeUrl(options.host, options.port);
@@ -447,6 +478,7 @@ async function startDashboard(options) {
             tracked.log_path,
             trackedPath,
             health?.leader_runtime_id === runtimeId ? "leader" : "participant",
+            options.expertId,
           );
         }
         await delay(100);
@@ -460,6 +492,7 @@ async function startDashboard(options) {
     return responsePayload(
       "already_running", data, sourceId, publicUrl, null, null, null,
       health?.leader_runtime_id === runtimeId ? "leader" : "participant",
+      options.expertId,
     );
   }
 
@@ -499,6 +532,7 @@ async function startDashboard(options) {
     contract: CONTRACT,
     pid: child.pid,
     url: publicUrl,
+    expert_id: options.expertId,
     workspace_root: data.workspaceRoot,
     workflow_root: data.runtimeRoot,
     goal_id: data.goalId,
@@ -524,6 +558,7 @@ async function startDashboard(options) {
         logPath,
         descriptorPath,
         health?.leader_runtime_id === runtimeId ? "leader" : "participant",
+        options.expertId,
       );
     }
     if (!pidIsAlive(child.pid)) {

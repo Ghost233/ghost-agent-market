@@ -1,3 +1,4 @@
+// Generated from tooling/owner-registry/owner-registry.ts. Do not edit directly.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -12,102 +13,102 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-type ExpertLineage = {
-  parent_owner_ids: string[];
-  created_by_request_digest: string;
-};
 
-type ExpertModelProfile = {
-  model: string;
-  thinking?: boolean;
-};
+
+
+
+
+
+
+
+
 
 // Expert sub-types per high-level architecture §4.5:
 // execution = Owner(responsibility)+Worker(binding) merged; review = independent DAG review node; dashboard = holds background process.
-type ExpertSubtype = "execution" | "review" | "dashboard";
 
-type ExpertDefinition = {
-  id: string;
-  generation: number;
-  status: "active";
-  subtype: ExpertSubtype;
-  responsibility: string;
-  scope_patterns: string[];
-  scope_excludes: string[];
-  worker_context: string;
-  skill_mount: string[];
-  model_profile: ExpertModelProfile;
-  thread_affinity: string;
-  lineage: ExpertLineage;
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // NOTE: JSON key `owners` is retained as a migration-compatible legacy key; its elements are ExpertDefinition values.
-type ExpertRegistry = {
-  contract: "EXPERT_REGISTRY_V2";
-  workspace_root: string;
-  revision: number;
-  matcher: "expert-path-expression-v2";
-  managed_roots: string[];
-  owners: ExpertDefinition[];
-  retired_owner_ids: string[];
-  updated_at: string;
-};
 
-type RequestedExpert = Omit<ExpertDefinition, "generation" | "status" | "lineage">;
 
-type ExpertChangeRequest = {
-  contract: "EXPERT_CHANGE_REQUEST_V2";
-  request_id: string;
-  operation: "create" | "split" | "expand" | "shrink" | "transfer" | "merge";
-  base_registry_digest: string;
-  created_at: string;
-  reason: string;
-  source_owner_ids: string[];
-  new_owners: RequestedExpert[];
-  capsule_strategy: "empty" | "inherit_sources";
-};
 
-type ExpertChangeValidation = {
-  contract: "EXPERT_CHANGE_VALIDATION_V2";
-  status: "passed";
-  request_digest: string;
-  base_registry_digest: string;
-  next_registry_digest: string;
-  checks: string[];
-  next_registry: ExpertRegistry;
-};
 
-type ExpertChangeApproval = {
-  contract: "EXPERT_CHANGE_APPROVAL_V2";
-  decision: "approved";
-  approved_by: "user";
-  approved_at: string;
-  request_digest: string;
-  validation_digest: string;
-  next_registry_digest: string;
-};
 
-type PersistentExpertCapsule = {
-  contract: "EXPERT_CAPSULE_V2";
-  owner_id: string;
-  generation: number;
-  registry_revision: number;
-  scope_patterns: string[];
-  scope_excludes: string[];
-  responsibility: string;
-  worker_context: string;
-  skill_mount: string[];
-  model_profile: ExpertModelProfile;
-  thread_affinity: string;
-  inherited_from: string[];
-  decisions: string[];
-  invariants: string[];
-  risks: string[];
-  important_symbols: string[];
-  next_steps: string[];
-  current_change_digest: string;
-  updated_at: string;
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const WORKFLOW_GITIGNORE = [
   "# Managed by Ghost Agent Workflow.",
@@ -121,25 +122,25 @@ const WORKFLOW_GITIGNORE = [
 ].join("\n");
 const GIT_CAPTURE_MAX_BUFFER = 16 * 1024 * 1024;
 
-function fail(message: string): never {
+function fail(message        )        {
   throw new Error(message);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value         )                                   {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function record(value: unknown, label: string): Record<string, unknown> {
+function record(value         , label        )                          {
   if (!isRecord(value)) fail(`${label} must be an object`);
   return value;
 }
 
-function stringValue(value: unknown, label: string): string {
+function stringValue(value         , label        )         {
   if (typeof value !== "string" || value.trim() === "") fail(`${label} must be a non-empty string`);
   return value;
 }
 
-function identifier(value: unknown, label: string): string {
+function identifier(value         , label        )         {
   const result = stringValue(value, label);
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/u.test(result)) {
     fail(`${label} must use lowercase letters, digits, and hyphens`);
@@ -147,40 +148,40 @@ function identifier(value: unknown, label: string): string {
   return result;
 }
 
-function positiveInteger(value: unknown, label: string): number {
+function positiveInteger(value         , label        )         {
   if (!Number.isInteger(value) || Number(value) < 1) fail(`${label} must be a positive integer`);
   return Number(value);
 }
 
-function stringArray(value: unknown, label: string, allowEmpty = true): string[] {
+function stringArray(value         , label        , allowEmpty = true)           {
   if (!Array.isArray(value) || (!allowEmpty && value.length === 0)) {
     fail(`${label} must be ${allowEmpty ? "an" : "a non-empty"} array`);
   }
   return value.map((item, index) => stringValue(item, `${label}[${index}]`));
 }
 
-function unique(values: string[], label: string): string[] {
+function unique(values          , label        )           {
   if (new Set(values).size !== values.length) fail(`${label} must not contain duplicates`);
   return values;
 }
 
-function serialized(value: unknown): string {
+function serialized(value         )         {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function digestBytes(value: string | Buffer): string {
+function digestBytes(value                 )         {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function digestJson(value: unknown): string {
+function digestJson(value         )         {
   return digestBytes(serialized(value));
 }
 
-function digestFile(path: string): string {
+function digestFile(path        )         {
   return digestBytes(readFileSync(path));
 }
 
-function readJson(path: string): unknown {
+function readJson(path        )          {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
@@ -188,7 +189,7 @@ function readJson(path: string): unknown {
   }
 }
 
-function writeJsonAtomic(path: string, value: unknown): void {
+function writeJsonAtomic(path        , value         )       {
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.tmp-${process.pid}`;
   writeFileSync(temporary, serialized(value), { encoding: "utf8", flag: "wx" });
@@ -204,20 +205,20 @@ function writeJsonAtomic(path: string, value: unknown): void {
 // ---------------------------------------------------------------------------
 const AUDIT_RETENTION_DAYS = 365;
 
-type AuditEntry = {
-  actor: string;
-  resource: string;
-  action: string;
-  hash: string;
-  session_id?: string;
-};
 
-function auditDirFromRegistry(registryPath: string): string {
+
+
+
+
+
+
+
+function auditDirFromRegistry(registryPath        )         {
   // registryPath = <ws>/.ghost-agent-workflow/owners/registry.json
   return join(dirname(dirname(resolve(registryPath))), "audit");
 }
 
-function auditLogPath(registryPath: string): string {
+function auditLogPath(registryPath        )         {
   const dir = auditDirFromRegistry(registryPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().slice(0, 10);
@@ -225,7 +226,7 @@ function auditLogPath(registryPath: string): string {
 }
 
 // 审计是治理留痕，写入失败不应阻断主流程（但必须显式暴露，便于治理方发现）。
-function auditAppend(registryPath: string, entry: AuditEntry): void {
+function auditAppend(registryPath        , entry            )       {
   const record = {
     actor: entry.actor,
     ts: new Date().toISOString(),
@@ -243,7 +244,7 @@ function auditAppend(registryPath: string, entry: AuditEntry): void {
   }
 }
 
-function ensureWorkflowGitignore(workspaceRoot: string): string {
+function ensureWorkflowGitignore(workspaceRoot        )         {
   const root = join(resolve(workspaceRoot), ".ghost-agent-workflow");
   const path = join(root, ".gitignore");
   mkdirSync(root, { recursive: true });
@@ -256,7 +257,7 @@ function ensureWorkflowGitignore(workspaceRoot: string): string {
   return path;
 }
 
-function normalizeRepositoryPath(value: string): string {
+function normalizeRepositoryPath(value        )         {
   const normalized = value.replaceAll("\\", "/");
   if (isAbsolute(normalized) || /^[A-Za-z]:\//u.test(normalized)) {
     fail(`owner scope must be repository-relative: ${value}`);
@@ -270,7 +271,7 @@ function normalizeRepositoryPath(value: string): string {
   return result;
 }
 
-function normalizePattern(value: string): string {
+function normalizePattern(value        )         {
   const result = normalizeRepositoryPath(value);
   if (result === ".ghost-agent-workflow" || result.startsWith(".ghost-agent-workflow/")) {
     fail(`owner scope cannot claim workflow metadata: ${value}`);
@@ -278,11 +279,11 @@ function normalizePattern(value: string): string {
   return result;
 }
 
-function regexEscape(value: string): string {
+function regexEscape(value        )         {
   return value.replace(/[|\\{}()[\]^$+?.]/gu, "\\$&");
 }
 
-function globSegmentRegex(segment: string): RegExp {
+function globSegmentRegex(segment        )         {
   let expression = "";
   for (let index = 0; index < segment.length; index += 1) {
     const character = segment[index];
@@ -309,7 +310,7 @@ function globSegmentRegex(segment: string): RegExp {
   return new RegExp(`^${expression}$`, "u");
 }
 
-function globRegex(pattern: string): RegExp {
+function globRegex(pattern        )         {
   const segments = normalizePattern(pattern).split("/");
   let expression = "^";
   for (let index = 0; index < segments.length; index += 1) {
@@ -324,7 +325,7 @@ function globRegex(pattern: string): RegExp {
   return new RegExp(`${expression}$`, "u");
 }
 
-function segmentMayOverlap(left: string, right: string): boolean {
+function segmentMayOverlap(left        , right        )          {
   const leftGlob = /[?*[{]/u.test(left);
   const rightGlob = /[?*[{]/u.test(right);
   if (!leftGlob && !rightGlob) return left === right;
@@ -333,13 +334,13 @@ function segmentMayOverlap(left: string, right: string): boolean {
   return true;
 }
 
-function patternsOverlap(left: string, right: string): boolean {
+function patternsOverlap(left        , right        )          {
   const a = normalizePattern(left).split("/");
   const b = normalizePattern(right).split("/");
-  const memo = new Map<string, boolean>();
-  function visit(ai: number, bi: number): boolean {
+  const memo = new Map                 ();
+  function visit(ai        , bi        )          {
     const key = `${ai}:${bi}`;
-    if (memo.has(key)) return memo.get(key) as boolean;
+    if (memo.has(key)) return memo.get(key)           ;
     if (ai === a.length && bi === b.length) return true;
     if (ai === a.length) return b.slice(bi).every((segment) => segment === "**");
     if (bi === b.length) return a.slice(ai).every((segment) => segment === "**");
@@ -355,7 +356,7 @@ function patternsOverlap(left: string, right: string): boolean {
   return visit(0, 0);
 }
 
-function patternCovers(parent: string, child: string): boolean {
+function patternCovers(parent        , child        )          {
   const normalizedParent = normalizePattern(parent);
   const normalizedChild = normalizePattern(child);
   if (normalizedParent === normalizedChild) return true;
@@ -374,16 +375,16 @@ function patternCovers(parent: string, child: string): boolean {
   return parentSegments.length === childSegments.length;
 }
 
-function ownerMatches(owner: Pick<ExpertDefinition, "scope_patterns" | "scope_excludes">, path: string): boolean {
+function ownerMatches(owner                                                             , path        )          {
   return owner.scope_patterns.some((pattern) => globRegex(pattern).test(path)) &&
     !owner.scope_excludes.some((pattern) => globRegex(pattern).test(path));
 }
 
-function sorted(values: string[]): string[] {
+function sorted(values          )           {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
-function parseRequestedExpert(value: unknown, index: number): RequestedExpert {
+function parseRequestedExpert(value         , index        )                  {
   const source = record(value, `new_owners[${index}]`);
   // §4.5 Dashboard 专家不持有 writable scope，因此 scope_patterns 允许为空；
   // 其余子类型仍强制至少一个可写作用域。
@@ -428,7 +429,7 @@ function parseRequestedExpert(value: unknown, index: number): RequestedExpert {
   };
 }
 
-function parseOwner(value: unknown, index: number): ExpertDefinition {
+function parseOwner(value         , index        )                   {
   const source = record(value, `owners[${index}]`);
   if (source.status !== "active") fail(`owners[${index}].status must equal active`);
   const lineage = record(source.lineage, `owners[${index}].lineage`);
@@ -457,7 +458,7 @@ function parseOwner(value: unknown, index: number): ExpertDefinition {
   };
 }
 
-function assertNoScopeConflicts(owners: ExpertDefinition[]): void {
+function assertNoScopeConflicts(owners                    )       {
   for (let leftIndex = 0; leftIndex < owners.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < owners.length; rightIndex += 1) {
       for (const left of owners[leftIndex].scope_patterns) {
@@ -478,7 +479,7 @@ function assertNoScopeConflicts(owners: ExpertDefinition[]): void {
   }
 }
 
-function gitFiles(workspaceRoot: string): string[] {
+function gitFiles(workspaceRoot        )           {
   const result = spawnSync(
     "git",
     ["-C", workspaceRoot, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
@@ -491,7 +492,7 @@ function gitFiles(workspaceRoot: string): string[] {
   );
 }
 
-function auditExistingFiles(registry: ExpertRegistry): void {
+function auditExistingFiles(registry                )       {
   const files = gitFiles(registry.workspace_root).filter(
     (path) => !path.startsWith(".ghost-agent-workflow/"),
   );
@@ -504,7 +505,7 @@ function auditExistingFiles(registry: ExpertRegistry): void {
   }
 }
 
-function parseRegistry(value: unknown, path: string, auditManagedPaths = true): ExpertRegistry {
+function parseRegistry(value         , path        , auditManagedPaths = true)                 {
   const source = record(value, "expert registry");
   const legacy = (source.contract === "OWNER_REGISTRY_V1" && source.matcher === "owner-path-glob-v1")
     || source.contract === "OWNER_REGISTRY_V2";
@@ -527,7 +528,7 @@ function parseRegistry(value: unknown, path: string, auditManagedPaths = true): 
     "retired expert ids",
   );
   if (owners.some((owner) => retired.includes(owner.id))) fail("active and retired expert ids must be disjoint");
-  const registry: ExpertRegistry = {
+  const registry                 = {
     contract: "EXPERT_REGISTRY_V2",
     workspace_root: workspaceRoot,
     revision: positiveInteger(source.revision, "expert registry.revision"),
@@ -546,7 +547,7 @@ function parseRegistry(value: unknown, path: string, auditManagedPaths = true): 
   return registry;
 }
 
-function parseRequest(value: unknown): ExpertChangeRequest {
+function parseRequest(value         )                      {
   const source = record(value, "expert change request");
   if (source.contract !== "EXPERT_CHANGE_REQUEST_V2") {
     fail("expert change request contract must equal EXPERT_CHANGE_REQUEST_V2");
@@ -563,10 +564,10 @@ function parseRequest(value: unknown): ExpertChangeRequest {
       .map((item, index) => identifier(item, `expert change request.source_owner_ids[${index}]`)),
     "expert change request.source_owner_ids",
   );
-  const request: ExpertChangeRequest = {
+  const request                      = {
     contract: "EXPERT_CHANGE_REQUEST_V2",
     request_id: identifier(source.request_id, "expert change request.request_id"),
-    operation: source.operation as ExpertChangeRequest["operation"],
+    operation: source.operation                                    ,
     base_registry_digest: stringValue(source.base_registry_digest, "expert change request.base_registry_digest"),
     created_at: stringValue(source.created_at, "expert change request.created_at"),
     reason: stringValue(source.reason, "expert change request.reason"),
@@ -613,10 +614,10 @@ function parseRequest(value: unknown): ExpertChangeRequest {
 }
 
 function assertExpressionSubset(
-  child: Pick<ExpertDefinition, "scope_patterns" | "scope_excludes">,
-  parent: Pick<ExpertDefinition, "scope_patterns" | "scope_excludes">,
-  label: string,
-): void {
+  child                                                             ,
+  parent                                                             ,
+  label        ,
+)       {
   for (const include of child.scope_patterns) {
     if (!parent.scope_patterns.some((candidate) => patternCovers(candidate, include))) {
       fail(`${label} include is outside source expression: ${include}`);
@@ -632,13 +633,13 @@ function assertExpressionSubset(
 }
 
 function assertExactRedistribution(
-  sources: ExpertDefinition[],
-  replacements: RequestedExpert[],
-  label: string,
-): void {
+  sources                    ,
+  replacements                   ,
+  label        ,
+)       {
   for (const replacement of replacements) {
     assertExpressionSubset(
-      replacement as ExpertDefinition,
+      replacement                    ,
       {
         scope_patterns: sources.flatMap((owner) => owner.scope_patterns),
         scope_excludes: sources.flatMap((owner) => owner.scope_excludes),
@@ -665,10 +666,10 @@ function assertExactRedistribution(
 }
 
 function nextRegistry(
-  registry: ExpertRegistry,
-  request: ExpertChangeRequest,
-  currentRegistryDigest: string,
-): ExpertRegistry {
+  registry                ,
+  request                     ,
+  currentRegistryDigest        ,
+)                 {
   const requestDigest = digestJson(request);
   if (request.base_registry_digest !== currentRegistryDigest) {
     fail("expert change request base_registry_digest does not match current registry");
@@ -689,25 +690,25 @@ function nextRegistry(
   if (request.operation === "split" || request.operation === "transfer" || request.operation === "merge") {
     assertExactRedistribution(sources, request.new_owners, request.operation);
   } else if (request.operation === "expand") {
-    assertExpressionSubset(sources[0], request.new_owners[0] as ExpertDefinition, "expand");
+    assertExpressionSubset(sources[0], request.new_owners[0]                    , "expand");
   } else if (request.operation === "shrink") {
-    assertExpressionSubset(request.new_owners[0] as ExpertDefinition, sources[0], "shrink");
+    assertExpressionSubset(request.new_owners[0]                    , sources[0], "shrink");
   }
   const retained = registry.owners.filter((owner) => !request.source_owner_ids.includes(owner.id));
   const retired = [...registry.retired_owner_ids];
   if (request.operation === "split" || request.operation === "merge") {
     retired.push(...request.source_owner_ids);
   }
-  const additions: ExpertDefinition[] = request.new_owners.map((owner) => ({
+  const additions                     = request.new_owners.map((owner) => ({
     ...owner,
-    generation: activeById.has(owner.id) ? (activeById.get(owner.id) as ExpertDefinition).generation + 1 : 1,
+    generation: activeById.has(owner.id) ? (activeById.get(owner.id)                    ).generation + 1 : 1,
     status: "active",
     lineage: {
       parent_owner_ids: request.source_owner_ids,
       created_by_request_digest: requestDigest,
     },
   }));
-  const result: ExpertRegistry = {
+  const result                 = {
     ...registry,
     revision: registry.revision + 1,
     owners: [...retained, ...additions].sort((left, right) => left.id.localeCompare(right.id)),
@@ -719,18 +720,18 @@ function nextRegistry(
   return result;
 }
 
-function capsulePath(registryPath: string, ownerId: string): string {
+function capsulePath(registryPath        , ownerId        )         {
   return join(dirname(registryPath), ownerId, "capsule.json");
 }
 
 function newCapsule(
-  owner: ExpertDefinition,
-  registryRevision: number,
-  request: ExpertChangeRequest,
-  requestDigest: string,
-  inherited: PersistentExpertCapsule[],
-): PersistentExpertCapsule {
-  const combined = <T>(select: (capsule: PersistentExpertCapsule) => T[]): T[] =>
+  owner                  ,
+  registryRevision        ,
+  request                     ,
+  requestDigest        ,
+  inherited                           ,
+)                          {
+  const combined =    (select                                           )      =>
     [...new Set(inherited.flatMap(select))];
   return {
     contract: "EXPERT_CAPSULE_V2",
@@ -755,7 +756,7 @@ function newCapsule(
   };
 }
 
-function parsePersistentCapsule(value: unknown, ownerId: string): PersistentExpertCapsule {
+function parsePersistentCapsule(value         , ownerId        )                          {
   const source = record(value, `expert capsule ${ownerId}`);
   if (source.contract !== "EXPERT_CAPSULE_V2" || source.owner_id !== ownerId) {
     fail(`invalid persistent capsule for expert ${ownerId}`);
@@ -814,15 +815,15 @@ function parsePersistentCapsule(value: unknown, ownerId: string): PersistentExpe
 }
 
 function capsuleContainsChange(
-  capsule: PersistentExpertCapsule,
-  registryRevision: number,
-  requestDigest: string,
-): boolean {
+  capsule                         ,
+  registryRevision        ,
+  requestDigest        ,
+)          {
   return capsule.registry_revision === registryRevision &&
     capsule.current_change_digest === requestDigest;
 }
 
-function compactOwnerCapsules(registryPath: string, registry: ExpertRegistry): void {
+function compactOwnerCapsules(registryPath        , registry                )       {
   for (const owner of registry.owners) {
     const path = capsulePath(registryPath, owner.id);
     if (!existsSync(path)) continue;
@@ -833,11 +834,11 @@ function compactOwnerCapsules(registryPath: string, registry: ExpertRegistry): v
   }
 }
 
-function activeGoalCount(workspaceRoot: string): number {
+function activeGoalCount(workspaceRoot        )         {
   const workflowRoot = join(workspaceRoot, ".ghost-agent-workflow");
   if (!existsSync(workflowRoot)) return 0;
   let count = 0;
-  const visit = (directory: string): void => {
+  const visit = (directory        )       => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       if (entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
@@ -867,11 +868,11 @@ function activeGoalCount(workspaceRoot: string): number {
   return count;
 }
 
-function activeExecutionCount(workspaceRoot: string): number {
+function activeExecutionCount(workspaceRoot        )         {
   const workflowRoot = join(workspaceRoot, ".ghost-agent-workflow");
   if (!existsSync(workflowRoot)) return 0;
   let count = 0;
-  const visit = (directory: string): void => {
+  const visit = (directory        )       => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       if (entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
@@ -901,7 +902,7 @@ function activeExecutionCount(workspaceRoot: string): number {
   return count;
 }
 
-function validateCommand(registryArgument: string): void {
+function validateCommand(registryArgument        )       {
   const registryPath = resolve(registryArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath);
   compactOwnerCapsules(registryPath, registry);
@@ -914,7 +915,7 @@ function validateCommand(registryArgument: string): void {
   })}\n`);
 }
 
-function initCommand(workspaceArgument: string): void {
+function initCommand(workspaceArgument        )       {
   const workspaceRoot = resolve(workspaceArgument);
   gitFiles(workspaceRoot);
   ensureWorkflowGitignore(workspaceRoot);
@@ -930,7 +931,7 @@ function initCommand(workspaceArgument: string): void {
     })}\n`);
     return;
   }
-  const registry: ExpertRegistry = {
+  const registry                 = {
     contract: "EXPERT_REGISTRY_V2",
     workspace_root: workspaceRoot,
     revision: 1,
@@ -949,7 +950,7 @@ function initCommand(workspaceArgument: string): void {
   })}\n`);
 }
 
-function setManagedRootsCommand(args: string[]): void {
+function setManagedRootsCommand(args          )       {
   if (args.length < 2) {
     fail("set-managed-roots requires <workspace> and at least one exact repository path");
   }
@@ -983,7 +984,7 @@ function setManagedRootsCommand(args: string[]): void {
   })}\n`);
 }
 
-function routeCommand(registryArgument: string, pathArgument: string): void {
+function routeCommand(registryArgument        , pathArgument        )       {
   const registryPath = resolve(registryArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath);
   const path = normalizePattern(pathArgument);
@@ -1002,20 +1003,20 @@ function routeCommand(registryArgument: string, pathArgument: string): void {
   process.stdout.write(`${JSON.stringify({ path, owner_id: matches[0].id, registry_digest: digestFile(registryPath) })}\n`);
 }
 
-function requestChangeCommand(args: string[]): void {
+function requestChangeCommand(args          )       {
   if (args.length < 5) {
     fail("request-change requires <registry.json> <request.json> <operation> <reason> and at least one --owner");
   }
   const registryPath = resolve(args[0]);
   const requestPath = resolve(args[1]);
-  const operation = args[2] as ExpertChangeRequest["operation"];
+  const operation = args[2]                                    ;
   if (!["create", "split", "expand", "shrink", "transfer", "merge"].includes(operation)) {
     fail(`invalid expert change operation: ${operation}`);
   }
   const reason = stringValue(args[3], "reason");
   const registry = parseRegistry(readJson(registryPath), registryPath, false);
-  const sourceOwnerIds: string[] = [];
-  const owners = new Map<string, RequestedExpert>();
+  const sourceOwnerIds           = [];
+  const owners = new Map                         ();
   for (let index = 4; index < args.length;) {
     const flag = args[index];
     if (flag === "--source") {
@@ -1112,7 +1113,7 @@ function requestChangeCommand(args: string[]): void {
     new_owners: newOwners,
     capsule_strategy: operation === "create" ? "empty" : "inherit_sources",
   };
-  const request: ExpertChangeRequest = {
+  const request                      = {
     contract: "EXPERT_CHANGE_REQUEST_V2",
     request_id: `expert-change-${digestJson(semantic).slice(0, 12)}`,
     created_at: new Date().toISOString(),
@@ -1130,10 +1131,10 @@ function requestChangeCommand(args: string[]): void {
 }
 
 function validateChangeCommand(
-  registryArgument: string,
-  requestArgument: string,
-  outputArgument: string,
-): void {
+  registryArgument        ,
+  requestArgument        ,
+  outputArgument        ,
+)       {
   const registryPath = resolve(registryArgument);
   const requestPath = resolve(requestArgument);
   const outputPath = resolve(outputArgument);
@@ -1141,7 +1142,7 @@ function validateChangeCommand(
   const request = parseRequest(readJson(requestPath));
   const registryDigest = digestFile(registryPath);
   const result = nextRegistry(registry, request, registryDigest);
-  const validation: ExpertChangeValidation = {
+  const validation                         = {
     contract: "EXPERT_CHANGE_VALIDATION_V2",
     status: "passed",
     request_digest: digestJson(request),
@@ -1170,7 +1171,7 @@ function validateChangeCommand(
   })}\n`);
 }
 
-function parseApproval(value: unknown): ExpertChangeApproval {
+function parseApproval(value         )                       {
   const source = record(value, "expert change approval");
   if (source.contract !== "EXPERT_CHANGE_APPROVAL_V2") {
     fail("expert change approval contract must equal EXPERT_CHANGE_APPROVAL_V2");
@@ -1190,10 +1191,10 @@ function parseApproval(value: unknown): ExpertChangeApproval {
 }
 
 function approveChangeCommand(
-  requestArgument: string,
-  validationArgument: string,
-  approvalArgument: string,
-): void {
+  requestArgument        ,
+  validationArgument        ,
+  approvalArgument        ,
+)       {
   const requestPath = resolve(requestArgument);
   const validationPath = resolve(validationArgument);
   const approvalPath = resolve(approvalArgument);
@@ -1223,7 +1224,7 @@ function approveChangeCommand(
     })}\n`);
     return;
   }
-  const approval: ExpertChangeApproval = {
+  const approval                       = {
     contract: "EXPERT_CHANGE_APPROVAL_V2",
     decision: "approved",
     approved_by: "user",
@@ -1241,18 +1242,18 @@ function approveChangeCommand(
 }
 
 function applyChangeCommand(
-  registryArgument: string,
-  requestArgument: string,
-  validationArgument: string,
-  approvalArgument: string,
-): void {
+  registryArgument        ,
+  requestArgument        ,
+  validationArgument        ,
+  approvalArgument        ,
+)       {
   const registryPath = resolve(registryArgument);
   const requestPath = resolve(requestArgument);
   const validationPath = resolve(validationArgument);
   const approvalPath = resolve(approvalArgument);
   const registry = parseRegistry(readJson(registryPath), registryPath, false);
   const request = parseRequest(readJson(requestPath));
-  const validation = record(readJson(validationPath), "expert change validation") as unknown as ExpertChangeValidation;
+  const validation = record(readJson(validationPath), "expert change validation")                                     ;
   const approval = parseApproval(readJson(approvalPath));
   if (validation.contract !== "EXPERT_CHANGE_VALIDATION_V2" || validation.status !== "passed") {
     fail("expert change validation is not passed");
@@ -1300,13 +1301,13 @@ function applyChangeCommand(
   }
   const recomputed = nextRegistry(registry, request, currentRegistryDigest);
   if (digestJson(recomputed) !== nextDigest) fail("approved expert registry no longer reproduces");
-  const inheritedById = new Map<string, PersistentExpertCapsule>();
+  const inheritedById = new Map                                 ();
   for (const sourceOwnerId of request.source_owner_ids) {
     const path = capsulePath(registryPath, sourceOwnerId);
     if (!existsSync(path)) fail(`source expert capsule is missing: ${path}`);
     inheritedById.set(sourceOwnerId, parsePersistentCapsule(readJson(path), sourceOwnerId));
   }
-  const alreadyApplied = new Set<string>();
+  const alreadyApplied = new Set        ();
   for (const requested of request.new_owners) {
     const path = capsulePath(registryPath, requested.id);
     if (!existsSync(path)) continue;
@@ -1319,10 +1320,10 @@ function applyChangeCommand(
   }
   for (const requested of request.new_owners) {
     if (alreadyApplied.has(requested.id)) continue;
-    const owner = recomputed.owners.find((candidate) => candidate.id === requested.id) as ExpertDefinition;
+    const owner = recomputed.owners.find((candidate) => candidate.id === requested.id)                    ;
     const inherited = request.operation === "transfer" || request.operation === "expand" ||
         request.operation === "shrink"
-      ? [inheritedById.get(requested.id) as PersistentExpertCapsule]
+      ? [inheritedById.get(requested.id)                           ]
       : [...inheritedById.values()];
     writeJsonAtomic(
       capsulePath(registryPath, owner.id),
@@ -1351,14 +1352,14 @@ function applyChangeCommand(
   })}\n`);
 }
 
-function currentChangePaths(workspaceArgument: string): {
-  workspaceRoot: string;
-  registry: string;
-  directory: string;
-  request: string;
-  validation: string;
-  approval: string;
-} {
+function currentChangePaths(workspaceArgument        )
+
+
+
+
+
+
+  {
   const workspaceRoot = resolve(workspaceArgument);
   const directory = join(workspaceRoot, ".ghost-agent-workflow", "runtime", "owner-change", "current");
   return {
@@ -1371,7 +1372,7 @@ function currentChangePaths(workspaceArgument: string): {
   };
 }
 
-function runSelfJson(args: string[]): Record<string, unknown> {
+function runSelfJson(args          )                          {
   const result = spawnSync(process.execPath, [process.argv[1], ...args], {
     encoding: "utf8",
     shell: false,
@@ -1388,7 +1389,7 @@ function runSelfJson(args: string[]): Record<string, unknown> {
   }
 }
 
-function proposeCurrentChangeCommand(args: string[]): void {
+function proposeCurrentChangeCommand(args          )       {
   if (args.length < 4) {
     fail("propose requires <workspace> <operation> <reason> and at least one --owner");
   }
@@ -1425,7 +1426,7 @@ function proposeCurrentChangeCommand(args: string[]): void {
   }
 }
 
-function currentChangeCommand(workspaceArgument: string): void {
+function currentChangeCommand(workspaceArgument        )       {
   const paths = currentChangePaths(workspaceArgument);
   if (!existsSync(paths.request) || !existsSync(paths.validation)) {
     process.stdout.write(`${JSON.stringify({ status: "none" })}\n`);
@@ -1441,7 +1442,7 @@ function currentChangeCommand(workspaceArgument: string): void {
   })}\n`);
 }
 
-function approveCurrentChangeCommand(workspaceArgument: string): void {
+function approveCurrentChangeCommand(workspaceArgument        )       {
   const paths = currentChangePaths(workspaceArgument);
   const receipt = runSelfJson([
     "approve-change",
@@ -1452,7 +1453,7 @@ function approveCurrentChangeCommand(workspaceArgument: string): void {
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
-function applyCurrentChangeCommand(workspaceArgument: string): void {
+function applyCurrentChangeCommand(workspaceArgument        )       {
   const paths = currentChangePaths(workspaceArgument);
   const receipt = runSelfJson([
     "apply-change",
@@ -1464,14 +1465,14 @@ function applyCurrentChangeCommand(workspaceArgument: string): void {
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
-function clearCurrentChangeCommand(workspaceArgument: string): void {
+function clearCurrentChangeCommand(workspaceArgument        )       {
   const paths = currentChangePaths(workspaceArgument);
   const existed = existsSync(paths.directory);
   if (existed) rmSync(paths.directory, { recursive: true, force: true });
   process.stdout.write(`${JSON.stringify({ status: "cleared", existed })}\n`);
 }
 
-function auditLogCommand(registryArgument: string, limitArgument: string | undefined): void {
+function auditLogCommand(registryArgument        , limitArgument                    )       {
   const registryPath = resolve(registryArgument);
   parseRegistry(readJson(registryPath), registryPath, false); // 校验注册表存在且合法
   const dir = auditDirFromRegistry(registryPath);
@@ -1484,7 +1485,7 @@ function auditLogCommand(registryArgument: string, limitArgument: string | undef
     .sort()
     .reverse();
   const limit = limitArgument === undefined ? 100 : Math.max(1, Number(limitArgument) || 100);
-  const entries: unknown[] = [];
+  const entries            = [];
   for (const file of files) {
     const lines = readFileSync(join(dir, file), "utf8").split("\n").filter((line) => line.length > 0);
     for (let index = lines.length - 1; index >= 0 && entries.length < limit; index -= 1) {
@@ -1500,7 +1501,7 @@ function auditLogCommand(registryArgument: string, limitArgument: string | undef
 }
 
 // 显式保留期清理：仅删除早于 retentionDays 的审计文件。默认不自动运行，需治理方调用。
-function pruneAuditCommand(registryArgument: string, daysArgument: string | undefined): void {
+function pruneAuditCommand(registryArgument        , daysArgument                    )       {
   const registryPath = resolve(registryArgument);
   parseRegistry(readJson(registryPath), registryPath, false);
   const retentionDays = daysArgument === undefined ? AUDIT_RETENTION_DAYS : Math.max(1, Number(daysArgument) || AUDIT_RETENTION_DAYS);
@@ -1510,7 +1511,7 @@ function pruneAuditCommand(registryArgument: string, daysArgument: string | unde
     return;
   }
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-  const removed: string[] = [];
+  const removed           = [];
   for (const name of readdirSync(dir)) {
     const match = /^audit-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(name);
     if (match === null) continue;
@@ -1523,7 +1524,7 @@ function pruneAuditCommand(registryArgument: string, daysArgument: string | unde
   process.stdout.write(`${JSON.stringify({ removed, retention_days: retentionDays })}\n`);
 }
 
-function main(argv: string[]): void {
+function main(argv          )       {
   const [command, ...args] = argv;
   if (command === "init" && args.length === 1) return initCommand(args[0]);
   if (command === "set-managed-roots" && args.length >= 2) return setManagedRootsCommand(args);

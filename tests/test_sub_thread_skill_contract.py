@@ -233,7 +233,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
 
     def test_owner_changes_use_current_facade(self) -> None:
         for platform in PLATFORMS:
-            owner = self.reference(platform, "sub-thread-coordination", "owner-governance.md")
+            owner = self.reference(platform, "sub-thread-coordination", "expert-governance.md")
             for command in (
                 "propose",
                 "current",
@@ -287,7 +287,7 @@ class ThreadDagSkillContractTests(unittest.TestCase):
             "setup-sub-thread-workflow/SKILL.md",
             "sub-thread-goal-worker/SKILL.md",
             "sub-thread-goal-worker/references/templates.md",
-            "sub-thread-coordination/references/owner-governance.md",
+            "sub-thread-coordination/references/expert-governance.md",
         )
         codex_root = PLATFORMS["codex"] / "skills"
         for relative in portable:

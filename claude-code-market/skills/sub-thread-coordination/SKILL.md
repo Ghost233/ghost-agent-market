@@ -7,7 +7,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 
 > 平台差异：Claude Code 只有在宿主提供可创建、发送和等待的长期子线程 API 时才能执行本工作流。标准 Agent 不具备用户长期持有上下文与完成约束，禁止作为回退；缺少子线程 API 时必须在规划后 fail closed。本平台固定使用 `standalone_thread`，不包含原生 Goal 桥接。
 
-这是唯一协调入口；禁止 subagent。首次进入时完整读取 [运行模式](references/goal-contract.md)、[生命周期契约](references/lifecycle-contract.md)、[Owner 治理](references/owner-governance.md) 和 [恢复约定](references/templates.md)，引用未变时不重复读取。
+这是唯一协调入口；禁止 subagent。首次进入时完整读取 [运行模式](references/goal-contract.md)、[生命周期契约](references/lifecycle-contract.md)、[Expert 治理](references/expert-governance.md) 和 [恢复约定](references/templates.md)，引用未变时不重复读取。
 
 本平台固定使用 `standalone_thread`，不包含 Codex 原生 Goal 桥接；DAG Supervisor 按脚本结果启动或结束宿主监督 turn。
 
@@ -16,7 +16,7 @@ description: 当用户要求以长期 Owner 线程、显式 Review、按需 DAG�
 ## 硬边界
 
 - 只通过领域脚本修改 workflow、Plan、State、Result、Registry、Capsule、配置与 Review 文件。
-- 运行中的 Main、Planner、Reviewer、Supervisor 和 Worker 都不得编辑、复制、替换或绕过 `goal-dag.mjs`、`owner-registry.mjs`、`workflow-config.mjs`、`start-dashboard.mjs`，包括插件缓存和 `/tmp` 副本。runtime 失败时立即停止当前动作，只报告失败命令、简短错误和日志路径；不得改用内部命令、手写状态或临时补丁继续。
+- 运行中的 Main、Planner、Reviewer、Supervisor 和 Worker 都不得编辑、复制、替换或绕过 `goal-dag.mjs`、`expert-registry.mjs`、`workflow-config.mjs`、`start-dashboard.mjs`，包括插件缓存和 `/tmp` 副本。runtime 失败时立即停止当前动作，只报告失败命令、简短错误和日志路径；不得改用内部命令、手写状态或临时补丁继续。
 - Git 分支、worktree、提交、合并、验证、ID、路径、attempt、token、digest 和状态迁移都由脚本决定；LLM 不直接运行 Git。
 - 新线程使用独立 worktree 后，Goal 目录会位于其当前 worktree 之外。此时必须对收据指定的原始 Node CLI 使用宿主原生文件权限请求；Codex 使用 `require_escalated`。只授权该确定性脚本命令，禁止把权限失败改写为 fork、直接编辑文件或临时脚本。
 - 脚本 JSON 只作机器收据，不复制到聊天。

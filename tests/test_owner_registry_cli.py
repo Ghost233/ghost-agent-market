@@ -9,8 +9,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/owner-registry.mjs"
-CLAUDE_SCRIPT = ROOT / "claude-code-market/scripts/owner-registry.mjs"
+SCRIPT = ROOT / "codex-market/plugins/ghost-agent-workflow/scripts/expert-registry.mjs"
+CLAUDE_SCRIPT = ROOT / "claude-code-market/scripts/expert-registry.mjs"
 
 
 def serialized(value: object) -> str:
@@ -35,10 +35,10 @@ class OwnerRegistryCliTests(unittest.TestCase):
             registry_path = root / ".ghost-agent-workflow/owners/registry.json"
             registry_path.parent.mkdir(parents=True)
             registry = {
-                "contract": "OWNER_REGISTRY_V2",
+                "contract": "EXPERT_REGISTRY_V2",
                 "workspace_root": str(root),
                 "revision": 1,
-                "matcher": "owner-path-expression-v2",
+                "matcher": "expert-path-expression-v2",
                 "managed_roots": ["src/**"],
                 "owners": [
                     self.owner("user-module", ["src/user/**"]),
@@ -60,10 +60,14 @@ class OwnerRegistryCliTests(unittest.TestCase):
             "id": owner_id,
             "generation": 1,
             "status": "active",
+            "subtype": "execution",
             "responsibility": f"负责 {owner_id}",
             "scope_patterns": patterns,
             "scope_excludes": [],
             "worker_context": f"保持 {owner_id} 模块知识",
+            "skill_mount": [],
+            "model_profile": {"model": "inherit"},
+            "thread_affinity": "main",
             "lineage": {
                 "parent_owner_ids": [] if parent is None else [parent],
                 "created_by_request_digest": "bootstrap",
@@ -72,7 +76,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
 
     def capsule(self, owner: dict, revision: int) -> dict:
         return {
-            "contract": "OWNER_CAPSULE_V2",
+            "contract": "EXPERT_CAPSULE_V2",
             "owner_id": owner["id"],
             "generation": 1,
             "registry_revision": revision,
@@ -80,13 +84,15 @@ class OwnerRegistryCliTests(unittest.TestCase):
             "scope_excludes": owner["scope_excludes"],
             "responsibility": owner["responsibility"],
             "worker_context": owner["worker_context"],
+            "skill_mount": owner.get("skill_mount", []),
+            "model_profile": owner.get("model_profile", {"model": "inherit"}),
+            "thread_affinity": owner.get("thread_affinity", "main"),
             "inherited_from": [],
             "decisions": [f"{owner['id']} decision"],
             "invariants": [f"{owner['id']} invariant"],
             "risks": [],
             "important_symbols": [],
             "next_steps": [],
-            "history": [],
             "updated_at": "2026-07-27T00:00:00.000Z",
         }
 
@@ -106,8 +112,8 @@ class OwnerRegistryCliTests(unittest.TestCase):
 
     def write_request(self, path: Path, registry: dict, **overrides: object) -> dict:
         request = {
-            "contract": "OWNER_CHANGE_REQUEST_V2",
-            "request_id": "owner-change-1",
+            "contract": "EXPERT_CHANGE_REQUEST_V2",
+            "request_id": "expert-change-1",
             "operation": "create",
             "base_registry_digest": digest_json(registry),
             "created_at": "2026-07-27T01:00:00.000Z",
@@ -116,9 +122,13 @@ class OwnerRegistryCliTests(unittest.TestCase):
             "new_owners": [
                 {
                     "id": "report-module",
+                    "subtype": "execution",
                     "responsibility": "负责报表模块",
                     "scope_patterns": ["src/report/**"],
                     "worker_context": "保持报表合同稳定",
+                    "skill_mount": [],
+                    "model_profile": {"model": "inherit"},
+                    "thread_affinity": "main",
                 }
             ],
             "capsule_strategy": "empty",
@@ -131,12 +141,16 @@ class OwnerRegistryCliTests(unittest.TestCase):
             request["capsule_strategy"] = "inherit_sources"
         for owner in request["new_owners"]:
             owner.setdefault("scope_excludes", [])
+            owner.setdefault("subtype", "execution")
+            owner.setdefault("skill_mount", [])
+            owner.setdefault("model_profile", {"model": "inherit"})
+            owner.setdefault("thread_affinity", "main")
         path.write_text(serialized(request), encoding="utf-8")
         return request
 
     def approve(self, request: dict, validation_path: Path, validation: dict, path: Path) -> None:
         approval = {
-            "contract": "OWNER_CHANGE_APPROVAL_V2",
+            "contract": "EXPERT_CHANGE_APPROVAL_V2",
             "decision": "approved",
             "approved_by": "user",
             "approved_at": "2026-07-27T01:05:00.000Z",
@@ -155,6 +169,78 @@ class OwnerRegistryCliTests(unittest.TestCase):
             missing = self.run_cli("route", registry_path, "docs/user.md")
             self.assertNotEqual(missing.returncode, 0)
             self.assertIn("unowned", missing.stderr)
+
+    def test_route_writes_handoff_audit_entry(self) -> None:
+        # F7 跨专家 handoff 审计：每次 route 边界解析必须 100% 留痕。
+        with self.workspace() as (root, registry_path, _):
+            self.run_json("route", registry_path, "src/user/model.ts")
+            audit_dir = root / ".ghost-agent-workflow/audit"
+            files = sorted(audit_dir.glob("audit-*.jsonl"))
+            self.assertEqual(len(files), 1)
+            entries = [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines() if line]
+            self.assertEqual(len(entries), 1)
+            entry = entries[0]
+            self.assertEqual(entry["action"], "route")
+            self.assertEqual(entry["resource"], "src/user/model.ts")
+            self.assertEqual(entry["actor"], "main")
+            self.assertIn("ts", entry)
+            self.assertIn("hash", entry)
+            self.assertIn("session_id", entry)
+            # audit-log 命令可回读最近条目
+            log = self.run_json("audit-log", registry_path)
+            self.assertEqual(len(log["entries"]), 1)
+            self.assertEqual(log["entries"][0]["action"], "route")
+
+    def test_apply_change_writes_audit_entry(self) -> None:
+        # F7 治理变更（专家责任域变化）落地必须审计留痕。
+        with self.workspace() as (root, registry_path, _):
+            request_path = registry_path.parent / "apply-audit-request.json"
+            validation_path = registry_path.parent / "apply-audit-validation.json"
+            approval_path = registry_path.parent / "apply-audit-approval.json"
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            self.write_request(
+                request_path,
+                registry,
+                operation="create",
+                new_owners=[{
+                    "id": "report-module",
+                    "subtype": "execution",
+                    "responsibility": "负责报表模块",
+                    "scope_patterns": ["src/report/**"],
+                    "worker_context": "保持报表合同稳定",
+                }],
+            )
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+            self.approve(
+                json.loads(request_path.read_text(encoding="utf-8")),
+                validation_path,
+                validation,
+                approval_path,
+            )
+            self.run_json("apply-change", registry_path, request_path, validation_path, approval_path)
+            log = self.run_json("audit-log", registry_path)
+            apply_entries = [e for e in log["entries"] if e["action"].startswith("apply-change")]
+            self.assertEqual(len(apply_entries), 1)
+            self.assertTrue(apply_entries[0]["action"].endswith(":create"))
+            self.assertEqual(apply_entries[0]["actor"], "user")
+
+    def test_prune_audit_removes_only_older_than_retention(self) -> None:
+        with self.workspace() as (root, registry_path, _):
+            self.run_json("route", registry_path, "src/user/model.ts")
+            audit_dir = root / ".ghost-agent-workflow/audit"
+            # 制造一个早于保留期的旧审计文件
+            old_file = audit_dir / "audit-2000-01-01.jsonl"
+            old_file.write_text(
+                json.dumps({"actor": "main", "ts": "2000-01-01T00:00:00.000Z",
+                            "resource": "x", "action": "route", "hash": "h", "session_id": ""}) + "\n",
+                encoding="utf-8",
+            )
+            pruned = self.run_json("prune-audit", registry_path)
+            self.assertIn("audit-2000-01-01.jsonl", pruned["removed"])
+            remaining = sorted(audit_dir.glob("audit-*.jsonl"))
+            self.assertEqual(len(remaining), 1)
+            self.assertNotIn("audit-2000-01-01.jsonl", [p.name for p in remaining])
 
     def test_set_managed_roots_uses_exact_paths_before_initial_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -232,7 +318,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             registry_path.write_text(serialized(registry), encoding="utf-8")
             result = self.run_cli("validate", registry_path)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("owner scope conflict", result.stderr)
+            self.assertIn("expert scope conflict", result.stderr)
 
     def test_create_requires_digest_bound_user_approval(self) -> None:
         with self.workspace() as (_, registry_path, registry):
@@ -246,7 +332,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.assertTrue(validation_result["requires_user_approval"])
             validation = json.loads(validation_path.read_text(encoding="utf-8"))
             bad_approval = {
-                "contract": "OWNER_CHANGE_APPROVAL_V2",
+                "contract": "EXPERT_CHANGE_APPROVAL_V2",
                 "decision": "approved",
                 "approved_by": "user",
                 "approved_at": "2026-07-27T01:05:00.000Z",
@@ -366,7 +452,7 @@ class OwnerRegistryCliTests(unittest.TestCase):
             )
             self.assertEqual(created["status"], "created")
             request = json.loads(request_path.read_text(encoding="utf-8"))
-            self.assertEqual(request["contract"], "OWNER_CHANGE_REQUEST_V2")
+            self.assertEqual(request["contract"], "EXPERT_CHANGE_REQUEST_V2")
             self.assertNotIn("runtime_profile", request["new_owners"][0])
             self.assertIn("created_at", request)
             self.run_json("validate-change", registry_path, request_path, validation_path)
@@ -390,6 +476,69 @@ class OwnerRegistryCliTests(unittest.TestCase):
             self.run_json(
                 "apply-change", registry_path, request_path, validation_path, approval_path
             )
+
+    def test_dashboard_expert_requires_no_writable_scope(self) -> None:
+        # §4.5 Dashboard 专家持有后台进程、不持有任何 writable scope / ACL 写权限；
+        # 只读消费 progress.json / events.jsonl 两个固定抓取入口，因此禁止声明 --scope。
+        with self.workspace() as (_, registry_path, _):
+            request_path = registry_path.parent / "dash-request.json"
+            validation_path = registry_path.parent / "dash-validation.json"
+            approval_path = registry_path.parent / "dash-approval.json"
+
+            created = self.run_json(
+                "request-change",
+                registry_path,
+                request_path,
+                "create",
+                "新增 Dashboard 专家",
+                "--owner",
+                "dash-expert",
+                "维护与更新 Dashboard",
+                "持有后台进程、轮询进度入口",
+                "--subtype",
+                "dash-expert",
+                "dashboard",
+            )
+            self.assertEqual(created["status"], "created")
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            self.assertEqual(request["new_owners"][0]["subtype"], "dashboard")
+            self.assertEqual(request["new_owners"][0]["scope_patterns"], [])
+
+            self.run_json("validate-change", registry_path, request_path, validation_path)
+            self.run_json(
+                "approve-change", request_path, validation_path, approval_path
+            )
+            self.run_json(
+                "apply-change", registry_path, request_path, validation_path, approval_path
+            )
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            applied = next(o for o in registry["owners"] if o["id"] == "dash-expert")
+            self.assertEqual(applied["subtype"], "dashboard")
+            self.assertEqual(applied["scope_patterns"], [])
+
+    def test_dashboard_expert_rejects_writable_scope(self) -> None:
+        # 违反 §4.5 的 Dashboard 专家声明 --scope 必须被 request-change 拒绝。
+        with self.workspace() as (_, registry_path, _):
+            request_path = registry_path.parent / "dash-bad-request.json"
+            result = self.run_cli(
+                "request-change",
+                registry_path,
+                request_path,
+                "create",
+                "错误的 Dashboard 专家",
+                "--owner",
+                "dash-bad",
+                "维护 Dashboard",
+                "持有后台进程",
+                "--subtype",
+                "dash-bad",
+                "dashboard",
+                "--scope",
+                "dash-bad",
+                "src/**",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must not declare --scope", result.stderr)
 
     def test_split_is_exact_partition_and_inherits_parent_capsule(self) -> None:
         with self.workspace() as (_, registry_path, registry):
