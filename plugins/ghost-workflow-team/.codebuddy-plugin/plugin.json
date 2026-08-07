@@ -1,0 +1,143 @@
+{
+  "name": "ghost-workflow-team",
+  "version": "1.0.0",
+  "description": "A small, stable, extensible delivery team: Director (lead) + Supervisor + Developer + Reviewer. Core roles are fixed; project-specific owners live per-project and are dispatched on demand.",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "expertType": "team",
+  "agentName": "ghost-workflow-team-lead",
+  "teamInfo": {
+    "leadAgent": "ghost-workflow-team-lead",
+    "memberAgents": [
+      "ghost-workflow-team-supervisor",
+      "ghost-workflow-team-developer",
+      "ghost-workflow-team-reviewer"
+    ]
+  },
+  "agents": [
+    "./agents/ghost-workflow-team-lead.md",
+    "./agents/ghost-workflow-team-supervisor.md",
+    "./agents/ghost-workflow-team-developer.md",
+    "./agents/ghost-workflow-team-reviewer.md"
+  ],
+  "skills": [],
+  "displayName": {
+    "en": "Ghost Workflow Delivery Team",
+    "zh": "Ghost工作流交付专家团"
+  },
+  "profession": {
+    "en": "Ghost Workflow Delivery Team",
+    "zh": "Ghost工作流交付专家团"
+  },
+  "displayDescription": {
+    "en": "A stable core team (Director, Supervisor, Developer, Reviewer) for any delivery task, extensible per project via project-local owner agents.",
+    "zh": "面向任意交付任务的稳定核心团队（总监/监工/开发/审查），支持项目本地按需扩展能力。"
+  },
+  "avatar": "avatars/team.jpg",
+  "categoryId": "02-Engineering",
+  "defaultInitPrompt": {
+    "zh": "启动 Ghost工作流交付专家团，接手我当前的交付任务。",
+    "en": "Start the Ghost Workflow Team and take over my current delivery task."
+  },
+  "tags": [
+    {
+      "en": "Delivery",
+      "zh": "交付"
+    },
+    {
+      "en": "Expert Collaboration",
+      "zh": "专家协作"
+    },
+    {
+      "en": "Extensible",
+      "zh": "可扩展"
+    }
+  ],
+  "quickPrompts": [
+    {
+      "zh": "启动 Ghost工作流交付专家团，接手我当前的交付任务。",
+      "en": "Start the Ghost Workflow Team and take over my current delivery task."
+    },
+    {
+      "zh": "把这项任务拆成阶段，调度开发执行、监工跟进、审查验收。",
+      "en": "Break this task into phases; dispatch Developer to execute, Supervisor to monitor, Reviewer to accept."
+    },
+    {
+      "zh": "在项目中新增 owner（放入 <项目>/.workbuddy/agents/）后，由总监按需调度扩展能力。",
+      "en": "After adding a project owner under <project>/.workbuddy/agents/, let the Director dispatch it on demand."
+    }
+  ],
+  "members": [
+    {
+      "id": "ghost-workflow-team-lead",
+      "displayName": {
+        "en": "Director",
+        "zh": "总监"
+      },
+      "profession": {
+        "en": "Delivery Director",
+        "zh": "交付总监"
+      },
+      "avatar": "avatars/ghost-workflow-team-lead.jpg",
+      "role": "lead",
+      "name": {
+        "en": "Director",
+        "zh": "总监"
+      }
+    },
+    {
+      "id": "ghost-workflow-team-supervisor",
+      "displayName": {
+        "en": "Supervisor",
+        "zh": "监工"
+      },
+      "profession": {
+        "en": "Progress Supervisor",
+        "zh": "进度监工"
+      },
+      "avatar": "avatars/ghost-workflow-team-supervisor.jpg",
+      "role": "member",
+      "name": {
+        "en": "Supervisor",
+        "zh": "监工"
+      }
+    },
+    {
+      "id": "ghost-workflow-team-developer",
+      "displayName": {
+        "en": "Developer",
+        "zh": "开发"
+      },
+      "profession": {
+        "en": "Developer",
+        "zh": "开发"
+      },
+      "avatar": "avatars/ghost-workflow-team-developer.jpg",
+      "role": "member",
+      "name": {
+        "en": "Developer",
+        "zh": "开发"
+      }
+    },
+    {
+      "id": "ghost-workflow-team-reviewer",
+      "displayName": {
+        "en": "Reviewer",
+        "zh": "审查"
+      },
+      "profession": {
+        "en": "Quality Reviewer",
+        "zh": "质量审查"
+      },
+      "avatar": "avatars/ghost-workflow-team-reviewer.jpg",
+      "role": "member",
+      "name": {
+        "en": "Reviewer",
+        "zh": "审查"
+      }
+    }
+  ],
+  "plugin": "ghost-workflow-team"
+}

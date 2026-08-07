@@ -1,0 +1,11 @@
+{
+  "name": "ghost-workflow-marketplace",
+  "description": "Ghost WorkBuddy 专家市场 —— 交付专家团（总监/监工/开发/审查）及可扩展项目 owner。",
+  "plugins": [
+    {
+      "name": "ghost-workflow-team",
+      "source": "./plugins/ghost-workflow-team",
+      "description": "Ghost工作流交付专家团 —— 稳定核心团队（总监/监工/开发/审查），支持项目本地按需扩展 owner。"
+    }
+  ]
+}

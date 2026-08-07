@@ -17,3 +17,6 @@ dist/
 **/.claude/settings.local.json
 .claude/settings.local.json
 .claude/settings.local.json.fake*
+
+# WorkBuddy 专家市场构建产物（由 tooling/build-workbuddy-marketplace-zip.sh 生成）
+ghost-workflow-marketplace.zip
