@@ -567,10 +567,9 @@ const EXPECTED_PLATFORM = (
     : COMPILED_PLATFORM
 )                     ;
 if (
-  EXPECTED_PLATFORM !== "codex" && EXPECTED_PLATFORM !== "claude_code" &&
-  EXPECTED_PLATFORM !== "zcode"
+  EXPECTED_PLATFORM !== "codex" && EXPECTED_PLATFORM !== "claude_code"
 ) {
-  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex, claude_code or zcode for an unbuilt runtime");
+  fail("GOAL_DAG_EXECUTION_PLATFORM must equal codex or claude_code for an unbuilt runtime");
 }
 const DIFF_SCOPE_GATE_ID = "diff-scope-audit";
 const SOURCE_COVERAGE_GATE_ID = "source-coverage-audit";
@@ -4036,12 +4035,6 @@ function cleanupCompletedGoal(goalPath        )       {
 
 function continuationPayloadFor(goalPath        )                         {
   if (EXPECTED_PLATFORM === "codex") return {};
-  if (EXPECTED_PLATFORM === "zcode") {
-    return {
-      continuation_prompt:
-        `$sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,
-    };
-  }
   return {
     continuation_prompt:
       `/ghost-agent-workflow:sub-thread-coordination 继续 \`${resolve(goalPath)}\`。`,

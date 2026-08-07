@@ -22,7 +22,7 @@
 
 - **当前业务现状**：ghost-agent-market 是覆盖两端的插件市场（claude-code-market / codex-market）。平台内现有 goal-dag v5 子线程体系，基于 Main / Owner / Worker / Supervisor / Reviewer 五角色与 owner-registry 治理底座（ACL / handoff / Capsule / propose-current-approve-apply）。
 - **触发本次需求的事件**：用户要求新增 workbuddy 专用专家团，将固定的主线程（Main）、监督者（Supervisor）、工作者（Worker）与拥有者（Owner）概念合并收敛——其中 Owner 与 Worker 合并为单一「专家（Expert）」，原 Owner 相关职责与配置统一收敛至专家定义之下；通用 skill 沿用现有设计方式。
-- **本系统在产品矩阵中的位置**：作为 goal-dag v5 子线程体系的演进——一套「专家(Expert)与技能(Skill)设计规范 + 专家团编排模型」，复用 Main / Supervisor / Review 元角色与 ACL / handoff 治理；以**本地插件规范**形态经三端 market 分发，非 SaaS、非多租户。
+- **本系统在产品矩阵中的位置**：作为 goal-dag v5 子线程体系的演进——一套「专家(Expert)与技能(Skill)设计规范 + 专家团编排模型」，复用 Main / Supervisor / Review 元角色与 ACL / handoff 治理；以**本地插件规范**形态经两端 market 分发，非 SaaS、非多租户。
 
 ### 1.2 行业方案
 
@@ -39,7 +39,7 @@
 
 | 项 | 说明 |
 | --- | --- |
-| 功能模块 | 专家定义规范（F1~F5）、expert-registry 迁移（F6）、跨专家 Handoff 治理（F7）、Review 独立节点（F8）、通用 Skill 沿用（F9）、三端同步（F10）、Dashboard 可视化（F13）、Dashboard 专家持有后台进程（F14） |
+| 功能模块 | 专家定义规范（F1~F5）、expert-registry 迁移（F6）、跨专家 Handoff 治理（F7）、Review 独立节点（F8）、通用 Skill 沿用（F9）、两端同步（F10）、Dashboard 可视化（F13）、Dashboard 专家持有后台进程（F14） |
 | 预期价值收益 | 角色概念从 5 收敛为「3 元角色 + 1 专家」；专家配置从 2 套收敛为 1 套（expert-registry）；跨专家 handoff 审计 100% 留痕不降级；新增端接入成本 ≤ 0.5 人月；Dashboard 由专职专家持有后台进程完整维护与实时更新 |
 | 量化标准 | 见下表「价值指标」 |
 
@@ -85,7 +85,7 @@
 | 跨专家 Handoff | 隔离与 ACL / 审计留痕 | F7 |
 | Review 节点 | 独立审查保留 | F8 |
 | 通用 Skill | supervisor / coordination 沿用 | F9 |
-| 三端同步 | AGENTS 规则落地 | F10 |
+| 两端同步 | AGENTS 规则落地 | F10 |
 | Dashboard | 可视化（完整设计） | F13 |
 | Dashboard 专家 | 持有后台进程 | F14 |
 
@@ -97,7 +97,7 @@
 | --- | --- | --- | --- | --- |
 | O1 | 通用 skill 内部实现 | 重构 supervisor / coordination 内部实现 | 冻结决策 #2：通用 skill 沿用现有设计，不重构 | 由现有 skill 维护 |
 | O2 | 审查并入执行 | 将 Reviewer / 审查并入专家执行 | 违反 goal-dag v5 不变量 #2（Review 是 DAG 节点，机械验收 ≠ Review） | 不采纳，Review 保留独立 |
-| O3 | 部署形态 | SaaS / 云端多租户部署 | 本系统为本地插件规范，按三端 market 分发 | 不做 |
+| O3 | 部署形态 | SaaS / 云端多租户部署 | 本系统为本地插件规范，按两端 market 分发 | 不做 |
 | O4 | Owner 独立保留 | 保留 Owner 概念不合并 | 冻结决策 #1：收敛 Owner + Worker → Expert | 不采纳 |
 
 ### 2.3 外部依赖
@@ -108,8 +108,7 @@
 | owner-registry.mjs → expert-registry | 治理组 | ACL / handoff / Capsule / propose-current-approve-apply / route | 领域脚本 CLI（同步） | 治理组 |
 | sub-thread-coordination | 沿用组 | 唯一协调入口 / 硬边界 / 单 Main | 通用 skill（同步） | 沿用组 |
 | SkillOpt submodule | 平台组 | 技能资产 | git submodule（同步） | 平台组 |
-| AGENTS.md 同步规则 | 平台组 | 三端同步 / Git 身份 / ZCode 在线连接 | 文档约定（编辑时遵循） | 平台组 |
-| ZCode role agent 安装 | ZCode 端 | install-agents.py 安装专家 | 在线 GitHub raw（同步，仅在线） | ZCode 端 |
+| AGENTS.md 同步规则 | 平台组 | 两端同步 / Git 身份 / 在线连接 | 文档约定（编辑时遵循） | 平台组 |
 
 ---
 
@@ -130,9 +129,9 @@
 | 跨专家 Handoff | 隔离与 ACL | F7 复用「只消费公开 handoff」，跨专家审计 100% 留痕 | P0 | ✅ | ✅ | V2 |
 | Review 节点 | 保留独立审查 | F8 Review 作为专家团内独立 DAG 审查节点，不并入专家 | P1 | ✅ | ✅ | V2 |
 | 通用 Skill | 沿用 | F9 supervisor / coordination 不重构，仅作协调骨架 | P1 | ✅ | ✅ | V3 |
-| 三端同步 | AGENTS 规则落地 | F10 CC / Codex / ZCode 同步专家定义变更；ZCode 单端差异经演进说明 | P1 | ✅ | ✅ | V3 |
+| 两端同步 | AGENTS 规则落地 | F10 CC / Codex 同步专家定义变更；单端差异经演进说明 | P1 | ✅ | ✅ | V3 |
 | 专家团编排 | 多专家并行 | F11 多专家并行编排调度优化（完整版延伸） | P2 | ❌ | ✅ | V3 |
-| ZCode 差异化 | 单端演进说明 | F12 ZCode 单端差异独立声明与演进 | P2 | ❌ | ✅ | — |
+| 单端差异化 | 单端演进说明 | F12 单端差异独立声明与演进 | P2 | ❌ | ✅ | — |
 | Dashboard | 可视化（完整设计） | F13 专家团 / 跨专家 handoff 审计视图（扩展 progress.json / events.jsonl，非占位桩） | P1 | ✅ | ✅ | V2 |
 | Dashboard 专家 | 持有后台进程 | F14 维护 / 更新 Dashboard；持有后台进程长驻，只读轮询 progress.json / events.jsonl，随会话生命周期启停 | P1 | ✅ | ✅ | V2 |
 
@@ -151,10 +150,10 @@
 | 角色 | 业务身份 | 主要操作 | 核心关注点 |
 | --- | --- | --- | --- |
 | 甲方决策者 | 项目架构负责人 / 主理人（齐构成） | 评审演进方案、批准冻结决策、批准 propose-current-approve-apply 应用 | 演进不破坏 goal-dag v5 不变量、迁移成本可控、治理不降级 |
-| 最终用户 A | 专家 / 技能设计者（插件工程师） | 编写专家定义（F1~F5）、挂载技能、提交 expert-registry、定义 Dashboard 专家（F14） | 设计规范明确、复用现有机制、改造成本低、一处定义即可分发三端 |
+| 最终用户 A | 专家 / 技能设计者（插件工程师） | 编写专家定义（F1~F5）、挂载技能、提交 expert-registry、定义 Dashboard 专家（F14） | 设计规范明确、复用现有机制、改造成本低、一处定义即可分发两端 |
 | 最终用户 B | workbuddy 端用户 | 基于专家团规范组装 / 运行专家团、查看 Dashboard | 专家定义清晰、跨专家协作顺畅、handoff 有隔离与审计、运行状态可观测 |
 | 受影响方：合规 / SRE | 治理 / 审计方 | 审查跨专家 handoff、审计留痕、监控 Dashboard 告警、触发后台进程优雅停止 | 跨专家 handoff 隔离与 ACL 不被弱化、审计 100% 留痕、后台进程不泄漏为孤儿进程 |
-| 受影响方：同步维护者 | 三端同步维护者 | 按 AGENTS.md 同步 CC / Codex / ZCode 专家定义 | 规范变更正确同步到三端、单端差异可声明、一端改定义另两端不滞后 |
+| 受影响方：同步维护者 | 两端同步维护者 | 按 AGENTS.md 同步 CC / Codex 专家定义 | 规范变更正确同步到两端、单端差异可声明、一端改定义另两端不滞后 |
 
 ### 4.2 关键场景清单
 
@@ -167,7 +166,7 @@
 | S3 | 执行专家 + Main | 单个 goal 执行需跨专家协作 | 跨专家只消费公开 handoff，ACL 隔离生效，审计 100% 留痕（F7） | 高频（每 goal 至少 1 次 handoff） |
 | S4 | 治理 / 审计方 | 需审查交付质量与审计完整性 | Review 独立节点给出结论（F8）；handoff 审计可下钻至公开凭证 | 低频（日 / 周审） |
 | S5 | 最终用户 A + 治理方 | 需可视化监控专家团与审计状态 | Dashboard 专家后台进程拉起，实时渲染专家团状态与 handoff 审计视图（F13 / F14） | 高频（视图默认 5s 刷新，后台进程长驻） |
-| S6 | 三端同步维护者 | 专家定义变更 | 三端同步校验触发，CC / Codex / ZCode 一致性可验证，单端差异经演进说明声明（F10） | 低频（变更时，约 1~3 次/周） |
+| S6 | 两端同步维护者 | 专家定义变更 | 两端同步校验触发，CC / Codex 一致性可验证，单端差异经演进说明声明（F10） | 低频（变更时，约 1~3 次/周） |
 | S7 | 治理 / 审计方 | 后台进程心跳丢失 / 异常 | 系统高亮告警，治理方可触发优雅停止，禁止孤儿进程（F14） | 极低频（异常态） |
 
 > **§4 完成后自检（intermediate_confirmation §2.4）**：见文末 §7.2。
@@ -184,7 +183,7 @@
 #### 5.1.1 业务场景
 
 - **视角**：最终用户 A（专家 / 技能设计者）
-- **描述逻辑**：设计者在「设计者工作台 - 专家定义编辑页」编写一个新的专家定义：填写身份标识（F1）、声明文件 scope ACL 责任域（F2）、挂载技能（F3）、指定模型 profile（F4）、设定长期线程归属（F5）。表单实时校验 ACL 合法性后，设计者提交变更，触发 expert-registry 的 propose-current-approve-apply 流程（F6）；甲方决策者（主理人）批准后 apply，专家定义纳入 registry，可经三端 market 分发。
+- **描述逻辑**：设计者在「设计者工作台 - 专家定义编辑页」编写一个新的专家定义：填写身份标识（F1）、声明文件 scope ACL 责任域（F2）、挂载技能（F3）、指定模型 profile（F4）、设定长期线程归属（F5）。表单实时校验 ACL 合法性后，设计者提交变更，触发 expert-registry 的 propose-current-approve-apply 流程（F6）；甲方决策者（主理人）批准后 apply，专家定义纳入 registry，可经两端 market 分发。
 
 #### 5.1.2 业务流程
 
@@ -218,7 +217,7 @@ flowchart LR
 #### 5.1.4 业务逻辑
 
 - **视角**：业务系统
-- 专家定义编辑页 → 校验服务（ACL 合法性、scope 与 Capsule 一致性）→ expert-registry propose 接口（写入待批准态）→ 通知主理人 → 主理人 approve → apply 将 ACL + handoff + Capsule + Worker binding 合并落库 → 触发三端同步校验钩子（F10）。
+- 专家定义编辑页 → 校验服务（ACL 合法性、scope 与 Capsule 一致性）→ expert-registry propose 接口（写入待批准态）→ 通知主理人 → 主理人 approve → apply 将 ACL + handoff + Capsule + Worker binding 合并落库 → 触发两端同步校验钩子（F10）。
 
 #### 5.1.5 数据描述
 
@@ -237,7 +236,7 @@ flowchart LR
 #### 5.1.7 外部集成接口
 
 - expert-registry propose-current-approve-apply（治理组提供，领域脚本 CLI）：负责提案与批准应用，用户明确批准才 apply。
-- 三端同步钩子（AGENTS.md 规则，平台组）：apply 后触发 CC / Codex / ZCode 同步校验（见 US-4）。
+- 两端同步钩子（AGENTS.md 规则，平台组）：apply 后触发 CC / Codex 同步校验（见 US-4）。
 
 ---
 
@@ -246,7 +245,7 @@ flowchart LR
 #### 5.1.1 业务场景
 
 - **视角**：最终用户 B（workbuddy 端用户）
-- **描述逻辑**：端用户在「专家团编排页」从 expert-registry 中选取多个已批准专家，声明式组合为一个专家团，指定 Main 为单主控元角色；编排页预览各专家间的 handoff 边界（基于各自 scope ACL），并复用通用 skill（supervisor / coordination）作为协调骨架（F9）。编排提交后，经 AGENTS 规则落地到三端（F10）。
+- **描述逻辑**：端用户在「专家团编排页」从 expert-registry 中选取多个已批准专家，声明式组合为一个专家团，指定 Main 为单主控元角色；编排页预览各专家间的 handoff 边界（基于各自 scope ACL），并复用通用 skill（supervisor / coordination）作为协调骨架（F9）。编排提交后，经 AGENTS 规则落地到两端（F10）。
 
 #### 5.1.2 业务流程
 
@@ -270,7 +269,7 @@ flowchart LR
     O1[选取专家] --> O2[指定 Main 主控]
     O2 --> O3[预览 handoff 边界]
     O3 --> O4[复用通用 skill F9]
-    O4 --> O5[提交编排 + 三端落地 F10]
+    O4 --> O5[提交编排 + 两端落地 F10]
     O5 --> O6[运行: Main 编排 / Supervisor 监管]
 ```
 
@@ -279,7 +278,7 @@ flowchart LR
 #### 5.1.4 业务逻辑
 
 - **视角**：业务系统
-- 编排页 → 编排校验服务（跨专家 handoff 公开性、scope ACL 一致性、Main 唯一性）→ 生成 expert-team 编排定义 → 协调骨架加载 supervisor / coordination 通用 skill（不重构，仅复用，F9）→ 运行期 Main 编排 + Supervisor 看门狗（沿用 goal-dag 不变量）→ 触发三端同步落地（F10）。
+- 编排页 → 编排校验服务（跨专家 handoff 公开性、scope ACL 一致性、Main 唯一性）→ 生成 expert-team 编排定义 → 协调骨架加载 supervisor / coordination 通用 skill（不重构，仅复用，F9）→ 运行期 Main 编排 + Supervisor 看门狗（沿用 goal-dag 不变量）→ 触发两端同步落地（F10）。
 
 #### 5.1.5 数据描述
 
@@ -299,7 +298,7 @@ flowchart LR
 
 - expert-registry 查询接口：枚举 active 专家与其 scope ACL / 公开 handoff 列表。
 - sub-thread-coordination 通用 skill（沿用组）：提供唯一协调入口与单 Main 硬边界。
-- AGENTS.md 同步规则（F10，见 US-4）：编排定义落地三端。
+- AGENTS.md 同步规则（F10，见 US-4）：编排定义落地两端。
 
 ---
 
@@ -366,12 +365,12 @@ flowchart LR
 
 ---
 
-### 5.4 US-4：三端同步维护者校验 CC / Codex / ZCode 一致性（F10）
+### 5.4 US-4：两端同步维护者校验 CC / Codex 一致性（F10）
 
 #### 5.1.1 业务场景
 
-- **视角**：受影响方（三端同步维护者）
-- **描述逻辑**：每当专家定义或编排定义变更经 apply，三端同步维护者在「三端同步一致性面板」触发一致性校验，确认 CC / Codex / ZCode 三端规范同步无滞后；ZCode 单端差异通过「单端差异声明」字段管理，不破坏三端强一致基线。若一端滞后，面板高亮并提示补同步。
+- **视角**：受影响方（两端同步维护者）
+- **描述逻辑**：每当专家定义或编排定义变更经 apply，两端同步维护者在「两端同步一致性面板」触发一致性校验，确认 CC / Codex 两端规范同步无滞后；单端差异通过「单端差异声明」字段管理，不破坏两端强一致基线。若一端滞后，面板高亮并提示补同步。
 
 #### 5.1.2 业务流程
 
@@ -379,24 +378,24 @@ flowchart LR
 - **描述方式**（Given / When / Then）：
 
 Given 专家定义已在 expert-registry apply，
-When 同步维护者打开三端同步一致性面板并点击「一键校验」，
-Then 系统比对 CC / Codex / ZCode 三端专家定义版本，输出一致 / 滞后清单。
+When 同步维护者打开两端同步一致性面板并点击「一键校验」，
+Then 系统比对 CC / Codex 两端专家定义版本，输出一致 / 滞后清单。
 
-Given 比对发现 ZCode 端存在声明过的单端差异，
+Given 比对发现 某端存在声明过的单端差异，
 When 面板展示差异详情，
 Then 系统确认该差异经「单端差异声明」字段登记，不计入滞后告警。
 
 #### 5.1.3 UE 原型
 
-治理 / 审计端 - 三端同步一致性面板：
+治理 / 审计端 - 两端同步一致性面板：
 
 ```mermaid
 flowchart LR
-    C1[触发一键校验] --> C2[比对 CC / Codex / ZCode]
+    C1[触发一键校验] --> C2[比对 CC / Codex]
     C2 --> C3{一致?}
     C3 -->|是| C4[显示绿色一致]
     C3 -->|否| C5[高亮滞后端 + 提示补同步]
-    C2 --> C6[展示 ZCode 单端差异声明]
+    C2 --> C6[展示 单端差异声明]
 ```
 
 交互约束：实时刷新；滞后端红框，点击展开差异 diff。
@@ -404,7 +403,7 @@ flowchart LR
 #### 5.1.4 业务逻辑
 
 - **视角**：业务系统
-- 变更 apply 钩子 → 同步校验服务读取三端 AGENTS.md 引用版本 → 比对 expert_id + 定义哈希 → 输出一致性报告；ZCode 单端差异经「单端差异声明」字段白名单豁免；滞后端触发补同步提示（install-agents.py 在线安装通道仅 ZCode 在线连接可用）。
+- 变更 apply 钩子 → 同步校验服务读取两端 AGENTS.md 引用版本 → 比对 expert_id + 定义哈希 → 输出一致性报告；单端差异经「单端差异声明」字段白名单豁免；滞后端触发补同步提示（经 Git 同步通道下发）。
 
 #### 5.1.5 数据描述
 
@@ -414,15 +413,14 @@ flowchart LR
 
 #### 5.1.6 验收标准 AC
 
-- **AC-1（正常 - 一致）**：Given 三端专家定义哈希一致，When 一键校验，Then 面板显示全绿一致，无滞后告警。
-- **AC-2（正常 - 单端差异）**：Given ZCode 端存在经声明登记的单端差异，When 校验，Then 该差异不计入滞后，面板单独展示差异说明。
+- **AC-1（正常 - 一致）**：Given 两端专家定义哈希一致，When 一键校验，Then 面板显示全绿一致，无滞后告警。
+- **AC-2（正常 - 单端差异）**：Given 某端存在经声明登记的单端差异，When 校验，Then 该差异不计入滞后，面板单独展示差异说明。
 - **AC-3（异常 - 滞后）**：Given Codex 端因未同步而哈希不一致，When 校验，Then 面板红框高亮 Codex 并提示「需补同步」，阻断该端对外分发直至一致。
 - **AC-4（异常 - 未声明差异）**：Given 某端存在未声明差异，When 校验，Then 视为滞后告警，不豁免。
 
 #### 5.1.7 外部集成接口
 
-- AGENTS.md 同步规则（平台组）：三端同步基线、Git 身份、ZCode 在线连接规则。
-- ZCode install-agents.py（ZCode 端）：在线 GitHub raw 安装通道，仅在线 marketplace 连接可用。
+- AGENTS.md 同步规则（平台组）：两端同步基线、Git 身份、在线连接规则。
 
 ---
 
@@ -509,7 +507,7 @@ flowchart LR
 
 ### 6.1 易用性需求
 
-- **操作便利性**：定义专家核心路径 ≤ 5 步（身份 → scope → 技能 → 模型 → 提交）；编排页支持声明式组合与 handoff 边界实时预览；三端同步面板支持「一键校验」。
+- **操作便利性**：定义专家核心路径 ≤ 5 步（身份 → scope → 技能 → 模型 → 提交）；编排页支持声明式组合与 handoff 边界实时预览；两端同步面板支持「一键校验」。
 - **UI 一致性**：设计者工作台与治理 / 审计端共用同一套术语与状态色（active / pending / 滞后 / 异常）。
 - **引导提示**：首次定义专家时引导说明 scope ACL 与 Capsule 含义；Dashboard 专家定义页提示「只读固定入口」约束。
 - **错误反馈**：ACL 非法、handoff 越权、多 Main 等异常均红框高亮并给出具体原因（指出哪条 ACL / 哪个边 / 哪个角色），不抛裸错误码。
@@ -527,7 +525,7 @@ flowchart LR
 
 - **运行环境**：本地插件规范 + 编排运行时，依赖 Node.js 执行 goal-dag.mjs / expert-registry.mjs（沿用现有运行时）。
 - **两端兼容**：覆盖 claude-code-market / codex-market 两端；专家定义经 AGENTS.md 规则分发，不依赖特定云端。
-- **网络环境**：ZCode 端 install-agents.py 在线安装需 HTTPS 在线 marketplace 连接，禁本地路径；其余交互本地完成，不强制联网。
+- **网络环境**：专家定义经 Git 远程同步分发，需联网执行 git 操作；其余交互本地完成，不强制联网。
 - **设备规格**：开发者机器 / CI 运行环境即可；后台进程为长驻轻量 daemon，常驻内存占用上限 ≤ 128MB·会话。
 - **运行约束**：非 SaaS、非多租户；不依赖中心化服务，状态源为本地文件（progress.json / events.jsonl）。
 
@@ -539,7 +537,7 @@ flowchart LR
 
 #### 6.4.2 安全软件架构
 
-- **通信安全**：本地文件读取（progress.json / events.jsonl / expert-registry）不经网络；ZCode 在线安装通道使用 HTTPS，禁本地路径绕过。
+- **通信安全**：本地文件读取（progress.json / events.jsonl / expert-registry）不经网络；Git 同步分发使用 HTTPS/SSH 传输加密，禁本地路径绕过。
 - **认证与访问控制**：跨专家 handoff 强制 ACL 校验，下游仅消费公开 handoff；Dashboard 专家不持有任何 writable scope / ACL 写权限（F14 只读约束）。
 - **外部接口安全**：expert-registry 变更须经 propose-current-approve-apply，用户（主理人）明确批准才 apply；禁止未经批准的自动化 apply。
 
@@ -597,11 +595,11 @@ flowchart LR
 | --- | --- | --- |
 | Q1 | 可控 | 返工范围 = §4.1 角色表 + §4.2 场景表；纯镜像上游，切换成本 ≈ 0 |
 | Q2 | 感知不到新增 | 未新增/删减角色，仅将上游 §2.1 角色映射为 UserStory 角色清单 |
-| Q3 | 一致 | 角色 = 甲方决策者 / 最终用户 A·B / 受影响方（合规·SRE、三端同步维护者），与 §2.1 逐行对齐 |
+| Q3 | 一致 | 角色 = 甲方决策者 / 最终用户 A·B / 受影响方（合规·SRE、两端同步维护者），与 §2.1 逐行对齐 |
 
 ### 7.3 §5 用户旅程（US）完成后自检
 
-**§2.1 判定**：US 拆分粒度（US-1~US-5 映射 F1~F14）遵循本任务指令显式指定的分组（US-定义专家 / US-专家团编排 / US-跨专家 handoff 审计 / US-Dashboard / US-三端同步）与冻结的高层架构设计 → 条件3 不满足（用户/上游已指定）→ 未命中。
+**§2.1 判定**：US 拆分粒度（US-1~US-5 映射 F1~F14）遵循本任务指令显式指定的分组（US-定义专家 / US-专家团编排 / US-跨专家 handoff 审计 / US-Dashboard / US-两端同步）与冻结的高层架构设计 → 条件3 不满足（用户/上游已指定）→ 未命中。
 
 **§2.3 反向验证 3 问**：
 | 问题 | 答案 | 证据 |
@@ -633,7 +631,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Q-A | Dashboard 轮询频率默认值（5s）与进程内存上限（128MB）是否合理 | 已按本地规范给出合理值 | 待主理人确认是否需调整 |
 | Q-B | handoff 审计查询 P99 ≤ 2s 是否作为 SLA 承诺固化 | 已写入 AC-5 / §6.2 | 待主理人确认承诺级别 |
-| Q-C | F11（多专家并行）/ F12（ZCode 单端差异）在完整版延后的范围是否准确 | 已标记 P2 / 完整版仅 | 与主理人确认完整版排期 |
-| Q-D | 三端同步「滞后即阻断分发」策略是否过严 | US-4 AC-3 采用阻断 | 待主理人确认宽松度 |
+| Q-C | F11（多专家并行）/ F12（单端差异）在完整版延后的范围是否准确 | 已标记 P2 / 完整版仅 | 与主理人确认完整版排期 |
+| Q-D | 两端同步「滞后即阻断分发」策略是否过严 | US-4 AC-3 采用阻断 | 待主理人确认宽松度 |
 
 > 上述为人工审核待确认点，不阻塞文档冻结；经主理人 G4 审核通过后，最终版由主理人归档至 `delivery/UserStory.md`。
