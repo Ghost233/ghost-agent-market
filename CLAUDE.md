@@ -2,27 +2,44 @@
 
 ## Git 身份
 
-在这个仓库工作时，所有提交的作者和提交者都必须是：
+这个仓库里的所有提交都必须使用下面这组本地 Git 身份：
 
 - 名称：`Ghost233`
 - 邮箱：`only.yesc@gmail.com`
 
-提交前设置或修正本地仓库身份：
+设置：
 
 ```bash
 git config user.name Ghost233
 git config user.email only.yesc@gmail.com
 ```
 
-不要使用其他名称或邮箱创建提交。
+在暂存或提交之前，先确认：
 
-## 仓库用途
+```bash
+git config user.name
+git config user.email
+```
 
-这个仓库用于维护本地 agent marketplace 相关内容：
+如果任意一项不是 `Ghost233` 或 `only.yesc@gmail.com`，不要提交。
 
-- Claude Code 本地插件入口：`claude-code-market/`
-- Codex 本地 marketplace/plugin 入口：`codex-market/`
-- Microsoft SkillOpt 上游子模块：`SkillOpt/`
+## 插件版本
+
+修改任一插件后，基础版本每次增加 `0.0.1`。任一段达到 `10` 时向左进位：`0.4.9` -> `0.5.0`，`0.9.9` -> `1.0.0`。基础版本递增后再运行 cachebuster；它只更新 `+codex.<UTC timestamp>` 后缀，不改变基础版本。
+
+## 文档同步
+
+本仓库根目录有两份对等的指引文档：`CLAUDE.md`（Claude Code）与 `AGENTS.md`（通用 agent）。
+
+修改其中任一文件后，**必须把改动同步到另一份**，保持两者内容一致（除标题外应逐字相同）。不得只改一份而让另一份过期。
+
+## 范围
+
+这个仓库当前包含：
+
+- `claude-code-market/`：Claude Code 本地插件入口
+- `codex-market/`：Codex 本地 marketplace/plugin 入口
+- `SkillOpt/`：`microsoft/SkillOpt` Git submodule
 
 ## Skill 同步规则
 

@@ -4,6 +4,11 @@
 
 这个仓库里的所有提交都必须使用下面这组本地 Git 身份：
 
+- 名称：`Ghost233`
+- 邮箱：`only.yesc@gmail.com`
+
+设置：
+
 ```bash
 git config user.name Ghost233
 git config user.email only.yesc@gmail.com
@@ -21,6 +26,12 @@ git config user.email
 ## 插件版本
 
 修改任一插件后，基础版本每次增加 `0.0.1`。任一段达到 `10` 时向左进位：`0.4.9` -> `0.5.0`，`0.9.9` -> `1.0.0`。基础版本递增后再运行 cachebuster；它只更新 `+codex.<UTC timestamp>` 后缀，不改变基础版本。
+
+## 文档同步
+
+本仓库根目录有两份对等的指引文档：`CLAUDE.md`（Claude Code）与 `AGENTS.md`（通用 agent）。
+
+修改其中任一文件后，**必须把改动同步到另一份**，保持两者内容一致（除标题外应逐字相同）。不得只改一份而让另一份过期。
 
 ## 范围
 
