@@ -35,6 +35,21 @@
 3. bump `VERSION`，提交并推送 `main`（包文件改动即触发 GitHub Action，见 README「远端更新」），
    Action 自动重建 zip 并覆盖 `latest` Release；WorkBuddy 刷新即生效。
 
+## 面板级专家投影（方案 B）
+
+方案 A 是「团队内调度 owner」（全自动、保持项目本地性）。若你想让项目 owner **直接出现在
+WorkBuddy「专家」面板、作为可单独选中的顶级专家**，用 `tooling/owner-to-panel/owner_to_panel.py`：
+
+```bash
+python3 tooling/owner-to-panel/owner_to_panel.py --project /path/to/myproject
+# 重启 WorkBuddy 后，面板出现该项目 owner 专家；切项目时 --clean 清理
+```
+
+- 性质：**半自动**。面板只扫静态市场目录，不会自动感知项目；改动 owner 或切项目需重跑。
+- owner 会被复制到全局 `my-experts/plugins/`（失去纯项目本地性），按 `name`（项目 slug 前缀）隔离，不串项目。
+- 投影形态为单成员 team 型专家（自定义 team 选中不自动建队，等价于单 agent 主会话）。
+- 与方案 A 可共存：面板顶级专家用于「单独选中 owner」；专家团内调度用于「组队协作」。
+
 ## 约定
 
 - 项目 owner 文件名带项目 slug 前缀，避免跨项目在用户级 `~/.workbuddy/agents/` 撞名。
