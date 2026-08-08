@@ -28,6 +28,8 @@ CC 当前（v2.1.224）有两个未修缺陷，使 **agent team 的 teammate 路
 - ✅ **main 不走 frontmatter hook**（agent-scoped，只 owner-worker 会话内触发）。
 - ✅ **CC worktree 跑完自动清理**（但 untracked 残留时可能留下，main 偶尔需 `git worktree prune`）。
 
+**⚠️ 实测踩坑（CC v2.1.224，Coinhub_Online_Demo，2026-08）**：spawn 调用**必须显式传 `isolation="worktree"`**——CC **不读** agent frontmatter（`owner-worker.md`）里写的 `isolation: worktree`，只认 spawn 调用本身。`start-owner-team` skill 早期 spawn 模板漏了这参数，导致 12 个 owner 全传 `None` → 不建 worktree → 全挤主 checkout → `place-binding.sh` 的 `git rev-parse --show-toplevel` 对所有 owner 返回同一根目录 → 抢写同一份 `pointer.json` 互相覆盖 → hook 读到"最后一个 owner"身份几乎全误判放行（全程 0 deny）→ scope 隔离退化为自觉 → `git checkout`/`reset --hard`/`add -A` 互相踩踏。结论：spawn 模板和 SOP 防呆提醒都把 `isolation="worktree"` 列为必传，且规范层（本文）与执行层（skill 模板）必须一致，不能只在正文口头提及而代码块里漏写。
+
 **投放时序方案（已定）**：CC 不提前告知 worktree 路径，绑定指针靠 **teammate 首条指令自投放**（owner-worker SOP 第一步）。不是 fragile workaround——hook fail-closed 保证 teammate 必须先投放才能干活。
 
 ## Language

@@ -55,7 +55,7 @@ owner-worker subagent（在 CC 托管 worktree 里）
 
 | 产物 | 路径 | 职责 |
 |---|---|---|
-| 通用 owner agent | `.claude/agents/owner-worker.md` | 固定单文件，frontmatter 挂 hook + isolation:worktree。owner 是数据不是 agent 类型 |
+| 通用 owner agent | `.claude/agents/owner-worker.md` | 固定单文件，frontmatter 挂 hook（frontmatter 的 isolation 仅为约定，**CC 实际不读它**——spawn 调用必须显式传 `isolation="worktree"` 才建 worktree，见 CONTEXT.md 实测踩坑）。owner 是数据不是 agent 类型 |
 | 层 B hook | `.ghost-agent-workflow/hooks/enforce-scope.sh` | cwd→指针→owner→scope→deny/放行，fail-closed |
 | 绑定指针投放 | `.ghost-agent-workflow/hooks/place-binding.sh` | teammate 首条指令投放 pointer.json |
 | scope 纯函数 | `claude-code-market/scripts/scope-match.mjs` | 匹配/相交检测基石，从 expert-registry 提取 |

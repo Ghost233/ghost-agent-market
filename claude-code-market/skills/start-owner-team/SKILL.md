@@ -40,9 +40,10 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 对每个要派的 owner：
 
 1. **接手基线**：reset 该 owner 的 worktree 到 verified-base（首次无 worktree，靠 spawn 时 isolation:worktree 自动建；后续轮次，CC 给的 worktree 是新建的，天然基于默认分支——若需基于 verified-base，在 owner-worker prompt 里指示先 `git checkout ga/owner/<id>` 再 `git reset --hard <verified_base>`）。
-2. **spawn owner-worker**（**不带 team_name**）：
+2. **spawn owner-worker**（**必须带 `isolation="worktree"`，不带 team_name**）：
    ```
    Agent(subagent_type="owner-worker",
+        isolation="worktree",
         prompt="""
         你是 <owner-id>。
         第一步：投放 owner 绑定指针（必须最先做，否则任何写都会被 hook 拒）：
@@ -76,7 +77,7 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 ## 铁律
 
 - **你不写业务代码**——产出一律派给 owner-worker。你只编排、验收、合并。
-- **owner-worker 必须不带 team_name**（带 team_name worktree/hook 不生效，见 CONTEXT.md 可行性前提）。
+- **spawn 必须显式传 `isolation="worktree"` 且不带 `team_name`**——worktree 是整个隔离的前提，漏传则所有 owner 挤在主 checkout 互相踩踏，hook 也因共享绑定指针失效。CC 不读 agent frontmatter 里的 `isolation`，只认 spawn 调用（见 CONTEXT.md 可行性前提）。
 - **spawn 后第一步必是 place-binding**（hook fail-closed，不投放任何写都被拒）。
 - **验收不信 owner 文本汇报**，只认 git diff + 独立校验。
 - **合并必经 scope-check merge**，不直接 `git merge`。
