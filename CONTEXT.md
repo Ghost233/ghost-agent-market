@@ -36,3 +36,12 @@ owner 只能在自己**已声明的 scope 前缀内**新建文件（层 B-1 hook
 
 **动态相交检测（合并前）**:
 实例化时的静态 scope 相交检测只覆盖启动瞬间的声明。合并前脚本再扫各 owner 分支的**实际 diff**，检测"实际改动文件集"是否相交——拦截运行中因新建/改动产生的漂移相交，作为最后一道闸。
+
+**Owner 绑定指针（owner-binding pointer）**:
+放在每个 owner worktree 内的一个运行时文件，**指向该 owner 的定义文件位置**（不直接存 owner 配置）。hook 从 `cwd`（= worktree 根）定位该指针，再顺指针读到 owner 定义拿 scope。解耦身份与配置：owner 定义改了，hook 通过指针总能读到最新版。
+- 物化在 worktree 内 → 不依赖外部映射表写入时序，无竞态。
+- 位于 `.ghost-agent-workflow/` 下（项目根 `.gitignore` 已忽略该目录）→ 天然不进 git，不污染提交。
+- 命名避免与 git submodule 混淆，不用 "submodule-owner"，用明确的运行时目录名（如 `.runtime/owner-binding/`）。
+
+**Owner 身份反查（hook 定位 owner 的方式）**:
+层 B-1 hook 收到写操作时，按「`cwd` → worktree 内 owner 绑定指针 → owner 定义文件 → scope」的链路确定当前 owner 与 scope，不靠 `agent_id` 随机值或外部映射表竞态。这是 hook 可靠性的地基。
