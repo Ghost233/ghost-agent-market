@@ -237,10 +237,14 @@ class CodexWorkflowContractTests(unittest.TestCase):
             'fork_turns: "none"',
             "只传 SKILL.md 路径",
             "主线程不运行 Git 命令",
+            "由主线程作为唯一 executor",
             "executor 不得创建任何代理",
             "所有 Git 写操作只通过 `python3 <script> apply`",
             "blocking_submodules",
             "gitlink_updates",
+            "`sensitive_warnings` 只提示",
+            "`risk_findings` 提供的 path、rule_id、reason、evidence 和 required_action",
+            "不得只说“文件敏感”“存在风险”或“安全检查未通过”",
             "has_changes=false",
             "始终先提交最深层仓库",
             "staged-pointer-not-checked-out",
@@ -386,7 +390,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.8")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.9")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -414,7 +418,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.8\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.1\.9\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -461,6 +465,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.1.9")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)

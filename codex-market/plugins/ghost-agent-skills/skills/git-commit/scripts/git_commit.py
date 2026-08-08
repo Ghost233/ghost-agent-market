@@ -20,13 +20,74 @@ COMMIT_RE = re.compile(
     r"(?:\([^\)\r\n]+\))?!?:\s+\S.*$"
 )
 CHINESE_RE = re.compile(r"[\u3400-\u9fff]")
-SENSITIVE = (
-    re.compile(r"(^|/)\.env($|\.)", re.I),
-    re.compile(r"\.(pem|key|p12|pfx|keystore|cer|cert|certificate|crt)$", re.I),
-    re.compile(r"(^|/)(id_rsa|id_ed25519|id_ecdsa|id_dsa)($|/)", re.I),
-    re.compile(r"credential|secret|oauth", re.I),
-    re.compile(r"(^|/)(\.npmrc|\.pypirc|\.netrc)$", re.I),
-    re.compile(r"(^|/)token", re.I),
+ENV_TEMPLATE_RULE = (
+    "environment-template-file",
+    re.compile(r"(^|/)\.env(?:\.[^/]+)*\.(example|sample|template)$", re.I),
+    "该路径是常见的环境变量模板；模板应只包含占位值，但仍建议审查。",
+    "文件名以 .example、.sample 或 .template 结尾",
+)
+SENSITIVE_CONFIRMATION_RULES = (
+    (
+        "environment-secret-file",
+        re.compile(r"(^|/)\.env($|\.)", re.I),
+        "环境变量文件通常可能包含未加密的密码、令牌或密钥。",
+        "文件名匹配 .env 或 .env.*，且不是已知模板后缀",
+    ),
+    (
+        "private-key-file",
+        re.compile(r"\.(pem|key|p12|pfx|keystore)$", re.I),
+        "该文件类型常用于保存私钥或密钥库。",
+        "扩展名匹配 .pem、.key、.p12、.pfx 或 .keystore",
+    ),
+    (
+        "ssh-private-key-file",
+        re.compile(r"(^|/)(id_rsa|id_ed25519|id_ecdsa|id_dsa)$", re.I),
+        "该文件名是常见的 SSH 私钥名称。",
+        "文件名匹配常见 SSH 私钥名称",
+    ),
+    (
+        "credential-config-file",
+        re.compile(r"(^|/)(\.npmrc|\.pypirc|\.netrc)$", re.I),
+        "该配置文件可能直接保存包仓库或网络服务凭据。",
+        "文件名匹配 .npmrc、.pypirc 或 .netrc",
+    ),
+    (
+        "credential-directory-data-file",
+        re.compile(
+            r"(^|/)(credentials?|secrets?|tokens?|oauth)/"
+            r"(?:[^/]+/)*[^/]+\.(?:json|ya?ml|toml|ini|conf|config|txt)$",
+            re.I,
+        ),
+        "该数据或配置文件位于名称明确表示凭据、秘密或令牌的目录中。",
+        "敏感目录名称与数据/配置扩展名同时匹配",
+    ),
+    (
+        "credential-data-file",
+        re.compile(
+            r"(^|/)(credentials?|secrets?|tokens?|client[_-]?secret|"
+            r"api[_-]?key|access[_-]?token|refresh[_-]?token|"
+            r"oauth(?:[_-]?(?:client|credentials?))?)"
+            r"(?:$|(?:[._-][A-Za-z0-9_-]+)*"
+            r"\.(?:json|ya?ml|toml|ini|conf|config|txt)$)",
+            re.I,
+        ),
+        "该数据或配置文件名明确表示其可能保存凭据、密钥或访问令牌。",
+        "文件基名是常见凭据名称，且没有扩展名或使用数据/配置扩展名",
+    ),
+)
+SENSITIVE_WARNING_RULES = (
+    (
+        "public-certificate-file",
+        re.compile(r"\.(cer|cert|certificate|crt)$", re.I),
+        "该文件看起来是公开证书而非私钥，因此只提示审查。",
+        "扩展名匹配 .cer、.cert、.certificate 或 .crt",
+    ),
+    (
+        "sensitive-path-keyword",
+        re.compile(r"credential|secret|oauth|token", re.I),
+        "路径含常见安全关键词，但仅凭名称不能判断文件包含秘密内容。",
+        "路径名称命中 credential、secret、oauth 或 token 关键词",
+    ),
 )
 MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdx"}
 DIFF_CHECK_RE = re.compile(
@@ -286,10 +347,62 @@ def numstat(repo, changes):
     return stats
 
 
+def risk_finding(path, severity, rule):
+    rule_id, _, reason, evidence = rule
+    return {
+        "path": path,
+        "severity": severity,
+        "rule_id": rule_id,
+        "reason": reason,
+        "evidence": evidence,
+        "required_action": (
+            "明确确认包含该文件，或将其排除"
+            if severity == "confirmation-required"
+            else "审查文件内容；无需额外确认即可继续"
+        ),
+    }
+
+
+def sensitive_findings(paths):
+    findings = []
+    for path in paths:
+        if ENV_TEMPLATE_RULE[1].search(path):
+            findings.append(risk_finding(path, "warning", ENV_TEMPLATE_RULE))
+            continue
+        confirmation_rule = next(
+            (
+                rule
+                for rule in SENSITIVE_CONFIRMATION_RULES
+                if rule[1].search(path)
+            ),
+            None,
+        )
+        if confirmation_rule:
+            findings.append(
+                risk_finding(path, "confirmation-required", confirmation_rule)
+            )
+            continue
+        warning_rule = next(
+            (rule for rule in SENSITIVE_WARNING_RULES if rule[1].search(path)),
+            None,
+        )
+        if warning_rule:
+            findings.append(risk_finding(path, "warning", warning_rule))
+    return findings
+
+
 def risks(repo, changes):
     stats = numstat(repo, changes)
     paths = [item["path"] for item in changes]
-    sensitive = [path for path in paths if any(rule.search(path) for rule in SENSITIVE)]
+    findings = sensitive_findings(paths)
+    sensitive = [
+        item["path"]
+        for item in findings
+        if item["severity"] == "confirmation-required"
+    ]
+    sensitive_warnings = [
+        item["path"] for item in findings if item["severity"] == "warning"
+    ]
     large = []
     for path in paths:
         try:
@@ -302,12 +415,13 @@ def risks(repo, changes):
         name
         for name, present in (
             ("sensitive-paths", sensitive),
+            ("sensitive-warnings", sensitive_warnings),
             ("large-files", large),
             ("binary-files", binary),
         )
         if present
     ]
-    return stats, sensitive, large, binary, reasons
+    return stats, sensitive, sensitive_warnings, findings, large, binary, reasons
 
 
 def submodule_changes(repo, changes):
@@ -447,7 +561,15 @@ def render_diff(repo, changes):
 def inspect(repo, include_diff=False):
     changes = collect_changes(repo)
     identity_ok, required = identity(repo)
-    stats, sensitive, large, binary, reasons = risks(repo, changes)
+    (
+        stats,
+        sensitive,
+        sensitive_warnings,
+        findings,
+        large,
+        binary,
+        reasons,
+    ) = risks(repo, changes)
     submodules = submodule_changes(repo, changes)
     blocking_submodules = [item for item in submodules if item["blocking"]]
     gitlink_updates = [
@@ -481,6 +603,8 @@ def inspect(repo, include_diff=False):
         "gitlink_updates": gitlink_updates,
         "dirty_submodules": blocking_submodules,
         "sensitive_paths": sensitive,
+        "sensitive_warnings": sensitive_warnings,
+        "risk_findings": findings,
         "large_files": large,
         "binary_files": binary,
         "risks": reasons,

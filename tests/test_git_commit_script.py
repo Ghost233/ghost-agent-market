@@ -238,6 +238,89 @@ class GitCommitScriptTest(unittest.TestCase):
 
         self.assertIn("tracked.txt", payload["binary_files"])
 
+    def test_sensitive_path_risks_are_tiered_and_explained(self) -> None:
+        self.write_text(
+            "scripts/local_mock_2/internal/codec/tokenlist_semantic.go",
+            "package codec\n",
+        )
+        self.write_text("internal/oauth_client.go", "package internal\n")
+        self.write_text(".env.production", "API_TOKEN=do-not-leak-value\n")
+        self.write_text(".env.example", "API_TOKEN=replace-me\n")
+        self.write_text("config/credentials.json", "{}\n")
+        self.write_text("config/credentials.production.json", "{}\n")
+        self.write_text("config/client_secret.dev.json", "{}\n")
+        self.write_text("certificates/public.crt", "public certificate\n")
+        self.write_text("keys/id_rsa", "do-not-leak-private-key\n")
+        self.write_text("docs/id_rsa/README.md", "SSH key documentation\n")
+        self.write_text("secrets/prod.json", "{}\n")
+        self.write_text("credentials/aws.ini", "[default]\n")
+        self.write_text("tokens/source.go", "package tokens\n")
+
+        payload = self.inspect()
+        findings = {
+            str(finding["path"]): finding
+            for finding in payload["risk_findings"]  # type: ignore[union-attr]
+        }
+
+        self.assertEqual(
+            set(payload["sensitive_paths"]),
+            {
+                ".env.production",
+                "config/client_secret.dev.json",
+                "config/credentials.json",
+                "config/credentials.production.json",
+                "credentials/aws.ini",
+                "keys/id_rsa",
+                "secrets/prod.json",
+            },
+        )
+        self.assertEqual(
+            set(payload["sensitive_warnings"]),
+            {
+                ".env.example",
+                "certificates/public.crt",
+                "internal/oauth_client.go",
+                "scripts/local_mock_2/internal/codec/tokenlist_semantic.go",
+                "tokens/source.go",
+            },
+        )
+        for path in payload["sensitive_paths"]:  # type: ignore[union-attr]
+            finding = findings[str(path)]
+            self.assertEqual(finding["severity"], "confirmation-required")
+            for field in ("rule_id", "reason", "evidence", "required_action"):
+                self.assertTrue(finding[field], f"{path} missing {field}")
+        self.assertEqual(
+            findings[
+                "scripts/local_mock_2/internal/codec/tokenlist_semantic.go"
+            ]["severity"],
+            "warning",
+        )
+        self.assertNotIn("docs/id_rsa/README.md", findings)
+        self.assertNotIn(
+            "do-not-leak-value",
+            json.dumps(payload["risk_findings"], ensure_ascii=False),
+        )
+        self.assertNotIn(
+            "do-not-leak-private-key",
+            json.dumps(payload["risk_findings"], ensure_ascii=False),
+        )
+
+    def test_sensitive_detection_covers_all_git_change_states(self) -> None:
+        self.write_text(".env.unstaged", "BASE=value\n")
+        self.git("add", "--", ".env.unstaged")
+        self.git("commit", "-qm", "add tracked environment file")
+        self.write_text(".env.unstaged", "BASE=changed\n")
+        self.write_text(".env.staged", "STAGED=value\n")
+        self.git("add", "--", ".env.staged")
+        self.write_text(".env.untracked", "UNTRACKED=value\n")
+
+        payload = self.inspect()
+
+        self.assertEqual(
+            set(payload["sensitive_paths"]),
+            {".env.staged", ".env.unstaged", ".env.untracked"},
+        )
+
     def test_inspect_separates_dirty_submodule_from_gitlink_update(self) -> None:
         child = self.create_submodule()
         (child / "child.txt").write_text("dirty child\n", encoding="utf-8")
