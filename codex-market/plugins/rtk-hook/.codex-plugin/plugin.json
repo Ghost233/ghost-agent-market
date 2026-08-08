@@ -1,6 +1,6 @@
 {
   "name": "rtk-hook",
-  "version": "0.3.2+codex.20260731143020",
+  "version": "0.3.3+codex.20260808011332",
   "description": "Codex plugin that transparently rewrites RTK-supported shell commands through a PreToolUse hook.",
   "author": {
     "name": "Ghost233",

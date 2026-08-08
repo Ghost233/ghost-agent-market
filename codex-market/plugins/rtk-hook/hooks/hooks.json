@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${PLUGIN_ROOT}/scripts/rtk-codex-hook.py",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/rtk-codex-hook.sh\"",
             "timeout": 5
           }
         ]
