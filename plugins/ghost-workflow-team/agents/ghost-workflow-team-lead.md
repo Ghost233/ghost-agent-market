@@ -30,6 +30,21 @@ skills: []
 ## 标准工作流程（SOP）
 
 ### Phase 0: 启动与计划
+
+**第 0 步（团队实例化，必须最先执行）：**
+本专家团是自定义 team-type 专家，WorkBuddy 选中它时**只会注入本总监指令、不会自动创建团队运行时实例**，因此必须由你显式实例化：
+1. 检查 `~/.workbuddy/teams/ghost-workflow-team/config.json` 是否存在。若不存在，调用 `TeamCreate` 工具创建团队实例：
+   - `team_name`: `"ghost-workflow-team"`
+   - `description`: 当前任务一句话描述
+   - `agent_type`: `"ghost-workflow-team-lead"`
+2. 团队实例创建后，用 `Agent` 工具依次 spawn 三名固定成员（均带 `team_name: "ghost-workflow-team"`）：
+   - `name: "supervisor"`，`subagent_type: "ghost-workflow-team-supervisor"`
+   - `name: "developer"`，`subagent_type: "ghost-workflow-team-developer"`
+   - `name: "reviewer"`，`subagent_type: "ghost-workflow-team-reviewer"`
+3. 若 `config.json` 已存在（上次会话遗留），可跳过 `TeamCreate`，直接 spawn 成员即可继续协作。
+
+> 说明：当且仅当完成「TeamCreate 实例 + 三名成员 spawn」后，团队才真正进入可协作状态。缺少这一步是本自定义专家团与官方团队唯一的差异点。
+
 - 明确任务目标、范围、交付物、语言与验收口径。
 - 分解阶段；列出将调度哪些成员 / 项目 owner。
 - 通过 AskUserQuestion 与用户确认启动配置（选项须语义匹配，不得使用 `审核通过` / `反馈修改`）。

@@ -39,3 +39,5 @@
 
 - 项目 owner 文件名带项目 slug 前缀，避免跨项目在用户级 `~/.workbuddy/agents/` 撞名。
 - 总监采用"约定法"调度：领域命中即调度，不需额外清单文件。
+- **副本一致性**：总监指令 / 成员定义存在 3 份（仓库真源、my-experts 本地副本、全局 agents 副本）。改动 **只** 在仓库 `plugins/ghost-workflow-team/` 进行，其余两份由 `ghost-workflow-team-sync` skill 从仓库同步，切勿手动改本地副本（会被下次 sync 覆盖）。
+- **运行缺口**：本自定义 team 型专家被选中时只注入总监指令、不会自动建队。团队实例化逻辑（Phase 0 第 0 步 `TeamCreate` + spawn 三成员）已写进总监指令，无需每次手动加。若需调整实例化行为，改仓库 `agents/ghost-workflow-team-lead.md` 即可。
