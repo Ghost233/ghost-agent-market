@@ -15,7 +15,7 @@
 
 ## 版本
 
-当前 `1.0.0`。改核心角色内容时 bump `VERSION`。
+当前 `1.0.1`。改核心角色内容时 bump `settings.json` 里的 `version`。
 
 ## 运行与触发（关键机制，必读）
 
@@ -24,7 +24,12 @@
 - **官方团队**：被选中时 WorkBuddy 会自动创建团队运行时实例并 spawn 成员。
 - **本自定义专家团**：被选中时 WorkBuddy **只会注入本总监指令，不会自动创建团队实例**。
 
-因此「总监指令」（`agents/ghost-workflow-team-lead.md`）里已硬编码 **Phase 0 第 0 步 = 必须先 `TeamCreate` 实例化团队，再 `Agent` spawn 三名固定成员**。这套逻辑已写进指令文件，下次你「选中专家团 + 发任务」时会自动触发，无需手动提示。
+因此「总监指令」（`agents/ghost-workflow-team-lead.md`）里已硬编码：
+
+- **Phase 0 第 0 步 = 范围确认**：总监先像项目 owner 一样与用户确认任务范围、交付物、边界与验收口径；在确认完成前，界面只保留「主会话」（总监），不出现开发/审查/监工。
+- **Phase 0 第 1 步 = `TeamCreate` 实例化团队**：范围确认后，再 `TeamCreate` 创建运行时实例，并 `Agent` spawn 三名固定成员。
+
+这套逻辑已写进指令文件，下次你「选中专家团 + 发任务」时会自动触发，无需手动提示。
 
 > 实测：`TeamCreate` 生成的 `config.json` 结构与官方 `aicoding-arch-team/config.json` **逐字段一致**（`leadAgentId` / `leadSessionId` / `members[]` / `inboxes/`），是有效团队实例，可正常协作。
 
