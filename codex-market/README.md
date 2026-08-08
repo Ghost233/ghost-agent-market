@@ -51,7 +51,8 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 ## 安装
 
 ```bash
-codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
+codex plugin marketplace add Ghost233/ghost-agent-market --sparse .agents --sparse codex-market
+codex plugin marketplace upgrade ghost-agent-market
 codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add mattpocock-skills-zh@ghost-agent-market

@@ -128,7 +128,13 @@ ghost-agent-market/
 把远程 marketplace 添加到 Codex：
 
 ```bash
-codex plugin marketplace add Ghost233/ghost-agent-market
+codex plugin marketplace add Ghost233/ghost-agent-market --sparse .agents --sparse codex-market
+```
+
+如果 `ghost-agent-market` 已经添加，不要重复执行 `marketplace add`；先刷新现有 Git marketplace：
+
+```bash
+codex plugin marketplace upgrade ghost-agent-market
 ```
 
 安装插件：
