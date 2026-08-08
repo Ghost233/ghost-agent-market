@@ -1,7 +1,7 @@
 {
   "name": "mattpocock-skills-zh",
   "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含工程实践与生产力 skill。",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
