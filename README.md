@@ -68,6 +68,8 @@ Codex hook 插件：
 ```text
 ghost-agent-market/
 ├── SkillOpt/
+├── .claude-plugin/
+│   └── marketplace.json
 ├── claude-code-market/
 │   ├── .claude-plugin/plugin.json
 │   ├── .claude-plugin/marketplace.json
@@ -112,8 +114,10 @@ ghost-agent-market/
 在 Claude Code 里添加远程 marketplace：
 
 ```text
-/plugin marketplace add Ghost233/ghost-agent-market --sparse claude-code-market
+/plugin marketplace add Ghost233/ghost-agent-market
 ```
+
+这是 Claude Code 会话内的斜杠命令，不要追加终端 CLI 使用的 `--sparse` 参数。
 
 安装插件：
 
