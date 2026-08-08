@@ -1,5 +1,5 @@
 interface:
-  display_name: "实施"
+  display_name: "实施 (Implement)"
   short_description: "根据既有规格或工单完成实现、测试、审查与全部提交工作"
   default_prompt: "使用 $implement 根据当前规格或工单完成实现、验证、审查与提交。"
 policy:

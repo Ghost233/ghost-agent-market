@@ -1,5 +1,5 @@
 interface:
-  display_name: "询问 Matt"
+  display_name: "询问 Matt (Ask Matt)"
   short_description: "根据当前任务查找并推荐最合适的 skill 或工程工作流"
   default_prompt: "使用 $ask-matt 根据我的当前任务推荐最合适的 skill 和工作流。"
 policy:

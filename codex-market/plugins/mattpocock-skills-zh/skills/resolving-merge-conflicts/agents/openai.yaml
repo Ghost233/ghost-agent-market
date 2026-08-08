@@ -1,4 +1,4 @@
 interface:
-  display_name: "解决合并冲突"
+  display_name: "解决合并冲突 (Resolving Merge Conflicts)"
   short_description: "追溯双方修改意图，逐块解决 merge 和 rebase 冲突"
   default_prompt: "使用 $resolving-merge-conflicts 追溯双方意图并解决当前合并冲突。"

@@ -1,5 +1,5 @@
 interface:
-  display_name: "转为工单"
+  display_name: "转为工单 (To Tickets)"
   short_description: "把计划拆成可独立交付的曳光弹式垂直切片工单与依赖图"
   default_prompt: "使用 $to-tickets 把当前计划拆成可独立交付且标明依赖的垂直切片工单。"
 policy:

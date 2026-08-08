@@ -4,6 +4,7 @@
 
 - `ghost-agent-workflow`
 - `ghost-agent-skills`
+- `mattpocock-skills-zh`
 - `rtk-hook`
 
 `ghost-agent-workflow` 包含七个工作流 skill：
@@ -20,6 +21,8 @@
 
 - `git-commit`
 - `git-merge-conflict`
+
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。安装一个 plugin 即可加载整批 skill。
 
 ## 推荐入口
 
@@ -51,7 +54,10 @@ Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Plann
 codex plugin marketplace add Ghost233/ghost-agent-market --sparse codex-market
 codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add ghost-agent-skills@ghost-agent-market
+codex plugin add mattpocock-skills-zh@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
+
+安装或更新后，请新开一个 Codex 任务加载新增 skill。
 
 安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。

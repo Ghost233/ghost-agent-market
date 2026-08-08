@@ -1,5 +1,5 @@
 interface:
-  display_name: "追问并记录"
+  display_name: "追问并记录 (Grill with Docs)"
   short_description: "通过多轮追问打磨计划或设计，并同步维护领域文档与 ADR"
   default_prompt: "使用 $grill-with-docs 深入澄清这个设计，并同步维护领域文档。"
 policy:

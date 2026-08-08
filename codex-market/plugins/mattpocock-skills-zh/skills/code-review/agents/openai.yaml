@@ -1,4 +1,4 @@
 interface:
-  display_name: "代码审查"
+  display_name: "代码审查 (Code Review)"
   short_description: "从 Standards 与 Spec 两个独立轴线审查代码 diff"
   default_prompt: "使用 $code-review 从 Standards 与 Spec 两个轴线审查当前变更。"

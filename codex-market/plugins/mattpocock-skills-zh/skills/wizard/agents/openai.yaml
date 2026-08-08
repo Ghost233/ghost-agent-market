@@ -1,4 +1,4 @@
 interface:
-  display_name: "交互式向导"
+  display_name: "交互式向导 (Wizard)"
   short_description: "为只有人类能完成的步骤生成安全、可重复运行的交互式向导"
   default_prompt: "使用 $wizard 为必须由人完成的配置或迁移步骤生成交互式向导。"

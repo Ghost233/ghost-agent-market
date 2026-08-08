@@ -1,5 +1,5 @@
 interface:
-  display_name: "会话交接"
+  display_name: "会话交接 (Handoff)"
   short_description: "将当前对话压缩为可移植的交接文档，供下一位代理继续"
   default_prompt: "使用 $handoff 把当前对话整理成可供下一位代理继续的交接文档。"
 policy:

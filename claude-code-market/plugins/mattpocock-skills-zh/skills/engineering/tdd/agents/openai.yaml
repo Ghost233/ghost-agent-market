@@ -1,4 +1,4 @@
 interface:
-  display_name: "TDD"
+  display_name: "测试驱动开发 (TDD)"
   short_description: "通过测试驱动的红—绿循环，以垂直切片实现并验证行为"
   default_prompt: "使用 $tdd 通过逐个红—绿垂直切片实现并验证这个行为。"

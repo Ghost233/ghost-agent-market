@@ -1,5 +1,5 @@
 interface:
-  display_name: "生成问卷"
+  display_name: "生成问卷 (To Questionnaire)"
   short_description: "把需要领域专家或其他人员回答的决策问题整理成完整问卷"
   default_prompt: "使用 $to-questionnaire 把需要他人回答的决策问题整理成完整问卷。"
 policy:

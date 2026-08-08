@@ -17,6 +17,8 @@
 - `git-commit`
 - `git-merge-conflict`
 
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
+
 上面列出的 workflow 是 Claude Code 与 Codex 共享的版本。
 
 ## 共享 Workflow 入口（Claude Code / Codex）
@@ -118,6 +120,7 @@ ghost-agent-market/
 ```text
 /plugin install ghost-agent-workflow@ghost-agent-market
 /plugin install ghost-agent-skills@ghost-agent-market
+/plugin install mattpocock-skills-zh@ghost-agent-market
 ```
 
 ## 安装 Codex Marketplace
@@ -133,8 +136,11 @@ codex plugin marketplace add Ghost233/ghost-agent-market
 ```bash
 codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add ghost-agent-skills@ghost-agent-market
+codex plugin add mattpocock-skills-zh@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
+
+安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 25 个 skill 重新加载。
 
 安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。
 

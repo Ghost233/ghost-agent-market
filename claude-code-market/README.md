@@ -1,6 +1,6 @@
 # Claude Code Market
 
-这个目录提供两个 Claude Code 可安装插件。
+这个目录提供三个 Claude Code 可安装插件。
 
 `ghost-agent-workflow` 包含七个工作流 skill：
 
@@ -16,6 +16,8 @@
 
 - `git-commit`
 - `git-merge-conflict`
+
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。安装一个 plugin 即可加载整批 skill。
 
 Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `standalone_thread`。首次运行使用平台的显式 skill 调用：
 
@@ -58,4 +60,7 @@ active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父
 ```text
 /plugin install ghost-agent-workflow@ghost-agent-market
 /plugin install ghost-agent-skills@ghost-agent-market
+/plugin install mattpocock-skills-zh@ghost-agent-market
 ```
+
+安装或更新后，请新开一个 Claude Code 会话加载新增 skill。
