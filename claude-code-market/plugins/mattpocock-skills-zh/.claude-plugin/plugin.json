@@ -1,0 +1,21 @@
+{
+  "name": "mattpocock-skills-zh",
+  "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含工程实践与生产力 skill。",
+  "version": "0.1.1",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "homepage": "https://github.com/Ghost233/ghost-agent-market",
+  "repository": "https://github.com/Ghost233/ghost-agent-market",
+  "license": "MIT",
+  "keywords": [
+    "engineering",
+    "skills",
+    "chinese",
+    "tdd",
+    "code-review",
+    "domain-modeling",
+    "productivity"
+  ]
+}

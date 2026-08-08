@@ -1,0 +1,4 @@
+interface:
+  display_name: "为代理写作"
+  short_description: "编写可预测、低方差且易于代理导航的 skill 与上下文文档"
+  default_prompt: "使用 $writing-for-agents 编写或审查供代理读取的 skill 与上下文文档。"

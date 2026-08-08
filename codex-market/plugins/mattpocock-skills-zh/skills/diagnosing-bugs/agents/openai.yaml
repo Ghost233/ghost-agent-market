@@ -1,0 +1,4 @@
+interface:
+  display_name: "诊断缺陷"
+  short_description: "建立紧密反馈循环，诊断棘手缺陷与性能回退的核心根因"
+  default_prompt: "使用 $diagnosing-bugs 为这个缺陷建立紧密反馈循环并找出根因。"

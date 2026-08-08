@@ -1,0 +1,7 @@
+# 平台说明：Codex 使用 policy.allow_implicit_invocation: false 对应 Claude Code 的 disable-model-invocation: true。Claude Code 的 argument-hint 在 Codex 中没有对应字段。
+interface:
+  display_name: "教学"
+  short_description: "在有状态的教学工作区中，通过多次会话学习技能或概念"
+  default_prompt: "使用 $teach 在当前工作区内为我设计一节与学习使命相关的课程。"
+policy:
+  allow_implicit_invocation: false

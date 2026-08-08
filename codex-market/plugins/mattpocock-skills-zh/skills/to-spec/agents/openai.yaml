@@ -1,0 +1,7 @@
+# 平台说明：Codex 使用 policy.allow_implicit_invocation: false 对应 Claude Code 的 disable-model-invocation: true。
+interface:
+  display_name: "生成规格"
+  short_description: "将当前对话中的决定整理为完整规格，并发布到 issue tracker"
+  default_prompt: "使用 $to-spec 把当前对话中的既有决定整理成可发布的完整规格。"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+---
+name: wait-what
+description: 停下来重新解释上一条未能让用户理解的消息。仅在用户明确调用时使用。
+disable-model-invocation: true
+---
+
+等一下——我没有理解你刚才讲到哪里。请重新解释：补充一些必要背景，使用 ASD-STE100 简化技术英语，并采用 `CONTEXT.md` 中的通用语言。

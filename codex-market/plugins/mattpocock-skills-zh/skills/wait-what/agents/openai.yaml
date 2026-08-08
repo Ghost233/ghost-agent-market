@@ -1,0 +1,7 @@
+# 平台说明：Codex 使用 policy.allow_implicit_invocation: false 对应 Claude Code 的 disable-model-invocation: true。
+interface:
+  display_name: "等等，什么意思"
+  short_description: "补足上一条消息缺失的背景，并用更简单直接的方式重新解释"
+  default_prompt: "使用 $wait-what 补足上一条消息缺失的背景，并以更简单的方式重新解释。"
+policy:
+  allow_implicit_invocation: false

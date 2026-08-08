@@ -1,0 +1,38 @@
+{
+  "name": "mattpocock-skills-zh",
+  "version": "0.1.1+codex.20260808173134",
+  "description": "Matt Pocock\u300aSkills for Real Engineers\u300b\u7684\u975e\u5b98\u65b9\u4e2d\u6587\u7ffb\u8bd1\u7248\uff0c\u5305\u542b\u5de5\u7a0b\u5b9e\u8df5\u4e0e\u751f\u4ea7\u529b skill\u3002",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com",
+    "url": "https://github.com/Ghost233"
+  },
+  "homepage": "https://github.com/Ghost233/ghost-agent-market",
+  "repository": "https://github.com/Ghost233/ghost-agent-market",
+  "license": "MIT",
+  "keywords": [
+    "engineering",
+    "skills",
+    "chinese",
+    "tdd",
+    "code-review",
+    "domain-modeling",
+    "productivity"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Matt Pocock Skills \u4e2d\u6587\u7248",
+    "shortDescription": "\u9762\u5411\u771f\u5b9e\u5de5\u7a0b\u5b9e\u8df5\u7684\u4e2d\u6587 agent skills\u3002",
+    "longDescription": "Matt Pocock\u300aSkills for Real Engineers\u300b\u7684\u975e\u5b98\u65b9\u4e2d\u6587\u7ffb\u8bd1\u7248\uff0c\u6536\u5f55\u9700\u6c42\u6f84\u6e05\u3001\u89c4\u683c\u4e0e\u5de5\u5355\u62c6\u5206\u3001TDD\u3001\u7f3a\u9677\u8bca\u65ad\u3001\u4ee3\u7801\u5ba1\u67e5\u3001\u9886\u57df\u5efa\u6a21\u53ca\u751f\u4ea7\u529b\u5de5\u4f5c\u6d41\u3002",
+    "developerName": "Ghost233",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "\u4f7f\u7528 $ask-matt \u6839\u636e\u6211\u7684\u5f53\u524d\u4efb\u52a1\u63a8\u8350\u5408\u9002\u7684\u5de5\u7a0b\u5de5\u4f5c\u6d41\u3002",
+      "\u4f7f\u7528 $grill-with-docs \u6df1\u5165\u6f84\u6e05\u9700\u6c42\uff0c\u5e76\u540c\u6b65\u9879\u76ee\u9886\u57df\u6a21\u578b\u4e0e\u67b6\u6784\u51b3\u7b56\u3002",
+      "\u4f7f\u7528 $tdd \u6309\u7ea2\u2014\u7eff\u2014\u91cd\u6784\u5faa\u73af\u5b9e\u73b0\u8fd9\u4e2a\u53d8\u66f4\u3002"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "代码库设计"
+  short_description: "提供设计深模块、接口、接缝与适配器所需的统一共享词汇"
+  default_prompt: "使用 $codebase-design 设计或评估这个模块的接口、深度与接缝。"

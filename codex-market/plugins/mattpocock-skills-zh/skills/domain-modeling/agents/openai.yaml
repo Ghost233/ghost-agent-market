@@ -1,0 +1,4 @@
+interface:
+  display_name: "领域建模"
+  short_description: "构建并持续打磨项目的领域术语、通用语言与关键架构决策"
+  default_prompt: "使用 $domain-modeling 明确项目术语，并记录必要的领域与架构决策。"

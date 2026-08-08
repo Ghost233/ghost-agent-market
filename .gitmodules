@@ -1,3 +1,6 @@
 [submodule "SkillOpt"]
 	path = SkillOpt
 	url = https://github.com/microsoft/SkillOpt.git
+[submodule "upstream/mattpocock-skills"]
+	path = upstream/mattpocock-skills
+	url = https://github.com/mattpocock/skills.git

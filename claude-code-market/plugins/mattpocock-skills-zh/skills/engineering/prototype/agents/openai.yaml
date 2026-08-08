@@ -1,0 +1,4 @@
+interface:
+  display_name: "原型"
+  short_description: "构建一次性逻辑或 UI 原型，快速回答具体设计问题"
+  default_prompt: "使用 $prototype 构建一次性逻辑或 UI 原型来回答这个设计问题。"

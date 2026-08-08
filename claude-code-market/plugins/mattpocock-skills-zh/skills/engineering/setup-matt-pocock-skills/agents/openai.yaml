@@ -1,0 +1,6 @@
+interface:
+  display_name: "设置 Matt Pocock Skills"
+  short_description: "为仓库配置工程类 skills 所需的跟踪器、标签和文档布局"
+  default_prompt: "使用 $setup-matt-pocock-skills 为当前仓库配置工程 skills 所需环境。"
+policy:
+  allow_implicit_invocation: false
