@@ -11,9 +11,9 @@ description: Use when 用户明确要求“提交代码”“提交当前改动�
 
 主线程为整个 git-commit 流程选择唯一 executor；不得让多个上下文并发检查或写入同一仓库。
 
-1. 平台允许创建子代理时，创建一个 ROLE=executor 子代理，只传 SKILL.md 路径、scripts/git_commit.py 路径、起始目录和授权范围。Codex 使用 spawn_agent：task_name="git_commit_executor"、model="gpt-5.6-terra"、reasoning_effort="medium"、fork_turns: "none"。
+1. 平台允许创建子代理时，创建一个 ROLE=executor 子代理，只传 SKILL.md 路径、scripts/git_commit.py 路径、起始目录和授权范围，随后即停在该调用上等待结果：Codex 使用 spawn_agent（task_name="git_commit_executor"、model="gpt-5.6-terra"、reasoning_effort="medium"、fork_turns: "none"）发起后，用 wait_agent 阻塞到该子代理返回；Claude Code 的 Agent 工具按默认前台方式调用，发起后即阻塞到 executor 完成并返回结果。子代理的最终结果或完整阻塞原因作为本次调用的返回值交回主线程，进入第 3 条。
 2. 平台不能创建上述子代理时，由主线程作为唯一 executor 执行下述流程，不得仅因缺少子代理而停止。
-3. 已委派时主线程不运行 Git 命令、不读 diff、不规划或执行提交；一次长等待 executor，只转发其完整阻塞原因或最终结果。
+3. 已委派时主线程不运行 Git 命令、不读 diff、不规划或执行提交；拿到 executor 的返回值后，将其完整阻塞原因或最终结果转发给用户。
 
 ## Executor
 

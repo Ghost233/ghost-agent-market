@@ -390,7 +390,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.1.9")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.0")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -418,7 +418,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.1\.9\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.2\.0\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -465,7 +465,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
-        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.1.9")
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.0")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)

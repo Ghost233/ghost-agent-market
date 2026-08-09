@@ -969,14 +969,24 @@ def validate(plan, snapshot):
                 "batch paths are not present in inspected changes: "
                 + ", ".join(sorted(unknown))
             )
-        if (
-            not isinstance(message, str)
-            or "\n" in message
-            or not COMMIT_RE.fullmatch(message.strip())
-            or not CHINESE_RE.search(message)
-        ):
+        if not isinstance(message, str) or not message.strip():
             raise PlanError(
-                f"batch {index} message must be a Chinese Conventional Commit"
+                f"batch {index} message must be a non-empty Chinese Conventional Commit"
+            )
+        if "\n" in message:
+            raise PlanError(
+                f"batch {index} message must be a single-line Chinese Conventional Commit "
+                f"(contains newline); Co-Authored-By trailer is appended by the script, "
+                f"do not include it or any other trailer in the message"
+            )
+        if not COMMIT_RE.fullmatch(message.strip()):
+            raise PlanError(
+                f"batch {index} message {message.strip()!r} is not a Conventional Commit; "
+                f"expected 'feat|fix|docs|...|revert'(scope)?: 中文说明'"
+            )
+        if not CHINESE_RE.search(message):
+            raise PlanError(
+                f"batch {index} message must contain Chinese characters"
             )
         normalized.append({"paths": paths, "message": message.strip()})
         seen.update(paths)

@@ -635,6 +635,46 @@ class GitCommitScriptTest(unittest.TestCase):
         self.assertIn("Conventional Commit", str(payload["error"]))
         self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
 
+    def test_apply_rejects_multiline_message_and_points_at_trailer(self) -> None:
+        self.write_text("target.txt", "target change\n")
+        snapshot = self.inspect()
+        initial_head = self.git("rev-parse", "HEAD").stdout.strip()
+        plan = self.plan(
+            snapshot,
+            [
+                {
+                    "paths": ["target.txt"],
+                    "message": "fix(test): 修复目标文件\nCo-Authored-By: Nexus <nexus@xfinite.global>",
+                }
+            ],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(payload["ok"])
+        error = str(payload["error"])
+        self.assertIn("single-line", error)
+        self.assertIn("trailer", error)
+        self.assertIn("Conventional Commit", error)
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
+
+    def test_apply_rejects_message_without_chinese(self) -> None:
+        self.write_text("target.txt", "target change\n")
+        snapshot = self.inspect()
+        initial_head = self.git("rev-parse", "HEAD").stdout.strip()
+        plan = self.plan(
+            snapshot,
+            [{"paths": ["target.txt"], "message": "fix(test): fix the target file"}],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(payload["ok"])
+        self.assertIn("Chinese characters", str(payload["error"]))
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
+
     def test_apply_requires_head_and_fingerprint(self) -> None:
         self.write_text("target.txt", "target change\n")
         initial_head = self.git("rev-parse", "HEAD").stdout.strip()
