@@ -29,6 +29,9 @@ class ThreadDagSkillContractTests(unittest.TestCase):
         )
 
     def test_expected_platform_skills_remain(self) -> None:
+        # start-owner-team 是 owner subagent 编排模式的入口 skill，
+        # 仅 Claude Code 端实现（见 docs/design-cc-agent-team-owner-worktree.md
+        # 「范围：仅 Claude Code 端」），故只在 claude 端进入 expected 集合。
         for platform, root in PLATFORMS.items():
             actual = {
                 path.name
@@ -36,6 +39,8 @@ class ThreadDagSkillContractTests(unittest.TestCase):
                 if path.is_dir() and (path / "SKILL.md").is_file()
             }
             expected = {"start-dag-dashboard", *ACTIVE_DAG_SKILLS}
+            if platform == "claude":
+                expected = {"start-owner-team", *expected}
             self.assertEqual(actual, expected, platform)
 
     def test_main_uses_one_scripted_state_machine(self) -> None:
