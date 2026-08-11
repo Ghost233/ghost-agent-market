@@ -7,13 +7,17 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 
 你是 main（协调者）。本 skill 指导你用 **owner subagent 编排模式**（非 agent team）完成工作。核心：owner 的 write scope 两两不相交保证零冲突；每个 owner 用一个 owner-worker subagent 在独立 worktree 里干活；你不写业务代码，只编排。
 
-完整概念见 `CONTEXT.md`。本 skill 只讲执行步骤。
+完整概念见插件 README。本 skill 只讲执行步骤。
 
 ## 前置（一次性，幂等）
 
-- `.claude/agents/owner-worker.md` 必须存在且已被 CC 加载（session 启动时若 `.claude/agents/` 首次创建需重启）。
-- `.ghost-agent-workflow/hooks/enforce-scope.sh` + `place-binding.sh` 必须存在且可执行。
-- 这三项已随本插件提供，正常安装即就位。
+owner 模式依赖三个文件落在**当前项目**里（不是插件目录）——CC 只从项目 `.claude/agents/` 加载 agent，且 plugin agent 的 frontmatter hooks 会被忽略，故这些文件必须由 setup 脚本复制进项目才能生效：
+
+- `<workspace>/.claude/agents/owner-worker.md`
+- `<workspace>/.ghost-agent-workflow/hooks/enforce-scope.sh`
+- `<workspace>/.ghost-agent-workflow/hooks/place-binding.sh`
+
+**Phase 0 第一步前先检测**：三项任一缺失 → 停下，让用户跑 `/setup-owner-mode`（或你直接调用该 skill）。文件就位但 `.claude/agents/` 是本次新建 → 提示用户**重启 Claude Code 会话**后重跑本 skill。未就位绝不 spawn owner-worker——否则 subagent_type 不可用、enforce-scope 不触发。
 
 ## Phase 0：范围确认（不提前 spawn）
 
@@ -22,7 +26,7 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 3. 用 AskUserQuestion 与用户确认：
    - 选哪些 owner 参与、各自的任务目标、范围边界。
    - 哪些 owner 间有硬依赖（A 要等 B 产出才能动）——用于依赖图。
-4. **静态校验**：跑 `node claude-code-market/scripts/scope-check.mjs static <workspace>`。相交则停下，让用户调 owner 定义（调 scope 归属，不改代码）。
+4. **静态校验**：跑 `node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-check.mjs" static <workspace>`。相交则停下，让用户调 owner 定义（调 scope 归属，不改代码）。
 5. 用户确认前不 spawn、不建分支。
 
 ## 实例化
@@ -69,7 +73,7 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 ## 合并
 
 1. 所有参与 owner 验收通过后，合并前先校验：
-   `node claude-code-market/scripts/scope-check.mjs merge <workspace> <main-HEAD> <owner1> <owner2> ...`
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-check.mjs" merge <workspace> <main-HEAD> <owner1> <owner2> ...`
    （校验各 owner 分支 diff 全在各自 scope 内 + 跨 owner 实际改动不相交。失败则停下排查。）
 2. 逐个快进合并：`git merge --ff-only ga/owner/<id>`。因 scope 不相交，理论无冲突；有冲突说明 scope 漂移，停下。
 3. 合并完成，报告用户最终结果。
@@ -77,7 +81,7 @@ description: 启动 owner subagent 编排模式——main 绑定 owner、为每�
 ## 铁律
 
 - **你不写业务代码**——产出一律派给 owner-worker。你只编排、验收、合并。
-- **spawn 必须显式传 `isolation="worktree"` 且不带 `team_name`**——worktree 是整个隔离的前提，漏传则所有 owner 挤在主 checkout 互相踩踏，hook 也因共享绑定指针失效。CC 不读 agent frontmatter 里的 `isolation`，只认 spawn 调用（见 CONTEXT.md 可行性前提）。
+- **spawn 必须显式传 `isolation="worktree"` 且不带 `team_name`**——worktree 是整个隔离的前提，漏传则所有 owner 挤在主 checkout 互相踩踏，hook 也因共享绑定指针失效。CC 不读 agent frontmatter 里的 `isolation`，只认 spawn 调用。
 - **spawn 后第一步必是 place-binding**（hook fail-closed，不投放任何写都被拒）。
 - **验收不信 owner 文本汇报**，只认 git diff + 独立校验。
 - **合并必经 scope-check merge**，不直接 `git merge`。
