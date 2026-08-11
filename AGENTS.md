@@ -27,6 +27,10 @@ git config user.email
 
 修改任一插件后，基础版本每次增加 `0.0.1`。任一段达到 `10` 时向左进位：`0.4.9` -> `0.5.0`，`0.9.9` -> `1.0.0`。基础版本递增后再运行 cachebuster；它只更新 `+codex.<UTC timestamp>` 后缀，不改变基础版本。
 
+## Marketplace 同步规则
+
+修改插件目录、版本或 marketplace 元数据时，必须同步更新所有发布同一插件的 `marketplace.json`。Claude Code 同步 `.claude-plugin/marketplace.json` 与 `claude-code-market/.claude-plugin/marketplace.json`；Codex 同步 `.agents/plugins/marketplace.json` 与 `codex-market/.agents/plugins/marketplace.json`。每个 `source` 必须按所在 marketplace 根目录指向实际插件目录；存在 `version` 时，必须与对应 `plugin.json` 一致。全部清单校验通过后才算完成。
+
 ## Python 脚本兼容性
 
 本仓库自行设计和维护的 Python 脚本必须以 Python 3.9 为最低运行版本，并使用 Python 3.9 支持的语法和标准库 API。除非脚本明确检测并选择了更高版本的解释器，不得依赖 Python 3.10 或更高版本独有的语法或 API；兼容实现应能继续在 Python 3.10 及更高版本运行。
