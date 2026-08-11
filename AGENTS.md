@@ -27,6 +27,12 @@ git config user.email
 
 修改任一插件后，基础版本每次增加 `0.0.1`。任一段达到 `10` 时向左进位：`0.4.9` -> `0.5.0`，`0.9.9` -> `1.0.0`。基础版本递增后再运行 cachebuster；它只更新 `+codex.<UTC timestamp>` 后缀，不改变基础版本。
 
+## Python 脚本兼容性
+
+本仓库自行设计和维护的 Python 脚本必须以 Python 3.9 为最低运行版本，并使用 Python 3.9 支持的语法和标准库 API。除非脚本明确检测并选择了更高版本的解释器，不得依赖 Python 3.10 或更高版本独有的语法或 API；兼容实现应能继续在 Python 3.10 及更高版本运行。
+
+与这些脚本相关的测试必须在 Python 3.9 下可加载并通过。测试或脚本启动 Python 子进程时，应优先使用当前解释器（`sys.executable`），不得假设环境中的 `python3` 高于 Python 3.9。
+
 ## 文档同步
 
 本仓库根目录有两份对等的指引文档：`CLAUDE.md`（Claude Code）与 `AGENTS.md`（通用 agent）。

@@ -682,6 +682,8 @@ def diff_check(repo, paths):
         stage_paths(repo, paths, env=env)
         result = git(
             repo,
+            "-c",
+            "core.whitespace=cr-at-eol",
             "diff",
             "--cached",
             "--check",
@@ -736,7 +738,8 @@ def repair_simple_whitespace(repo, paths, issues):
             blocked.extend(path_issues)
             continue
         try:
-            source = path.read_text(encoding="utf-8")
+            with path.open("r", encoding="utf-8", newline="") as source_file:
+                source = source_file.read()
         except (OSError, UnicodeError):
             blocked.extend(path_issues)
             continue
@@ -802,7 +805,8 @@ def repair_simple_whitespace(repo, paths, issues):
                 blocked.extend(eof_issues)
 
         if changed:
-            path.write_text("".join(lines), encoding="utf-8", newline="")
+            with path.open("w", encoding="utf-8", newline="") as target_file:
+                target_file.write("".join(lines))
     return repairs, allowed, blocked
 
 

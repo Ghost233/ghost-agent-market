@@ -1,9 +1,11 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +34,7 @@ class GitCommitScriptTest(unittest.TestCase):
         self,
         *args: str,
         check: bool = True,
-        env: dict[str, str] | None = None,
+        env: Optional[dict[str, str]] = None,
     ) -> subprocess.CompletedProcess[str]:
         return self.git_at(self.repo, *args, check=check, env=env)
 
@@ -41,7 +43,7 @@ class GitCommitScriptTest(unittest.TestCase):
         repo: Path,
         *args: str,
         check: bool = True,
-        env: dict[str, str] | None = None,
+        env: Optional[dict[str, str]] = None,
     ) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(
             ["git", "-C", str(repo), *args],
@@ -132,11 +134,17 @@ class GitCommitScriptTest(unittest.TestCase):
         self,
         command: str,
         *,
-        plan: dict[str, object] | None = None,
+        plan: Optional[dict[str, object]] = None,
         include_diff: bool = False,
-        repo: Path | None = None,
+        repo: Optional[Path] = None,
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
-        args = ["python3", str(SCRIPT), command, "--repo", str(repo or self.repo)]
+        args = [
+            sys.executable,
+            str(SCRIPT),
+            command,
+            "--repo",
+            str(repo or self.repo),
+        ]
         if include_diff:
             args.append("--diff")
         result = subprocess.run(
@@ -159,7 +167,7 @@ class GitCommitScriptTest(unittest.TestCase):
         self,
         *,
         include_diff: bool = False,
-        repo: Path | None = None,
+        repo: Optional[Path] = None,
     ) -> dict[str, object]:
         result, payload = self.run_script(
             "inspect", include_diff=include_diff, repo=repo
@@ -713,6 +721,27 @@ class GitCommitScriptTest(unittest.TestCase):
         self.assertEqual(
             actions,
             {"remove-trailing-whitespace", "remove-extra-eof-blank-lines"},
+        )
+
+    def test_apply_repairs_whitespace_without_changing_crlf(self) -> None:
+        self.write_bytes("target.txt", b"first   \r\nsecond\r\n\r\n")
+        snapshot = self.inspect()
+        plan = self.plan(
+            snapshot,
+            [
+                {
+                    "paths": ["target.txt"],
+                    "message": "fix(test): 修复空白并保留换行",
+                }
+            ],
+        )
+
+        result, payload = self.run_script("apply", plan=plan)
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual(
+            (self.repo / "target.txt").read_bytes(),
+            b"first\r\nsecond\r\n",
         )
 
     def test_apply_preserves_markdown_two_space_hard_break(self) -> None:

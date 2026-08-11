@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.2.0+codex.20260809062621",
+  "version": "0.2.1+codex.20260811151446",
   "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
   "author": {
     "name": "Ghost233",
