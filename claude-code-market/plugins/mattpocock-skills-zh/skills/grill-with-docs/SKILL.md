@@ -4,4 +4,4 @@ description: 通过持续追问打磨计划或设计，并在过程中同步创�
 disable-model-invocation: true
 ---
 
-使用 `/domain-modeling` skill 运行一次 `/grilling` 会话。
+调用 Skill 工具两次，分别传入 `grilling` 和 `domain-modeling`。

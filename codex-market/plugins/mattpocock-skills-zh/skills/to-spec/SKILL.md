@@ -7,7 +7,7 @@ description: 将当前对话整理成规格并发布到项目 issue 跟踪器；
 
 此 skill 根据当前对话上下文和对代码库的理解生成规格。**不要**再访谈用户，只综合你已经掌握的信息。
 
-你应该已经获得 issue 跟踪器与分类标签词汇；如果没有，运行 `$setup-matt-pocock-skills`。
+你应该已经获得 issue 跟踪器与分类标签词汇；如果没有，告知用户运行 `$setup-matt-pocock-skills`。
 
 ## 流程
 

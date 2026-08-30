@@ -10,7 +10,7 @@ description: 从固定点（commit、branch、tag 或 merge-base）开始，沿 
 
 两个轴由**并行子代理**执行，避免上下文互相污染，再由本 skill 汇总发现。
 
-你应该已经获得 issue 跟踪器配置；缺少 `docs/agents/issue-tracker.md` 时运行 `/setup-matt-pocock-skills`。
+你应该已经获得 issue 跟踪器配置。若缺少 `docs/agents/issue-tracker.md`，告知用户运行 `/setup-matt-pocock-skills`。
 
 ## 流程
 

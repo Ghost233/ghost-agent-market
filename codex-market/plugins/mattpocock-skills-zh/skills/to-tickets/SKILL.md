@@ -9,7 +9,7 @@ description: 把计划、规格或当前对话拆成一组曳光弹式垂直切�
 
 把计划、规格或对话拆成一组**工单**：每张都是曳光弹式垂直切片，并明确声明**阻塞它**的其他工单。
 
-应已提供 issue tracker 与分诊标签词汇；若没有，运行 `$setup-matt-pocock-skills`。
+应已提供 issue tracker 与分诊标签词汇；若没有，告知用户运行 `$setup-matt-pocock-skills`。
 
 ## 流程
 

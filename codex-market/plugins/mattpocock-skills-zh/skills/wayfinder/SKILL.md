@@ -23,7 +23,7 @@ Wayfinder 默认只做规划：每张工单解决一个决定；当执行前不�
 
 地图是**索引**而非存储。决定只存在于对应工单中；地图只写一行摘要并链接，不重复详情。
 
-地图、子工单、阻塞关系和 frontier 查询的具体表达取决于 tracker。应已提供 tracker 配置；否则运行 `$setup-matt-pocock-skills`。查阅 tracker 文档中的 “Wayfinding operations”。若仍未提供，默认使用本地 Markdown tracker。
+地图、子工单、阻塞关系和 frontier 查询的具体表达取决于 tracker。应已提供 tracker 配置；否则告知用户运行 `$setup-matt-pocock-skills`。查阅 tracker 文档中的 “Wayfinding operations”。若仍未提供，默认使用本地 Markdown tracker。
 
 ### 地图正文
 
@@ -75,9 +75,9 @@ Wayfinder 默认只做规划：每张工单解决一个决定；当执行前不�
 
 每张工单要么是 **HITL**（有人参与，由人代表自己发言），要么是 **AFK**（代理独立驱动）。HITL 只能通过实时交流解决，代理不得代替人回答。
 
-- **Research（AFK）**：阅读文档、第三方 API 或知识库等本地资源之外的信息，找出某项决定所依赖的事实。由 `$research` **子代理**解决。
-- **Prototype（HITL）**：制作便宜、粗糙、可供反馈的具体产物，如大纲、初稿、stub，或通过 `$prototype` 构建 UI/逻辑代码；适合关键问题是“应该长什么样/如何表现”时。
-- **Grilling（HITL）**：默认类型，以对话推进；始终调用 `$grilling` 和 `$domain-modeling`。
+- **Research（AFK）**：阅读文档、第三方 API 或知识库等本地资源之外的信息，找出某项决定所依赖的事实。由一个调用 Skill 工具并传入 `research` 的子代理解决。
+- **Prototype（HITL）**：通过调用 Skill 工具并传入 `prototype`，制作便宜、粗糙、可供反馈的具体产物，如大纲、初稿、stub 或 UI/逻辑代码；适合关键问题是“应该长什么样/如何表现”时。
+- **Grilling（HITL）**：默认类型，以对话推进；始终调用 Skill 工具两次，分别传入 `grilling` 和 `domain-modeling`。
 - **Task（HITL 或 AFK）**：做出决定前必须完成的人工工作，例如注册服务、开通访问权、移动数据以观察形状。它只为解除决定阻塞而存在，不负责交付最终目标。代理能独立做就用 AFK，否则给人精确清单。完成后，答案记录所做工作以及后续工单依赖的凭据位置、URL、行数等事实。
 
 ## 战争迷雾
@@ -107,11 +107,11 @@ Wayfinder 默认只做规划：每张工单解决一个决定；当执行前不�
 
 用户以模糊想法调用时：
 
-1. **命名目标**：运行 `$grilling` 和 `$domain-modeling`，明确地图通向的规格、决定或改动。目标先于其他内容确定范围。
+1. **命名目标**：调用 Skill 工具两次，分别传入 `grilling` 和 `domain-modeling`，明确地图通向的规格、决定或改动。目标先于其他内容确定范围。
 2. **绘制 frontier**：再次追问，但采用**广度优先**，横向找出整个空间中的开放决定和现在可迈出的第一步。若完全没有迷雾，说明工作小到一次会话即可完成，不需要地图；停止并询问用户如何继续。
 3. **创建地图**：添加 `wayfinder:map` 标签，填写 Destination 与 Notes，保持 Decisions so far 为空，并把迷雾写入 Not yet specified。
 4. **创建当前能定义的工单**作为地图子 issue；所有工单拿到 ID 后，再在第二遍连接阻塞关系。不能定义的内容保留在迷雾中。
-5. **启动 research 子代理**：为每张新 research 工单并行运行 `$research` 子代理，把结果放在一次性 `research/<name>` 分支，并从工单留下上下文指针。
+5. **启动 research 子代理**：为每张新 research 工单并行启动一个调用 Skill 工具并传入 `research` 的子代理，把结果放在一次性 `research/<name>` 分支，并从工单留下上下文指针。
 6. 停止。绘图占用一次会话，不在同一会话人工解决工单。
 
 ### 沿地图推进
@@ -120,7 +120,7 @@ Wayfinder 默认只做规划：每张工单解决一个决定；当执行前不�
 
 1. 加载地图的低分辨率全景，不要一次加载所有工单正文。
 2. 用户指定工单则采用；否则按顺序选择第一张 frontier 工单。开始前先分配给自己以**占用**。
-3. 解决工单。按需加载相关或已关闭工单详情，并调用 `## Notes` 指定的 skill；不确定时使用 `$grilling` 和 `$domain-modeling`。
+3. 解决工单。按需加载相关或已关闭工单详情，并通过 Skill 工具调用 `## Notes` 指定的 skill；不确定时调用 Skill 工具两次，分别传入 `grilling` 和 `domain-modeling`。
 4. 用**解决评论**记录答案，关闭 issue，并把上下文指针追加到地图的 Decisions so far。
 5. 创建新发现的工单后再连接依赖；把因答案而变清晰的迷雾转成工单，并从 Not yet specified 删除对应内容。发现任一工单超出目标时，将其排除在范围外，而不是把它当路线决定解决。决定使其他地图内容失效时，应更新或删除相关工单。
 

@@ -40,7 +40,7 @@ disable-model-invocation: true
 
 每个已分诊项必须恰好有一个类别角色和一个状态角色。状态冲突时先标记并询问维护者，不要继续操作。
 
-以上是规范角色名，tracker 上的实际标签可能不同。应已提供映射；没有则运行 `/setup-matt-pocock-skills`。
+以上是规范角色名，tracker 上的实际标签可能不同。应已提供映射；没有则告知用户运行 `/setup-matt-pocock-skills`。
 
 通常，无标签项先进入 `needs-triage`，再转为 `needs-info`、`ready-for-agent`、`ready-for-human` 或 `wontfix`。报告者回复后，`needs-info` 回到 `needs-triage`。维护者可以随时覆盖；遇到异常转换应先指出并询问。
 
@@ -70,7 +70,7 @@ disable-model-invocation: true
 1. **收集上下文。** 阅读完整正文、评论、标签、作者和日期；PR 还要阅读 diff。解析旧分诊记录，避免重复提问。按项目领域词汇探索代码库，并遵守相关 ADR。对代码库执行两项检查：(a) **冗余检查**——按领域概念而非请求原话，搜索是否已有目标行为的实现，并报告搜索位置；若存在，按“已实现”的 `wontfix` 进入步骤 5。(b) **既往拒绝检查**——阅读 `.out-of-scope/*.md`，指出与本请求相似的记录。
 2. **提出建议。** 向维护者说明推荐的类别、状态和理由，并概括相关代码库现状，包括是否已经实现。等待指示。
 3. **验证主张。** 深入追问前先验证请求是否成立。bug 按报告步骤复现；PR 则检出 diff 并运行相关测试或命令，确认它确实做到所声称的内容。报告结论：已确认（附代码路径）、失败，或信息不足。确认过的结果能产生更强的代理简报。
-4. **需要时深入追问。** 同时运行 `/grilling` 与 `/domain-modeling`，每轮提出一组问题，逐步明确请求；决定落地时同步更新 `CONTEXT.md` 和 ADR。
+4. **需要时深入追问。** 若请求需要进一步成形，调用 Skill 工具两次，分别传入 `grilling` 和 `domain-modeling`；每轮提出一组问题，逐步明确请求，并在决定落地时同步更新 `CONTEXT.md` 和 ADR。
 5. **应用结果。**
    - `ready-for-agent`：发布代理简报评论，格式见 [AGENT-BRIEF.md](AGENT-BRIEF.md)。
    - `ready-for-human`：使用相同结构，并说明无法委派的原因，例如判断工作、外部访问、设计决定或人工测试。
