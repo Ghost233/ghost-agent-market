@@ -47,6 +47,8 @@ $compile-feature-knowledge 整理当前功能知识。
 
 ## OKF 0.2
 
+格式的权威定义见 [references/okf-0.2.md](references/okf-0.2.md)；本节为执行摘要，冲突时以规范文件为准。
+
 - 功能概念使用 `type: Feature`，并带 `title`、单句 `description`；按需使用 `tags`。`status` 表示文档生命周期：首次整理用 `draft`，可供消费用 `stable`，保留历史用 `deprecated`，不表示代码是否上线。
 - `sources` 为每份外部依据设置稳定 `id` 和真实 `resource`；关键结论以同名脚注归因。普通相对路径按当前文档解析，`/` 开头的链接按 OKF bundle 根解析。
 - 仅在实质修改时写入真实的 `generated.by` 和带时区的 `generated.at`。`verified` 只记录实际核验当前文档的人或过程；局部测试不能为全文背书。实质内容改变后，移除不再适用的验证标记，重新核验后再添加。
