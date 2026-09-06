@@ -2,58 +2,26 @@
 
 这个目录提供 Codex 可安装的 marketplace 条目：
 
-- `ghost-agent-workflow`
 - `ghost-agent-skills`
 - `mattpocock-skills-zh`
 - `rtk-hook`
 
-`ghost-agent-workflow` 包含七个工作流 skill：
-
-- `parallel-task-planner`
-- `planner-reviewer`
-- `setup-sub-thread-workflow`
-- `sub-thread-coordination`
-- `sub-thread-goal-worker`
-- `sub-thread-task-supervisor`
-- `start-dag-dashboard`
-
-`ghost-agent-skills` 包含不依赖 Owner/DAG 的 skill：
+`ghost-agent-skills` 包含四个独立 skill：
 
 - `git-commit`
 - `git-merge-conflict`
+- `compile-feature-knowledge`
+- `implement-spec`
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。安装一个 plugin 即可加载整批 skill。
 
-## 推荐入口
-
-```text
-使用 $sub-thread-coordination，以 Owner 工作流完整执行 `./plan.md`；如果未指定 Quick 或 DAG，先让我选择运行模式。
-```
-
-`sub-thread-coordination` 是唯一协调入口，用户必须先明确选择模式。Quick 严格串行且不启动 Planner、Supervisor 或 Dashboard；DAG 移交后的 Main 使用 `gpt-5.6-sol/xhigh`，`gpt-5.6-luna/medium` Supervisor 在自己的原生 Goal 内持续监督最多 8 个已登记线程，Main 不再轮询或周期唤醒。新线程只用 `create_thread`，禁止 fork Main 历史；Owner Git 同步由 Main 显式执行。配置包含五组 profile；机械 gate 与定向验证由脚本执行。
-
-DAG 启动命令为 `workflow start-dag <workspace> <development-key>`；脚本生成集成分支 `ga/<key>/main` 和 Owner 分支 `ga/<key>/<owner_id>`。原始工作区始终保留用户分支并可继续提交；交付时合并到该分支的最新 HEAD，冲突则保留全部 worktree 与分支。
-
-默认生命周期是 `standalone_thread`，不强制创建原生 Goal。只有用户已启动或明确要求 Goal 时才桥接 `codex_native`。Goal 模式遇到 Owner 变化时返回 `owner_action_required`：通知用户暂停 Goal、完成精确批准与脚本应用，再提示“可以继续 Goal”；不会启动空回合累计 blocked 次数。
-
-用户可见标题统一为 `[GA][任务][角色] <中文任务>`；新线程取得正式 threadId 后自行设置 canonical 标题。系统 key 只使用小写字母、数字和下划线，脚本 JSON 只作机器收据。
-
-active leaf 可在产生业务变化前 fenced 扩展为 composite 子 DAG：父 task 保留外层入边/出边，内部使用 T2-1、T2-2…表达依赖并可递归扩展；Dashboard 支持折叠、展开与父状态聚合。
-
-Review 是显式 DAG 节点，而不是每个 task 的隐形默认步骤。Planner 为每个 task 声明风险、策略、批次、阻塞范围和原因；机械验收由 runtime 执行，验证只保留当前运行日志，不保存 evidence history。
-
-所有结构化文件与配置只通过脚本写入。完整 `WORKER_RESULT_V5` 落盘，子线程聊天只返回 `THREAD_TASK_RECEIPT_V1`。主线程不输出 Mermaid、DAG diff 或普通 running 状态，只向用户报告已经机械接受的 task 最终结果与追踪入口。
-
-初始 DAG 通过机械校验后，由独立 Planner Reviewer 检查并行度和结构复杂度；Planner 最多修订一次。Plan/State 激活后，Main 调用 `$start-dag-dashboard` 的后台 Node 启动器；启动器从指定工作目录的 `.ghost-agent-workflow` 发现活动 Goal，并只报告一次 URL。网页通过文件监听和 SSE 接收 runtime 数据更新。初始化脚本自动生成 `.ghost-agent-workflow/.gitignore`，只跟踪自身、配置与 Owner 数据并忽略 runtime；已有文件不覆盖。
-
-独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突。`rtk-hook` 通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行，也不再阻断后要求重试。
+独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；`implement-spec` 将已批准的 spec 显式委派给实施子智能体并独立审查。`rtk-hook` 通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行，也不再阻断后要求重试。
 
 ## 安装
 
 ```bash
 codex plugin marketplace add Ghost233/ghost-agent-market --sparse .agents --sparse codex-market
 codex plugin marketplace upgrade ghost-agent-market
-codex plugin add ghost-agent-workflow@ghost-agent-market
 codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add mattpocock-skills-zh@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market

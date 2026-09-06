@@ -1,7 +1,0 @@
-interface:
-  display_name: "最小 DAG 规划器"
-  short_description: "生成最小顶层 DAG、显式 Review 和按需内部子图。"
-  default_prompt: "使用 $parallel-task-planner，为剩余工作生成最小顶层 DAG。"
-
-policy:
-  allow_implicit_invocation: false
