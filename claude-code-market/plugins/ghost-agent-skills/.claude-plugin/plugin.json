@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "检查当前仓库改动并创建规范的中文 Git 提交。",
-  "version": "0.2.1",
+  "description": "检查当前仓库改动、处理复杂合并冲突并维护可追溯的功能知识。",
+  "version": "0.2.2",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -22,6 +22,9 @@
     "gitlink-updates",
     "git-merge-conflict",
     "merge-conflict",
-    "history-archaeology"
+    "history-archaeology",
+    "feature-knowledge",
+    "okf",
+    "knowledge-maintenance"
   ]
 }

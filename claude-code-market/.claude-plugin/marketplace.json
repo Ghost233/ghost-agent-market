@@ -35,8 +35,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./plugins/ghost-agent-skills",
-      "description": "Standalone skills that do not depend on the Ghost Agent Owner/DAG workflow.",
-      "version": "0.2.1",
+      "description": "Standalone Git and feature-knowledge skills that do not depend on the Ghost Agent Owner/DAG workflow.",
+      "version": "0.2.2",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -51,7 +51,10 @@
         "history-archaeology",
         "agent-skills",
         "claude-code",
-        "read-only-analysis"
+        "read-only-analysis",
+        "feature-knowledge",
+        "okf",
+        "knowledge-maintenance"
       ]
     },
     {

@@ -224,7 +224,25 @@ class CodexWorkflowContractTests(unittest.TestCase):
             for path in (SKILLS_PLUGIN / "skills").iterdir()
             if path.is_dir() and (path / "SKILL.md").is_file()
         }
-        self.assertEqual(standalone_skills, {"git-commit", "git-merge-conflict"})
+        self.assertEqual(
+            standalone_skills,
+            {"compile-feature-knowledge", "git-commit", "git-merge-conflict"},
+        )
+        for rel_path in (
+            "SKILL.md",
+            "agents/openai.yaml",
+        ):
+            self.assertEqual(
+                (
+                    SKILLS_PLUGIN / "skills/compile-feature-knowledge" / rel_path
+                ).read_text(encoding="utf-8"),
+                (
+                    ROOT
+                    / "claude-code-market/plugins/ghost-agent-skills"
+                    / "skills/compile-feature-knowledge"
+                    / rel_path
+                ).read_text(encoding="utf-8"),
+            )
 
     def test_git_commit_uses_single_executor_python3_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
@@ -390,7 +408,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.0")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.2")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -398,11 +416,13 @@ class CodexWorkflowContractTests(unittest.TestCase):
             self.assertIn("gitlink-updates", manifest["keywords"])
             self.assertIn("git-merge-conflict", manifest["keywords"])
             self.assertIn("history-archaeology", manifest["keywords"])
+            self.assertIn("feature-knowledge", manifest["keywords"])
+            self.assertIn("okf", manifest["keywords"])
             self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
         manifest = json.loads(read(".codex-plugin/plugin.json"))
-        self.assertRegex(manifest["version"], r"^1\.4\.7\+codex\.")
+        self.assertRegex(manifest["version"], r"^1\.4\.9\+codex\.")
         self.assertIn("Quick Owner", manifest["description"])
         self.assertIn("Review", manifest["description"])
         prompt = manifest["interface"]["defaultPrompt"][0]
@@ -418,7 +438,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.2\.0\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.2\.2\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -428,6 +448,12 @@ class CodexWorkflowContractTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "$git-merge-conflict" in item
+                for item in standalone_manifest["interface"]["defaultPrompt"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "$compile-feature-knowledge" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )
@@ -465,7 +491,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
-        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.0")
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.2")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)
