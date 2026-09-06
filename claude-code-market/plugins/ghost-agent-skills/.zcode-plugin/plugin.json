@@ -1,0 +1,33 @@
+{
+  "name": "ghost-agent-skills",
+  "description": "实施已批准 spec、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
+  "version": "0.2.6",
+  "author": {
+    "name": "Ghost233",
+    "email": "only.yesc@gmail.com"
+  },
+  "homepage": "https://github.com/Ghost233/ghost-agent-market",
+  "repository": "https://github.com/Ghost233/ghost-agent-market",
+  "license": "MIT",
+  "keywords": [
+    "git-commit",
+    "agent-skills",
+    "zcode",
+    "read-only-analysis",
+    "deterministic-script",
+    "single-executor",
+    "explicit-paths",
+    "content-fingerprint",
+    "recursive-submodules",
+    "gitlink-updates",
+    "git-merge-conflict",
+    "merge-conflict",
+    "history-archaeology",
+    "feature-knowledge",
+    "okf",
+    "knowledge-maintenance",
+    "implement-spec",
+    "spec-implementation"
+  ],
+  "agents": "zcode-agents"
+}
