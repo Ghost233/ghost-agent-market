@@ -35,8 +35,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./claude-code-market/plugins/ghost-agent-skills",
-      "description": "Standalone Git and feature-knowledge skills that do not depend on the Ghost Agent Owner/DAG workflow.",
-      "version": "0.2.3",
+      "description": "Standalone spec implementation, Git, and feature-knowledge skills that do not depend on the Ghost Agent Owner/DAG workflow.",
+      "version": "0.2.4",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -54,7 +54,9 @@
         "read-only-analysis",
         "feature-knowledge",
         "okf",
-        "knowledge-maintenance"
+        "knowledge-maintenance",
+        "implement-spec",
+        "spec-implementation"
       ]
     },
     {

@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "检查当前仓库改动、处理复杂合并冲突并维护可追溯的功能知识。",
-  "version": "0.2.3",
+  "description": "实施已批准 spec、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
+  "version": "0.2.4",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -25,6 +25,8 @@
     "history-archaeology",
     "feature-knowledge",
     "okf",
-    "knowledge-maintenance"
+    "knowledge-maintenance",
+    "implement-spec",
+    "spec-implementation"
   ]
 }

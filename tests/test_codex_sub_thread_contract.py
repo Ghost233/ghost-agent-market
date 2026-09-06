@@ -226,23 +226,26 @@ class CodexWorkflowContractTests(unittest.TestCase):
         }
         self.assertEqual(
             standalone_skills,
-            {"compile-feature-knowledge", "git-commit", "git-merge-conflict"},
+            {
+                "compile-feature-knowledge",
+                "git-commit",
+                "git-merge-conflict",
+                "implement-spec",
+            },
         )
-        for rel_path in (
-            "SKILL.md",
-            "agents/openai.yaml",
-        ):
-            self.assertEqual(
-                (
-                    SKILLS_PLUGIN / "skills/compile-feature-knowledge" / rel_path
-                ).read_text(encoding="utf-8"),
-                (
-                    ROOT
-                    / "claude-code-market/plugins/ghost-agent-skills"
-                    / "skills/compile-feature-knowledge"
-                    / rel_path
-                ).read_text(encoding="utf-8"),
-            )
+        for skill_name in ("compile-feature-knowledge", "implement-spec"):
+            for rel_path in ("SKILL.md", "agents/openai.yaml"):
+                self.assertEqual(
+                    (SKILLS_PLUGIN / "skills" / skill_name / rel_path).read_text(
+                        encoding="utf-8"
+                    ),
+                    (
+                        ROOT
+                        / "claude-code-market/plugins/ghost-agent-skills/skills"
+                        / skill_name
+                        / rel_path
+                    ).read_text(encoding="utf-8"),
+                )
         feature_knowledge = (
             SKILLS_PLUGIN / "skills/compile-feature-knowledge/SKILL.md"
         ).read_text(encoding="utf-8")
@@ -254,6 +257,21 @@ class CodexWorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(requirement, feature_knowledge)
         self.assertNotIn("显式调用时给出功能", feature_knowledge)
+        implement_spec = (
+            SKILLS_PLUGIN / "skills/implement-spec/SKILL.md"
+        ).read_text(encoding="utf-8")
+        for requirement in (
+            "`worker`",
+            "`spec_implementer`",
+            "`gpt-5.6-terra`",
+            "`xhigh`",
+            "`NEEDS_ESCALATION`",
+            "不提交，不推送",
+        ):
+            self.assertIn(requirement, implement_spec)
+        self.assertFalse(
+            (SKILLS_PLUGIN / ".codex/agents/spec-implementer.toml").exists()
+        )
 
     def test_git_commit_uses_single_executor_python3_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
@@ -419,7 +437,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.3")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.4")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -429,6 +447,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             self.assertIn("history-archaeology", manifest["keywords"])
             self.assertIn("feature-knowledge", manifest["keywords"])
             self.assertIn("okf", manifest["keywords"])
+            self.assertIn("implement-spec", manifest["keywords"])
             self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
@@ -449,7 +468,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.2\.3\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.2\.4\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -458,13 +477,13 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "$git-merge-conflict" in item
+                "$compile-feature-knowledge" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )
         self.assertTrue(
             any(
-                "$compile-feature-knowledge" in item
+                "$implement-spec" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )
@@ -502,7 +521,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
-        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.3")
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.4")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)

@@ -1,0 +1,7 @@
+interface:
+  display_name: "按 Spec 实施"
+  short_description: "将已批准 spec 委派给执行子智能体，并由主线程独立复核"
+  default_prompt: "使用 $implement-spec 按这份已批准的 spec 实施："
+
+policy:
+  allow_implicit_invocation: false
