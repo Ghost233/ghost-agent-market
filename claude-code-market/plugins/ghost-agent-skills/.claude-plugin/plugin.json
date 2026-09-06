@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
   "description": "检查当前仓库改动、处理复杂合并冲突并维护可追溯的功能知识。",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

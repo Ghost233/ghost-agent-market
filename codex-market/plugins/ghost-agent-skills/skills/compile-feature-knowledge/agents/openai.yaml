@@ -1,7 +1,7 @@
 interface:
   display_name: "维护功能知识"
-  short_description: "将已确认讨论与验收证据合并为长期功能档案。"
-  default_prompt: "使用 $compile-feature-knowledge 维护指定功能的长期文档，说明本次是讨论后整理还是验收后更新。"
+  short_description: "从未提交改动和对话记忆自动整理长期功能档案。"
+  default_prompt: "使用 $compile-feature-knowledge 根据当前未提交改动和对话记忆整理功能知识。"
 
 policy:
   allow_implicit_invocation: false

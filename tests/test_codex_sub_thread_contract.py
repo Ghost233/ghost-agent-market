@@ -243,6 +243,17 @@ class CodexWorkflowContractTests(unittest.TestCase):
                     / rel_path
                 ).read_text(encoding="utf-8"),
             )
+        feature_knowledge = (
+            SKILLS_PLUGIN / "skills/compile-feature-knowledge/SKILL.md"
+        ).read_text(encoding="utf-8")
+        for requirement in (
+            "git status --short",
+            "当前对话",
+            "无需用户提供仓库、功能、阶段或参考来源",
+            "不发起澄清轮次",
+        ):
+            self.assertIn(requirement, feature_knowledge)
+        self.assertNotIn("显式调用时给出功能", feature_knowledge)
 
     def test_git_commit_uses_single_executor_python3_flow(self) -> None:
         combined = f"{self.git_commit}\n{self.git_commit_metadata}"
@@ -408,7 +419,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.2")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.3")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -438,7 +449,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.2\.2\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.2\.3\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -491,7 +502,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
-        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.2")
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.3")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)
