@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-workflow",
-  "version": "1.4.7+codex.20260730133649",
-  "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG；Owner、显式 Review、机械验收和最终结果均由脚本状态机管理。",
+  "version": "1.4.8+codex.20260906034459",
+  "description": "由用户明确选择串行 Quick Owner 或最多八线程的最小 DAG，并维护可追溯的功能知识档案。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -22,7 +22,10 @@
     "sub-thread-coordination",
     "workflow-setup",
     "planner-reviewer",
-    "task-supervisor"
+    "task-supervisor",
+    "feature-knowledge",
+    "okf",
+    "knowledge-maintenance"
   ],
   "skills": "./skills/",
   "interface": {
