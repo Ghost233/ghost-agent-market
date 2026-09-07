@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
   "description": "通过 ghost-implement-spec 实施规格，以 glm-5.3-flash 子代理汇总和执行测试，由主线程分析修复方案；同时管理 Git 改动与功能知识。",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

@@ -7,7 +7,7 @@
 - `git-commit`：在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `compile-feature-knowledge`：把确认结论与验收证据合并为长期维护的 OKF 功能档案
-- `ghost-implement-spec`：复用 Matt 的 `implement-spec`；Codex 子代理固定为 `gpt-5.6-terra/xhigh`，Claude Code 子代理固定为 Sonnet
+- `ghost-implement-spec`：复用 Matt 的工单调度，以独立 worktree 实施、串行合入用户本地目标分支并审查交付，不使用 PR；Codex 子代理固定为 `gpt-5.6-terra/xhigh`，Claude Code 子代理固定为 Sonnet
 - `ghos-matt-test-report`：子代理按 spec/ticket 分组汇总全部测试与已有结果，条目多时显示通过 N/M
 - `ghos-matt-run-test`：子代理执行指定测试，主线程检查实现、架构及需求偏差，提出修复方案
 

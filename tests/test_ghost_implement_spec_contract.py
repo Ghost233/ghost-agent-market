@@ -24,7 +24,7 @@ class GhostImplementSpecContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         for requirement in (
             "mattpocock-skills-zh",
-            "不复制或改写其工作流",
+            "references/worktree-workflow.md",
             "collaboration.spawn_agent",
             'agent_type: "worker"',
             'model: "gpt-5.6-terra"',
@@ -36,6 +36,12 @@ class GhostImplementSpecContractTests(unittest.TestCase):
             self.assertIn(requirement, codex)
         self.assertIn('model: "sonnet"', claude)
         self.assertNotIn("gpt-5.6-terra", claude)
+        reference = "skills/ghost-implement-spec/references/worktree-workflow.md"
+        self.assertEqual(
+            (CODEX_GHOST / reference).read_bytes(),
+            (CLAUDE_GHOST / reference).read_bytes(),
+        )
+        self.assertIn("references/worktree-workflow.md", claude)
 
     def test_matt_workflow_is_packaged_for_both_platforms(self) -> None:
         for root, review_invocation in (
@@ -59,9 +65,9 @@ class GhostImplementSpecContractTests(unittest.TestCase):
 
     def test_versions_and_marketplaces_describe_the_merged_artifact(self) -> None:
         manifests = (
-            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.0"),
-            (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.3.0"),
-            (ZCODE_GHOST, "0.3.0"),
+            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.1"),
+            (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.3.1"),
+            (ZCODE_GHOST, "0.3.1"),
             (CODEX_MATT / ".codex-plugin/plugin.json", "0.1.4"),
             (CLAUDE_MATT / ".claude-plugin/plugin.json", "0.1.5"),
         )
@@ -75,7 +81,7 @@ class GhostImplementSpecContractTests(unittest.TestCase):
         ):
             marketplace = json.loads(path.read_text(encoding="utf-8"))
             entries = {entry["name"]: entry for entry in marketplace["plugins"]}
-            self.assertEqual(entries["ghost-agent-skills"]["version"], "0.3.0")
+            self.assertEqual(entries["ghost-agent-skills"]["version"], "0.3.1")
             self.assertEqual(entries["mattpocock-skills-zh"]["version"], "0.1.5")
             self.assertIn(
                 "ghost-implement-spec",

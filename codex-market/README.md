@@ -17,7 +17,7 @@
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。安装一个 plugin 即可加载整批 skill。
 
-独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；`ghost-implement-spec` 复用 Matt 的 `implement-spec`，并把全部 Codex 子代理固定为 `gpt-5.6-terra/xhigh`。`rtk-hook` 通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行，也不再阻断后要求重试。
+独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；`ghost-implement-spec` 复用 Matt 的工单调度，以 worktree 实施并合入本地目标分支，不使用 PR，并把全部 Codex 子代理固定为 `gpt-5.6-terra/xhigh`。`rtk-hook` 通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行，也不再阻断后要求重试。
 
 ## 安装
 

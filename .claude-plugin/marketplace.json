@@ -11,7 +11,7 @@
       "name": "ghost-agent-skills",
       "source": "./claude-code-market/plugins/ghost-agent-skills",
       "description": "Sonnet subagents for spec implementation, test reporting and execution with parent diagnosis, plus Git and feature-knowledge skills.",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
