@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.2.7+codex.20260907071112",
-  "description": "以 Terra xhigh 子代理执行 Matt 的 implement-spec 工作流、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
+  "version": "0.2.9+codex.20260907073523",
+  "description": "以 Terra xhigh 子代理实施规格、汇总测试状态和执行指定测试，由主线程分析修复方案；同时管理 Git 改动、复杂合并冲突与功能知识。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -28,13 +28,15 @@
     "okf",
     "knowledge-maintenance",
     "ghost-implement-spec",
-    "spec-implementation"
+    "spec-implementation",
+    "ghos-matt-test-report",
+    "ghos-matt-run-test"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "用 Terra xhigh 实施规格、提交改动并维护功能知识。",
-    "longDescription": "通过 ghost-implement-spec 复用 Matt 的工单任务图工作流，并强制全部子代理使用 gpt-5.6-terra/xhigh；也可分析 Git 变更、考古复杂合并冲突或维护长期功能档案。",
+    "shortDescription": "子代理实施规格、汇总与执行测试，主线程分析修复方案。",
+    "longDescription": "通过 ghost-implement-spec 复用 Matt 的工单任务图工作流；ghos-matt-test-report 汇总 spec/ticket 测试与已有结果；ghos-matt-run-test 执行指定测试，由主线程检查实现、架构和需求偏差并提出方案。Codex 子代理使用 gpt-5.6-terra/xhigh，同时保留 Git 与功能知识工具。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
@@ -42,6 +44,8 @@
     ],
     "defaultPrompt": [
       "使用 $ghost-implement-spec 通过 Terra xhigh 子代理按关联工单实施这份规格。",
+      "使用 $ghos-matt-test-report 按 spec 和 ticket 分组汇总测试清单与刚才的测试结果。",
+      "使用 $ghos-matt-run-test 执行这个测试，并由主线程分析原因和修复方案。",
       "使用 $compile-feature-knowledge 根据当前未提交改动和对话记忆整理功能知识。",
       "使用 $git-commit 递归检查当前仓库及已授权子模块，创建规范的中文 Git 提交。"
     ]

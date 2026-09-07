@@ -8,6 +8,8 @@
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `compile-feature-knowledge`：把确认结论与验收证据合并为长期维护的 OKF 功能档案
 - `ghost-implement-spec`：复用 Matt 的 `implement-spec`；Codex 子代理固定为 `gpt-5.6-terra/xhigh`，Claude Code 子代理固定为 Sonnet
+- `ghos-matt-test-report`：子代理按 spec/ticket 分组汇总全部测试与已有结果，条目多时显示通过 N/M
+- `ghos-matt-run-test`：子代理执行指定测试，主线程检查实现、架构及需求偏差，提出修复方案
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
@@ -37,7 +39,9 @@ ghost-agent-market/
 │       │       ├── compile-feature-knowledge/
 │       │       ├── git-commit/
 │       │       ├── git-merge-conflict/
-│       │       └── ghost-implement-spec/
+│       │       ├── ghost-implement-spec/
+│       │       ├── ghos-matt-test-report/
+│       │       └── ghos-matt-run-test/
 │       └── mattpocock-skills-zh/
 │           └── skills/
 └── codex-market/

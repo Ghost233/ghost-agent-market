@@ -59,9 +59,9 @@ class GhostImplementSpecContractTests(unittest.TestCase):
 
     def test_versions_and_marketplaces_describe_the_merged_artifact(self) -> None:
         manifests = (
-            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.2.7"),
-            (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.2.7"),
-            (ZCODE_GHOST, "0.2.7"),
+            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.2.9"),
+            (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.2.9"),
+            (ZCODE_GHOST, "0.2.9"),
             (CODEX_MATT / ".codex-plugin/plugin.json", "0.1.4"),
             (CLAUDE_MATT / ".claude-plugin/plugin.json", "0.1.5"),
         )
@@ -75,12 +75,28 @@ class GhostImplementSpecContractTests(unittest.TestCase):
         ):
             marketplace = json.loads(path.read_text(encoding="utf-8"))
             entries = {entry["name"]: entry for entry in marketplace["plugins"]}
-            self.assertEqual(entries["ghost-agent-skills"]["version"], "0.2.7")
+            self.assertEqual(entries["ghost-agent-skills"]["version"], "0.2.9")
             self.assertEqual(entries["mattpocock-skills-zh"]["version"], "0.1.5")
             self.assertIn(
                 "ghost-implement-spec",
                 entries["ghost-agent-skills"]["keywords"],
             )
+
+    def test_test_skills_are_packaged_and_synced(self) -> None:
+        for name in ("ghos-matt-test-report", "ghos-matt-run-test"):
+            codex = CODEX_GHOST / "skills" / name
+            claude = CLAUDE_GHOST / "skills" / name
+            self.assertEqual(
+                (codex / "SKILL.md").read_bytes(),
+                (claude / "SKILL.md").read_bytes(),
+            )
+            self.assertTrue((codex / "agents/openai.yaml").is_file())
+            for manifest_path in (
+                CODEX_GHOST / ".codex-plugin/plugin.json",
+                CLAUDE_GHOST / ".claude-plugin/plugin.json",
+            ):
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self.assertIn(name, manifest["keywords"])
 
 
 if __name__ == "__main__":

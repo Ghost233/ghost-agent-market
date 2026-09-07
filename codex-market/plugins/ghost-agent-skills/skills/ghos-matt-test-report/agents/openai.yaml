@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ghos Matt Test Report"
+  short_description: "子代理汇总规格与工单中的测试内容及已有结果，按分组表格展示"
+  default_prompt: "使用 $ghos-matt-test-report 按 spec 和 ticket 分组列出全部测试内容及刚才的测试结果。"

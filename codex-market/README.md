@@ -6,12 +6,14 @@
 - `mattpocock-skills-zh`
 - `rtk-hook`
 
-`ghost-agent-skills` 包含四个独立 skill：
+`ghost-agent-skills` 包含六个独立 skill：
 
 - `git-commit`
 - `git-merge-conflict`
 - `compile-feature-knowledge`
 - `ghost-implement-spec`
+- `ghos-matt-test-report`：子代理汇总 spec/ticket 测试与已有结果，按分组表格展示通过 N/M
+- `ghos-matt-run-test`：子代理执行指定测试，主线程分析实现、架构及需求偏差并提出修复方案
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。安装一个 plugin 即可加载整批 skill。
 

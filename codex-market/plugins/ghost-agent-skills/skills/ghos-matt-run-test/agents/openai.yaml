@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ghos Matt Run Test"
+  short_description: "子代理执行指定测试，主线程分析架构与需求偏差并提出修复方案"
+  default_prompt: "使用 $ghos-matt-run-test 执行这个测试，并由主线程分析运行结果和修复方案。"
