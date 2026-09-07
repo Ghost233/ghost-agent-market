@@ -35,8 +35,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./plugins/ghost-agent-skills",
-      "description": "Standalone spec implementation, Git, and feature-knowledge skills that do not depend on the Ghost Agent Owner/DAG workflow.",
-      "version": "0.2.4",
+      "description": "Standalone Sonnet wrapper for Matt's implement-spec workflow, plus Git and feature-knowledge skills that do not depend on Owner/DAG.",
+      "version": "0.2.5",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -55,15 +55,15 @@
         "feature-knowledge",
         "okf",
         "knowledge-maintenance",
-        "implement-spec",
+        "ghost-implement-spec",
         "spec-implementation"
       ]
     },
     {
       "name": "mattpocock-skills-zh",
       "source": "./plugins/mattpocock-skills-zh",
-      "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含上游官方发布的 25 个稳定 skill。",
-      "version": "0.1.4",
+      "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含 25 个稳定 skill 与实验性 implement-spec。",
+      "version": "0.1.5",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -78,7 +78,8 @@
         "tdd",
         "code-review",
         "domain-modeling",
-        "productivity"
+        "productivity",
+        "implement-spec"
       ]
     }
   ]

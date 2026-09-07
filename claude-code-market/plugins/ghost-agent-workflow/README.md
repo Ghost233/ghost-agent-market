@@ -14,10 +14,12 @@
 
 `ghost-agent-skills` 包含不依赖 Owner/DAG 的普通 skill：
 
+- `compile-feature-knowledge`
+- `ghost-implement-spec`
 - `git-commit`
 - `git-merge-conflict`
 
-`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。安装一个 plugin 即可加载整批 skill。
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。安装一个 plugin 即可加载整批 skill。
 
 Claude Code 没有 Codex 原生 `/goal` 生命周期，工作流固定使用 `standalone_thread`。首次运行使用平台的显式 skill 调用：
 

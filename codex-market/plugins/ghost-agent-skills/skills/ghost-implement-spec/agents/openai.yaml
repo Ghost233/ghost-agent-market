@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ghost Implement Spec"
+  short_description: "用 Terra xhigh 子代理执行 Matt 的 implement-spec 工作流"
+  default_prompt: "使用 $ghost-implement-spec 实施这份带关联工单的规格："
+policy:
+  allow_implicit_invocation: false

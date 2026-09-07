@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "codex-market/plugins/ghost-agent-workflow"
 SKILLS_PLUGIN = ROOT / "codex-market/plugins/ghost-agent-skills"
+MATT_SKILLS_PLUGIN = ROOT / "codex-market/plugins/mattpocock-skills-zh"
 LOCAL_GIT_COMMIT = ROOT / ".codex/skills/git-commit"
 LOCAL_GIT_MERGE_CONFLICT = ROOT / ".codex/skills/git-merge-conflict"
 AGENTS = ROOT / "AGENTS.md"
@@ -230,10 +231,10 @@ class CodexWorkflowContractTests(unittest.TestCase):
                 "compile-feature-knowledge",
                 "git-commit",
                 "git-merge-conflict",
-                "implement-spec",
+                "ghost-implement-spec",
             },
         )
-        for skill_name in ("compile-feature-knowledge", "implement-spec"):
+        for skill_name in ("compile-feature-knowledge",):
             for rel_path in ("SKILL.md", "agents/openai.yaml"):
                 self.assertEqual(
                     (SKILLS_PLUGIN / "skills" / skill_name / rel_path).read_text(
@@ -257,18 +258,48 @@ class CodexWorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(requirement, feature_knowledge)
         self.assertNotIn("显式调用时给出功能", feature_knowledge)
-        implement_spec = (
-            SKILLS_PLUGIN / "skills/implement-spec/SKILL.md"
+        ghost_implement_spec = (
+            SKILLS_PLUGIN / "skills/ghost-implement-spec/SKILL.md"
         ).read_text(encoding="utf-8")
         for requirement in (
-            "`worker`",
-            "`spec_implementer`",
-            "`gpt-5.6-terra`",
-            "`xhigh`",
-            "`NEEDS_ESCALATION`",
-            "不提交，不推送",
+            "mattpocock-skills-zh",
+            "不复制或改写其工作流",
+            "collaboration.spawn_agent",
+            'agent_type: "worker"',
+            'model: "gpt-5.6-terra"',
+            'reasoning_effort: "xhigh"',
+            'fork_turns: "none"',
+            "exploration、implementer、merger、review",
+            "不得静默降级",
         ):
-            self.assertIn(requirement, implement_spec)
+            self.assertIn(requirement, ghost_implement_spec)
+        claude_ghost_implement_spec = (
+            ROOT
+            / "claude-code-market/plugins/ghost-agent-skills/skills/ghost-implement-spec/SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn('model: "sonnet"', claude_ghost_implement_spec)
+        self.assertNotIn("gpt-5.6-terra", claude_ghost_implement_spec)
+        self.assertFalse((SKILLS_PLUGIN / "skills/implement-spec").exists())
+        self.assertFalse(
+            (
+                ROOT
+                / "claude-code-market/plugins/ghost-agent-skills/skills/implement-spec"
+            ).exists()
+        )
+        matt_implement_spec = (
+            MATT_SKILLS_PLUGIN / "skills/implement-spec/SKILL.md"
+        ).read_text(encoding="utf-8")
+        for requirement in (
+            "任务图",
+            "frontier",
+            "exploration 子代理",
+            "implementer 子代理",
+            "merger 子代理",
+            "$code-review",
+            "草稿 PR",
+            "worktree",
+        ):
+            self.assertIn(requirement, matt_implement_spec)
         self.assertFalse(
             (SKILLS_PLUGIN / ".codex/agents/spec-implementer.toml").exists()
         )
@@ -437,7 +468,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         for path in manifests:
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.4")
+            self.assertEqual(manifest["version"].split("+", 1)[0], "0.2.5")
             self.assertIn("single-executor", manifest["keywords"])
             self.assertIn("explicit-paths", manifest["keywords"])
             self.assertIn("content-fingerprint", manifest["keywords"])
@@ -447,7 +478,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             self.assertIn("history-archaeology", manifest["keywords"])
             self.assertIn("feature-knowledge", manifest["keywords"])
             self.assertIn("okf", manifest["keywords"])
-            self.assertIn("implement-spec", manifest["keywords"])
+            self.assertIn("ghost-implement-spec", manifest["keywords"])
             self.assertNotIn("conditional-review", manifest["keywords"])
 
     def test_manifest_and_repository_rules_are_current(self) -> None:
@@ -468,7 +499,7 @@ class CodexWorkflowContractTests(unittest.TestCase):
             read_standalone(".codex-plugin/plugin.json")
         )
         self.assertEqual(standalone_manifest["name"], "ghost-agent-skills")
-        self.assertRegex(standalone_manifest["version"], r"^0\.2\.4\+codex\.")
+        self.assertRegex(standalone_manifest["version"], r"^0\.2\.5\+codex\.")
         self.assertTrue(
             any(
                 "$git-commit" in item
@@ -483,10 +514,17 @@ class CodexWorkflowContractTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "$implement-spec" in item
+                "$ghost-implement-spec" in item
                 for item in standalone_manifest["interface"]["defaultPrompt"]
             )
         )
+        matt_manifest = json.loads(
+            (
+                MATT_SKILLS_PLUGIN / ".codex-plugin/plugin.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(matt_manifest["version"].split("+", 1)[0], "0.1.4")
+        self.assertIn("implement-spec", matt_manifest["keywords"])
         codex_marketplace = json.loads(
             (
                 ROOT / "codex-market/.agents/plugins/marketplace.json"
@@ -521,7 +559,8 @@ class CodexWorkflowContractTests(unittest.TestCase):
             claude_entries["ghost-agent-skills"]["source"],
             "./plugins/ghost-agent-skills",
         )
-        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.4")
+        self.assertEqual(claude_entries["ghost-agent-skills"]["version"], "0.2.5")
+        self.assertEqual(claude_entries["mattpocock-skills-zh"]["version"], "0.1.5")
         instructions = AGENTS.read_text(encoding="utf-8")
         self.assertIn("基础版本每次增加", instructions)
         self.assertIn("任一段达到", instructions)

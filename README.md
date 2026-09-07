@@ -14,10 +14,14 @@
 
 `ghost-agent-skills` 内置普通 skill：
 
+- `compile-feature-knowledge`
+- `ghost-implement-spec`
 - `git-commit`
 - `git-merge-conflict`
 
-`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
+`ghost-implement-spec` 复用 Matt 的 `implement-spec`；Codex 子代理固定为 `gpt-5.6-terra/xhigh`，Claude Code 子代理固定为 Sonnet。
+
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
 上面列出的 workflow 是 Claude Code 与 Codex 共享的版本。
 
@@ -83,6 +87,8 @@ ghost-agent-market/
 │       ├── ghost-agent-skills/
 │           ├── .claude-plugin/plugin.json
 │           └── skills/
+│               ├── compile-feature-knowledge/
+│               ├── ghost-implement-spec/
 │               ├── git-commit/
 │               └── git-merge-conflict/
 └── codex-market/
@@ -150,7 +156,7 @@ codex plugin add mattpocock-skills-zh@ghost-agent-market
 codex plugin add rtk-hook@ghost-agent-market
 ```
 
-安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 25 个 skill 重新加载。
+安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 26 个 skill 重新加载。
 
 安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。
 

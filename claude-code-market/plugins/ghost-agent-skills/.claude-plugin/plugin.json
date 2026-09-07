@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "实施已批准 spec、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
-  "version": "0.2.4",
+  "description": "以 Sonnet 子代理执行 Matt 的 implement-spec 工作流、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
+  "version": "0.2.5",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -26,7 +26,7 @@
     "feature-knowledge",
     "okf",
     "knowledge-maintenance",
-    "implement-spec",
+    "ghost-implement-spec",
     "spec-implementation"
   ]
 }

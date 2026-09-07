@@ -1,0 +1,7 @@
+# 平台说明：Codex 使用 policy.allow_implicit_invocation: false 对应 Claude Code 的 disable-model-invocation: true。
+interface:
+  display_name: "实施规格 (Implement Spec)"
+  short_description: "按工单任务图并发实施整份规格并交付一个 PR"
+  default_prompt: "使用 $implement-spec 按关联工单实施这份规格并交付一个 PR。"
+policy:
+  allow_implicit_invocation: false
