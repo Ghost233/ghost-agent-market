@@ -11,7 +11,7 @@ description: "由子代理盘点当前 spec 与关联 ticket 的全部测试和�
 
 1. 从用户指定内容、当前对话和仓库确定当前 spec 及全部关联 ticket。只在无法唯一确定范围时询问；缺失或不可访问的文档列为范围缺口，不能声称已全量覆盖。
 2. 给一个子代理传入仓库绝对路径、spec/ticket 的路径或链接、当前分支与提交，以及刚才测试的命令、输出、时间和已知未提交改动。子代理不能看到父线程历史时，必须直接传递相关原始结果；没有结果就明确说明缺失。
-3. 平台适配：Codex 使用 `collaboration.spawn_agent`，指定 `agent_type: "worker"`、`model: "gpt-5.6-terra"`、`reasoning_effort: "xhigh"`、`fork_turns: "none"`；Claude Code 使用 Agent 并指定 `model: "sonnet"`。两端工具和模型不同，其余流程一致。宿主不支持所需委派时报告阻塞，不冒充子代理执行。
+3. 平台适配：Codex 使用 `collaboration.spawn_agent`，指定 `agent_type: "worker"`、`model: "gpt-5.6-terra"`、`reasoning_effort: "xhigh"`、`fork_turns: "none"`；Claude Code 使用 Agent 并指定 `model: "sonnet"`；ZCode 使用 Agent 调用本插件 `zcode-agents/` 中的 `ghost-agent-skills:ghos-matt-test-report` 子代理，其配置固定为 `model: glm-5.3-flash`。ZCode 专用目录由 `.zcode-plugin/plugin.json` 的 `agents` 声明，仅 ZCode 加载；各平台工具和模型不同，其余流程一致。宿主不支持所需委派时报告阻塞，不冒充子代理执行。
 4. 子代理只读取文档、现有测试、报告和日志，不运行测试、不修改文件。主线程等待返回，核对统计口径后展示报告。
 
 ## 子代理盘点规则

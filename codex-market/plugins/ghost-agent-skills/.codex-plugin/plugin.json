@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.2.9+codex.20260907073523",
+  "version": "0.3.0+codex.20260907080755",
   "description": "以 Terra xhigh 子代理实施规格、汇总测试状态和执行指定测试，由主线程分析修复方案；同时管理 Git 改动、复杂合并冲突与功能知识。",
   "author": {
     "name": "Ghost233",

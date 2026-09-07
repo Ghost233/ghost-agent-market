@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
   "description": "以 Sonnet 子代理实施规格、汇总测试状态和执行指定测试，由主线程分析修复方案；同时管理 Git 改动、复杂合并冲突与功能知识。",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"

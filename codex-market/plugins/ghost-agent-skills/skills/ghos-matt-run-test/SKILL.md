@@ -11,7 +11,7 @@ description: "由子代理执行用户指定的测试并返回证据，主线程
 
 1. 从用户请求和上下文定位指定测试的用例 ID、文件、套件或已有命令，以及对应 spec/ticket 与验收条件。目标仍有多个合理候选时先询问，不擅自运行全套测试。
 2. 检查仓库现有测试入口与运行要求，使用已有配置。记录工作目录、提交和已知未提交改动；给子代理传目标、需求来源、准确命令或待解析的选择器、已有相关日志及运行边界。
-3. 平台适配：Codex 使用 `collaboration.spawn_agent`，指定 `agent_type: "worker"`、`model: "gpt-5.6-terra"`、`reasoning_effort: "xhigh"`、`fork_turns: "none"`；Claude Code 使用 Agent 并指定 `model: "sonnet"`。两端工具和模型不同，其余流程一致。宿主不支持所需委派时报告阻塞，不冒充子代理执行。
+3. 平台适配：Codex 使用 `collaboration.spawn_agent`，指定 `agent_type: "worker"`、`model: "gpt-5.6-terra"`、`reasoning_effort: "xhigh"`、`fork_turns: "none"`；Claude Code 使用 Agent 并指定 `model: "sonnet"`；ZCode 使用 Agent 调用本插件 `zcode-agents/` 中的 `ghost-agent-skills:ghos-matt-run-test` 子代理，其配置固定为 `model: glm-5.3-flash`。ZCode 专用目录由 `.zcode-plugin/plugin.json` 的 `agents` 声明，仅 ZCode 加载；各平台工具和模型不同，其余流程一致。宿主不支持所需委派时报告阻塞，不冒充子代理执行。
 4. 子代理不得修改业务代码、测试断言、需求或更新快照来制造通过；允许测试本身正常生成报告和临时产物。若运行需要未授权的外部写入、破坏性操作或超出指定范围的配置变更，返回具体阻塞。
 5. 主线程等待子代理返回后亲自分析；不把子代理的猜测直接作为修复结论，不自动转入修复实施。
 

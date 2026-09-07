@@ -111,4 +111,6 @@ codex-market/.agents/plugins/marketplace.json
 
 ZCode 兼容读取 Claude 格式的 marketplace 与插件清单，无需单独维护 ZCode 副本。在 ZCode 客户端打开 **Settings → Plugin Management → Discover**，点击 **`+`** 添加 GitHub 仓库 `Ghost233/ghost-agent-market`，然后在 Discover 列表中安装 `ghost-agent-skills` 与 `mattpocock-skills-zh`。
 
+`ghos-matt-test-report` 与 `ghos-matt-run-test` 在 ZCode 调用 `zcode-agents/` 中的专用子代理，模型固定为 `glm-5.3-flash`；测试结果的最终分析与修复方案仍由主线程负责。
+
 如果添加或安装时克隆、下载失败，先为 ZCode 设置代理环境变量 `ZCODE_HTTP_PROXY=http://host:port`（裸 `http_proxy` 不会被读取），再重试。
