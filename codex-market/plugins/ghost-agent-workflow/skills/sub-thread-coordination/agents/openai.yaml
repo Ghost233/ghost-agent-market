@@ -1,7 +1,0 @@
-interface:
-  display_name: "Owner 工作流协调器"
-  short_description: "要求用户选择 Quick 或 DAG，再协调长期 Owner 线程。"
-  default_prompt: "使用 $sub-thread-coordination；如果我没有明确指定 Quick 或 DAG，先要求我选择运行模式，确认后再启动。"
-
-policy:
-  allow_implicit_invocation: false

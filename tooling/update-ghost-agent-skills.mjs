@@ -53,20 +53,22 @@ const codexManifestPath = "codex-market/plugins/ghost-agent-skills/.codex-plugin
 const codexManifest = readJson(codexManifestPath);
 const codexBase = bumpRequested ? bumpBase(codexManifest.version) : baseVersion(codexManifest.version);
 codexManifest.version = codexBase + "+codex." + timestamp;
-codexManifest.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
 codexManifest.keywords = skillKeywords(codexManifest.keywords);
-codexManifest.interface.shortDescription = "检查当前改动并创建规范的中文 Git 提交。";
-codexManifest.interface.longDescription = "分析 staged、unstaged、untracked 与 submodule 变更，按职责拆分批次并创建规范的中文 Git 提交。";
 writeJson(codexManifestPath, codexManifest);
 
 const claudePluginPath = "claude-code-market/plugins/ghost-agent-skills/.claude-plugin/plugin.json";
 const claudePlugin = readJson(claudePluginPath);
 claudePlugin.version = bumpRequested ? bumpBase(claudePlugin.version) : baseVersion(claudePlugin.version);
-claudePlugin.description = "检查当前仓库改动并创建规范的中文 Git 提交。";
 claudePlugin.keywords = skillKeywords(claudePlugin.keywords);
 writeJson(claudePluginPath, claudePlugin);
 
+const zcodePluginPath = "claude-code-market/plugins/ghost-agent-skills/.zcode-plugin/plugin.json";
+const zcodePlugin = readJson(zcodePluginPath);
+zcodePlugin.version = bumpRequested ? bumpBase(zcodePlugin.version) : baseVersion(zcodePlugin.version);
+zcodePlugin.keywords = skillKeywords(zcodePlugin.keywords);
+writeJson(zcodePluginPath, zcodePlugin);
+
 process.stdout.write(
   "ghost-agent-skills configs updated; versions codex=" + codexManifest.version +
-  " claude=" + claudePlugin.version + "\n"
+  " claude=" + claudePlugin.version + " zcode=" + zcodePlugin.version + "\n"
 );

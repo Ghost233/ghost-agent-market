@@ -55,11 +55,6 @@ git config user.email
 
 更新两端共有的 skill 内容时，必须按其所属插件同步 Claude Code 和 Codex 对应内容。
 
-工作流 skill：
-
-- Claude Code：`claude-code-market/skills/<skill>/`
-- Codex：`codex-market/plugins/ghost-agent-workflow/skills/<skill>/`
-
 普通 skill：
 
 - Claude Code：`claude-code-market/plugins/ghost-agent-skills/skills/<skill>/`

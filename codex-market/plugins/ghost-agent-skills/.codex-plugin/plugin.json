@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.2.5+codex.20260907064858",
-  "description": "\u4ee5 Terra xhigh \u5b50\u4ee3\u7406\u6267\u884c Matt \u7684 implement-spec \u5de5\u4f5c\u6d41\u3001\u7ba1\u7406 Git \u6539\u52a8\u4e0e\u590d\u6742\u5408\u5e76\u51b2\u7a81\uff0c\u5e76\u7ef4\u62a4\u53ef\u8ffd\u6eaf\u7684\u529f\u80fd\u77e5\u8bc6\u3002",
+  "version": "0.2.7+codex.20260907071112",
+  "description": "以 Terra xhigh 子代理执行 Matt 的 implement-spec 工作流、管理 Git 改动与复杂合并冲突，并维护可追溯的功能知识。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -33,17 +33,17 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "\u7528 Terra xhigh \u5b9e\u65bd\u89c4\u683c\u3001\u63d0\u4ea4\u6539\u52a8\u5e76\u7ef4\u62a4\u529f\u80fd\u77e5\u8bc6\u3002",
-    "longDescription": "\u901a\u8fc7 ghost-implement-spec \u590d\u7528 Matt \u7684\u5de5\u5355\u4efb\u52a1\u56fe\u5de5\u4f5c\u6d41\uff0c\u5e76\u5f3a\u5236\u5168\u90e8\u5b50\u4ee3\u7406\u4f7f\u7528 gpt-5.6-terra/xhigh\uff1b\u4e5f\u53ef\u5206\u6790 Git \u53d8\u66f4\u3001\u8003\u53e4\u590d\u6742\u5408\u5e76\u51b2\u7a81\u6216\u7ef4\u62a4\u957f\u671f\u529f\u80fd\u6863\u6848\u3002",
+    "shortDescription": "用 Terra xhigh 实施规格、提交改动并维护功能知识。",
+    "longDescription": "通过 ghost-implement-spec 复用 Matt 的工单任务图工作流，并强制全部子代理使用 gpt-5.6-terra/xhigh；也可分析 Git 变更、考古复杂合并冲突或维护长期功能档案。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "\u4f7f\u7528 $ghost-implement-spec \u901a\u8fc7 Terra xhigh \u5b50\u4ee3\u7406\u6309\u5173\u8054\u5de5\u5355\u5b9e\u65bd\u8fd9\u4efd\u89c4\u683c\u3002",
-      "\u4f7f\u7528 $compile-feature-knowledge \u6839\u636e\u5f53\u524d\u672a\u63d0\u4ea4\u6539\u52a8\u548c\u5bf9\u8bdd\u8bb0\u5fc6\u6574\u7406\u529f\u80fd\u77e5\u8bc6\u3002",
-      "\u4f7f\u7528 $git-commit \u9012\u5f52\u68c0\u67e5\u5f53\u524d\u4ed3\u5e93\u53ca\u5df2\u6388\u6743\u5b50\u6a21\u5757\uff0c\u521b\u5efa\u89c4\u8303\u7684\u4e2d\u6587 Git \u63d0\u4ea4\u3002"
+      "使用 $ghost-implement-spec 通过 Terra xhigh 子代理按关联工单实施这份规格。",
+      "使用 $compile-feature-knowledge 根据当前未提交改动和对话记忆整理功能知识。",
+      "使用 $git-commit 递归检查当前仓库及已授权子模块，创建规范的中文 Git 提交。"
     ]
   }
 }
