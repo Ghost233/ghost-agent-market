@@ -68,7 +68,7 @@ class GhostImplementSpecContractTests(unittest.TestCase):
 
     def test_versions_and_marketplaces_describe_the_merged_artifact(self) -> None:
         manifests = (
-            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.4"),
+            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.5"),
             (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.3.1"),
             (ZCODE_GHOST, "0.3.1"),
             (CODEX_MATT / ".codex-plugin/plugin.json", "0.1.4"),
