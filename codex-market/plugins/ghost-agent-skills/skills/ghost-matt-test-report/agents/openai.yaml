@@ -1,0 +1,6 @@
+interface:
+  display_name: "ghost-matt-test-report"
+  short_description: "根据规格、工单与已有证据汇报测试覆盖、通过情况和缺口；只读汇总，不重新运行测试。"
+  default_prompt: "使用 $ghost-matt-test-report 汇报测试，遵循当前项目约定及已确认的任务范围。"
+policy:
+  allow_implicit_invocation: false

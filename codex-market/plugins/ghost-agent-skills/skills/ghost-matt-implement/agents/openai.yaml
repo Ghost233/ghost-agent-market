@@ -1,0 +1,6 @@
+interface:
+  display_name: "ghost-matt-implement"
+  short_description: "按规格和工单在当前分支并行开发，统一处理跨模块问题，整轮验收后批量修复并交付。仅在明确要求实施时使用。"
+  default_prompt: "使用 $ghost-matt-implement 执行开发，遵循当前项目约定及已确认的任务范围。"
+policy:
+  allow_implicit_invocation: false

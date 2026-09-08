@@ -1,0 +1,6 @@
+interface:
+  display_name: "ghost-matt-ticket"
+  short_description: "把确定的规格拆为带依赖、并行边界和验收映射的任务清单；用于任务拆解，不直接开发。"
+  default_prompt: "使用 $ghost-matt-ticket 拆解任务，遵循当前项目约定及已确认的任务范围。"
+policy:
+  allow_implicit_invocation: false

@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.3.1+codex.20260907103147",
-  "description": "以 Terra xhigh 子代理实施规格、汇总测试状态和执行指定测试，由主线程分析修复方案；同时管理 Git 改动、复杂合并冲突与功能知识。",
+  "version": "0.3.4+codex.20260908025032",
+  "description": "\u4e2d\u6587\u89c4\u683c\u89c4\u5212\u3001\u4efb\u52a1\u62c6\u89e3\u3001\u5f53\u524d\u5206\u652f\u5e76\u884c\u5f00\u53d1\u3001\u72ec\u7acb\u6d4b\u8bd5\u4e0e\u8bc1\u636e\u6c47\u62a5\uff1bCodex \u8bd5\u7528\u7248\uff0cClaude \u5f85\u9a8c\u8bc1\u540e\u540c\u6b65\u3002",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -27,27 +27,31 @@
     "feature-knowledge",
     "okf",
     "knowledge-maintenance",
-    "ghost-implement-spec",
     "spec-implementation",
-    "ghos-matt-test-report",
-    "ghos-matt-run-test"
+    "ghost-matt-spec",
+    "ghost-matt-ticket",
+    "ghost-matt-implement",
+    "ghost-matt-run-test",
+    "ghost-matt-test-report"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "子代理实施规格、汇总与执行测试，主线程分析修复方案。",
-    "longDescription": "通过 ghost-implement-spec 复用 Matt 的工单任务图工作流；ghos-matt-test-report 汇总 spec/ticket 测试与已有结果；ghos-matt-run-test 执行指定测试，由主线程检查实现、架构和需求偏差并提出方案。Codex 子代理使用 gpt-5.6-terra/xhigh，同时保留 Git 与功能知识工具。",
+    "shortDescription": "\u89c4\u5212\u3001\u62c6\u4efb\u52a1\u3001\u5f53\u524d\u5206\u652f\u5f00\u53d1\u3001\u6574\u8f6e\u6d4b\u8bd5\u4e0e\u8bc1\u636e\u6c47\u62a5\u3002",
+    "longDescription": "\u4e94\u4e2a\u72ec\u7acb\u4e2d\u6587\u5de5\u4f5c\u6d41\u3002\u89c4\u683c\u660e\u786e\u5408\u540c\uff0c\u5de5\u5355\u58f0\u660e\u4f9d\u8d56\uff0c\u4e3b\u7ebf\u7a0b\u534f\u8c03\u5171\u4eab\u5de5\u4f5c\u533a\u5f00\u53d1\u4e0e\u8de8\u6a21\u5757\u95ee\u9898\uff1b\u5b8c\u6574\u6d4b\u8bd5\u6536\u9f50\u540e\u6309\u6839\u56e0\u6279\u91cf\u4fee\u590d\u3002\u4fdd\u7559 Git \u4e0e\u529f\u80fd\u77e5\u8bc6\u5de5\u5177\u3002",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "使用 $ghost-implement-spec 通过 Terra xhigh 子代理按关联工单实施这份规格。",
-      "使用 $ghos-matt-test-report 按 spec 和 ticket 分组汇总测试清单与刚才的测试结果。",
-      "使用 $ghos-matt-run-test 执行这个测试，并由主线程分析原因和修复方案。",
-      "使用 $compile-feature-knowledge 根据当前未提交改动和对话记忆整理功能知识。",
-      "使用 $git-commit 递归检查当前仓库及已授权子模块，创建规范的中文 Git 提交。"
+      "\u4f7f\u7528 $ghost-matt-spec \u89c4\u5212\u3002",
+      "\u4f7f\u7528 $ghost-matt-ticket \u62c6\u89e3\u4efb\u52a1\u3002",
+      "\u4f7f\u7528 $ghost-matt-implement \u6267\u884c\u5f00\u53d1\u3002",
+      "\u4f7f\u7528 $ghost-matt-run-test \u8fd0\u884c\u6d4b\u8bd5\u3002",
+      "\u4f7f\u7528 $ghost-matt-test-report \u6c47\u62a5\u6d4b\u8bd5\u3002",
+      "\u4f7f\u7528 $compile-feature-knowledge \u6839\u636e\u5f53\u524d\u672a\u63d0\u4ea4\u6539\u52a8\u548c\u5bf9\u8bdd\u8bb0\u5fc6\u6574\u7406\u529f\u80fd\u77e5\u8bc6\u3002",
+      "\u4f7f\u7528 $git-commit \u9012\u5f52\u68c0\u67e5\u5f53\u524d\u4ed3\u5e93\u53ca\u5df2\u6388\u6743\u5b50\u6a21\u5757\uff0c\u521b\u5efa\u89c4\u8303\u7684\u4e2d\u6587 Git \u63d0\u4ea4\u3002"
     ]
   }
 }

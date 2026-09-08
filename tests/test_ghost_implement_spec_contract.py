@@ -12,36 +12,39 @@ CLAUDE_MATT = ROOT / "claude-code-market/plugins/mattpocock-skills-zh"
 
 
 class GhostImplementSpecContractTests(unittest.TestCase):
-    def test_wrapper_replaces_the_old_ghost_skill(self) -> None:
-        self.assertFalse((CODEX_GHOST / "skills/implement-spec").exists())
-        self.assertFalse((CLAUDE_GHOST / "skills/implement-spec").exists())
+    def test_codex_workflow_entrypoints_and_references(self) -> None:
+        import re
+        import shutil
+        import tempfile
 
-        codex = (CODEX_GHOST / "skills/ghost-implement-spec/SKILL.md").read_text(
-            encoding="utf-8"
+        names = (
+            "ghost-matt-spec", "ghost-matt-ticket", "ghost-matt-implement",
+            "ghost-matt-run-test", "ghost-matt-test-report",
         )
-        claude = (
-            CLAUDE_GHOST / "skills/ghost-implement-spec/SKILL.md"
-        ).read_text(encoding="utf-8")
-        for requirement in (
-            "mattpocock-skills-zh",
-            "references/worktree-workflow.md",
-            "collaboration.spawn_agent",
-            'agent_type: "worker"',
-            'model: "gpt-5.6-terra"',
-            'reasoning_effort: "xhigh"',
-            'fork_turns: "none"',
-            "exploration、implementer、merger、review",
-            "不得静默降级",
-        ):
-            self.assertIn(requirement, codex)
-        self.assertIn('model: "sonnet"', claude)
-        self.assertNotIn("gpt-5.6-terra", claude)
-        reference = "skills/ghost-implement-spec/references/worktree-workflow.md"
-        self.assertEqual(
-            (CODEX_GHOST / reference).read_bytes(),
-            (CLAUDE_GHOST / reference).read_bytes(),
-        )
-        self.assertIn("references/worktree-workflow.md", claude)
+        manifest = json.loads((CODEX_GHOST / ".codex-plugin/plugin.json").read_text())
+        for name in names:
+            folder = CODEX_GHOST / "skills" / name
+            content = (folder / "SKILL.md").read_text()
+            self.assertIn("name: " + name, content.split("---", 2)[1])
+            interface = (folder / "agents/openai.yaml").read_text()
+            self.assertIn("$" + name, interface)
+            self.assertIn("allow_implicit_invocation: false", interface)
+            self.assertIn(name, manifest["keywords"])
+            # A skill must still resolve every local reference when copied alone.
+            with tempfile.TemporaryDirectory() as temporary:
+                isolated = Path(temporary) / name
+                shutil.copytree(folder, isolated)
+                for document in isolated.rglob("*.md"):
+                    for target in re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", document.read_text()):
+                        if "://" not in target:
+                            resolved = (document.parent / target).resolve()
+                            self.assertTrue(resolved.is_file(), str(resolved))
+                            self.assertIn(isolated.resolve(), resolved.parents)
+        for old in ("ghost-implement-spec", "ghos-matt-run-test", "ghos-matt-test-report"):
+            self.assertFalse((CODEX_GHOST / "skills" / old).exists())
+            self.assertTrue((CLAUDE_GHOST / "skills" / old / "SKILL.md").is_file())
+        for name in names:
+            self.assertFalse((CLAUDE_GHOST / "skills" / name).exists())
 
     def test_matt_workflow_is_packaged_for_both_platforms(self) -> None:
         for root, review_invocation in (
@@ -65,7 +68,7 @@ class GhostImplementSpecContractTests(unittest.TestCase):
 
     def test_versions_and_marketplaces_describe_the_merged_artifact(self) -> None:
         manifests = (
-            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.1"),
+            (CODEX_GHOST / ".codex-plugin/plugin.json", "0.3.4"),
             (CLAUDE_GHOST / ".claude-plugin/plugin.json", "0.3.1"),
             (ZCODE_GHOST, "0.3.1"),
             (CODEX_MATT / ".codex-plugin/plugin.json", "0.1.4"),
@@ -88,15 +91,13 @@ class GhostImplementSpecContractTests(unittest.TestCase):
                 entries["ghost-agent-skills"]["keywords"],
             )
 
-    def test_test_skills_are_packaged_and_synced(self) -> None:
+    def test_test_skills_preserve_claude_and_expose_codex_replacements(self) -> None:
         zcode_manifest = json.loads(ZCODE_GHOST.read_text(encoding="utf-8"))
         for name in ("ghos-matt-test-report", "ghos-matt-run-test"):
-            codex = CODEX_GHOST / "skills" / name
+            codex = CODEX_GHOST / "skills" / name.replace("ghos-", "ghost-")
             claude = CLAUDE_GHOST / "skills" / name
-            self.assertEqual(
-                (codex / "SKILL.md").read_bytes(),
-                (claude / "SKILL.md").read_bytes(),
-            )
+            self.assertTrue((codex / "SKILL.md").is_file())
+            self.assertTrue((claude / "SKILL.md").is_file())
             self.assertTrue((codex / "agents/openai.yaml").is_file())
             agent = CLAUDE_GHOST / zcode_manifest["agents"] / (name + ".md")
             content = agent.read_text(encoding="utf-8")
@@ -114,7 +115,7 @@ class GhostImplementSpecContractTests(unittest.TestCase):
                 CLAUDE_GHOST / ".claude-plugin/plugin.json",
             ):
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                self.assertIn(name, manifest["keywords"])
+                self.assertIn(name.replace("ghos-", "ghost-") if manifest_path == CODEX_GHOST / ".codex-plugin/plugin.json" else name, manifest["keywords"])
 
 
 if __name__ == "__main__":

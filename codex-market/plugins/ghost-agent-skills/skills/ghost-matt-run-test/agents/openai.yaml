@@ -1,0 +1,6 @@
+interface:
+  display_name: "ghost-matt-run-test"
+  short_description: "单独执行指定测试范围并收集完整证据，由主线程集中分析失败；默认只测试和分析，不修改代码。"
+  default_prompt: "使用 $ghost-matt-run-test 运行测试，遵循当前项目约定及已确认的任务范围。"
+policy:
+  allow_implicit_invocation: false
