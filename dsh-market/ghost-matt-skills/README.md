@@ -4,23 +4,20 @@
 
 ## 安装
 
-从仓库根目录打包，命令不发布 npm：
+安装 GitHub Actions 已验证发布的完整包（不发布 npm）：
 
 ```sh
-node tooling/build-dsh-matt.mjs
-mkdir -p dist
-npm pack ./dsh-market/ghost-matt-skills --pack-destination ./dist
+dsh plugin --profile web add https://github.com/Ghost233/ghost-agent-market/releases/download/dsh-ghost-matt-skills-v0.1.0/dsh-ghost-matt-skills-0.1.0.tgz
 ```
 
-已有 DSH CLI 的用户在所用 profile 安装生成的包（路径替换为实际绝对路径）：
+安装到所用 profile 后检查并启动：
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-ghost-matt-skills-0.1.0.tgz
 dsh --profile web --dump-config
 dsh --profile web
 ```
 
-安装后组合树应包含 `ghost-matt-skills`。更换已安装包版本后重新启动 DSH。Desktop 使用应用 Plugins 的 Bundle 安装入口，安装本地包；Desktop profile 由应用管理，不通过公共 CLI 修改。
+安装后组合树应包含 `ghost-matt-skills`。更换已安装包版本后重新启动 DSH。Desktop 使用应用 Plugins 的 Bundle 安装入口，安装 Release 包；Desktop profile 由应用管理，不通过公共 CLI 修改。
 
 卸载：`dsh plugin --profile web remove dsh-ghost-matt-skills`。仅影响所选 profile。插件卸载时 provider 注销，技能不再出现在目录中。
 
@@ -44,8 +41,8 @@ dsh --profile web
 验证不需要 API key 或付费模型，使用 DSH `0.1.6-alpha.1`（Node 24）：
 
 ```sh
-npm install --prefix /tmp/dsh-validation --ignore-scripts --no-audit --no-fund @deepseek-ai/dsh@0.1.6-alpha.1
-node tests/test_dsh_matt_bundle.mjs /tmp/dsh-validation
+npm ci --prefix tests/dsh-runtime --ignore-scripts --no-audit --no-fund
+node tooling/verify-dsh-release.mjs
 ```
 
 测试覆盖实际 Cordis/DSH registry 注册、31 项完整加载、资源定位、手动/自动调用策略、卸载与重载。可传第三个参数为安装后的 Bundle 目录，对 tarball 安装副本执行同样测试。此验证证明打包和加载，不代表已运行 31 个技能的所有业务流程。
@@ -53,3 +50,11 @@ node tests/test_dsh_matt_bundle.mjs /tmp/dsh-validation
 本次发布还使用 DSH-Workflow 固定的子模块 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`（CLI `0.1.6-alpha.1`）现有本地构建，在隔离 `DSH_HOME` 下完成 tarball 安装、`--dump-config` 组合及安装副本的上述 registry 测试；没有修改 DSH 源码或用户 profile，也没有重新构建该宿主。
 
 官方格式依据：[Bundle 架构](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)、[Skill registry 与调用策略](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md)、[官方打包 provider 示例](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-badge/src/index.ts)。
+
+## 自动发布
+
+`.github/workflows/release-dsh-matt.yml` 在推送 `dsh-ghost-matt-skills-v<package.json 版本>` 标签时执行。先更新源、生成内容和版本并提交到 `main`，再推送相同提交的版本标签。标签与包版本不符、生成内容过期、安装或测试失败均阻止发布。PR 和手动 workflow_dispatch 只验证，不发布。
+
+Actions 使用正式生成器构建 `.tgz`，验证包文件逐字节一致、隔离 profile 安装及 registry，再由独立最小写权限 job 创建新 Release、附完整包及 `SHA256SUMS`，回读公开下载进行字节比对。不替换同名 Release/资产，不修改既有 Latest 标记；重跑已发布标签会停止，后续变更须发布新版本。上传失败可能留下草稿，需人工检查，流程不自动删除或覆盖。
+
+CI 不依赖开发机器的 DSH 子模块：`tests/dsh-runtime/package.json` 将 CLI 及 DSH 内部组件固定为 npm `0.1.6-alpha.1`，`package-lock.json` 锁定完整依赖树和 integrity。直接安装 CLI 的原始范围会混入 `alpha.2`，因此显式 overrides 保持本次验证版本。此可重复验证针对公开发行包，不声称从子模块 HEAD 重建了宿主；本地子模块现有构建的验证记录见上文。升级宿主时须同时审核 overrides、更新锁文件与版本断言并重新测试。
