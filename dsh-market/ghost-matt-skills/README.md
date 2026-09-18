@@ -7,7 +7,7 @@
 安装 GitHub Actions 已验证发布的完整包（不发布 npm）：
 
 ```sh
-dsh plugin --profile web add https://github.com/Ghost233/ghost-agent-market/releases/download/dsh-ghost-matt-skills-v0.1.0/dsh-ghost-matt-skills-0.1.0.tgz
+dsh plugin --profile web add https://github.com/Ghost233/ghost-agent-market/releases/download/dsh-ghost-matt-skills-v0.1.1/dsh-ghost-matt-skills-0.1.1.tgz
 ```
 
 安装到所用 profile 后检查并启动：
@@ -38,7 +38,7 @@ dsh --profile web
 
 源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 26 项，以及 `codex-market/plugins/ghost-agent-skills/skills/ghost-matt-*` 的 5 项，不是网络上未审核的更新。生成文件在 `skills/` 与 `catalog.json`；修改源或平台映射后重新运行构建，增加此包版本。构建不会修改 Codex/Claude/ZCode 源文件；清单数量变化会停止构建，要求核对范围。
 
-验证不需要 API key 或付费模型，使用 DSH `0.1.6-alpha.1`（Node 24）：
+验证不需要 API key 或付费模型，使用 DSH `0.1.6-alpha.1`（Node 24），验证依赖中包含 CLI 安装插件所需的固定 `pnpm 11.24.0`：
 
 ```sh
 npm ci --prefix tests/dsh-runtime --ignore-scripts --no-audit --no-fund

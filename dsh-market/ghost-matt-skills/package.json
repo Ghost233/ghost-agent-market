@@ -1,6 +1,6 @@
 {
   "name": "dsh-ghost-matt-skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "26 个 Matt Pocock 中文技能与 5 个 Ghost Matt 工作流的 DSH Bundle。",
   "type": "module",
   "main": "index.mjs",

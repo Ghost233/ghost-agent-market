@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 
@@ -34,7 +34,8 @@ for (const entry of entries) {
 }
 const home = mkdtempSync(join(tmpdir(), 'dsh-release-check-'));
 const cli = join(runtime, 'node_modules/@deepseek-ai/dsh/lib/bin.js');
-const env = { ...process.env, DSH_HOME: home };
+const env = { ...process.env, DSH_HOME: home, PATH: join(runtime, 'node_modules/.bin') + delimiter + process.env.PATH };
+assert.equal(execFileSync('pnpm', ['--version'], { env, encoding: 'utf8' }).trim(), '11.24.0');
 run(process.execPath, [cli, 'plugin', '--profile', 'web', 'add', archive], { env });
 const config = execFileSync(process.execPath, [cli, '--profile', 'web', '--dump-config'], { env, encoding: 'utf8' });
 assert(config.includes('# == dsh-ghost-matt-skills'));
