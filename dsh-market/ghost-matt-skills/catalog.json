@@ -1,0 +1,575 @@
+{
+  "skills": [
+    {
+      "name": "ask-matt",
+      "description": "询问当前情形适合哪个 skill 或工作流。作为本插件 skills 的路由入口。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "code-review",
+      "description": "从固定点（commit、branch、tag 或 merge-base）开始，沿 Standards（代码是否遵循仓库记录的编码标准）与 Spec（代码是否符合来源 issue/规格）两个轴审查变更。两个审查由并行子代理执行并并排报告。适用于用户要审查分支、PR、进行中的变更，或要求“review since X”时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "codebase-design",
+      "description": "用于设计深模块的共享词汇。适用于用户想设计或改进模块接口、寻找深化机会、决定接缝位置、提高可测试性或 AI 可导航性，或其他 skill 需要深模块词汇时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "diagnosing-bugs",
+      "description": "面向棘手缺陷和性能回退的诊断循环。适用于用户要求 diagnose/debug，或报告某些内容损坏、抛错、失败或变慢时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "domain-modeling",
+      "description": "构建并打磨项目领域模型。适用于讨论代码库术语、编写或编辑 `CONTEXT.md`，或记录或编辑 ADR 时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "grill-me",
+      "description": "通过持续追问打磨计划或设计。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "grill-with-docs",
+      "description": "通过持续追问打磨计划或设计，并在过程中同步创建 ADR 和术语表。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "grilling",
+      "description": "围绕计划、决策或想法持续追问用户。适用于用户想对自己的思路做压力测试，或使用任何 “grill” 触发措辞时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "handoff",
+      "description": "将当前对话压缩为交接文档，供另一个代理继续处理。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "implement",
+      "description": "根据规格或一组工单实施工作。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "implement-spec",
+      "description": "在代码中实施一份带关联工单的规格。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "description": "扫描代码库中的模块深化机会，以可视化 HTML 报告呈现，并针对用户选中的候选项深入追问。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "prototype",
+      "description": "构建一次性原型来回答设计问题。适用于用户想验证状态模型或逻辑是否合理，或探索 UI 应该呈现什么样子时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "research",
+      "description": "对照高可信一手来源调研问题，并将发现保存为仓库中的 Markdown 文件。适用于用户希望调研某个主题、收集文档或 API 事实，或把资料阅读工作委托给后台代理时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "resolving-merge-conflicts",
+      "description": "用于解决正在进行的 Git merge 或 rebase 冲突。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "description": "为当前仓库配置工程类 skills，包括 issue 跟踪器、分类标签词汇和领域文档布局。在首次使用其他工程类 skill 前运行一次。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "tdd",
+      "description": "测试驱动开发。适用于用户希望先写测试再构建功能或修复缺陷、提到“红—绿—重构”，或需要集成测试时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "teach",
+      "description": "在当前工作区内，通过多次会话教授用户一项新技能或概念。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "to-questionnaire",
+      "description": "把自己无法完整回答的决策整理成问卷，交给掌握相关知识的人填写。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "to-spec",
+      "description": "将当前对话整理成规格并发布到项目 issue 跟踪器；不再访谈，只综合已经讨论过的内容。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "to-tickets",
+      "description": "把计划、规格或当前对话拆成一组曳光弹式垂直切片工单，为每张工单声明阻塞关系，并发布到已配置的 tracker；本地以每张工单一个文件记录，真实 tracker 使用原生阻塞链接。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "triage",
+      "description": "通过分诊角色状态机推进 issue 与外部 PR：分类、验证、必要时深入追问，并编写可直接交给代理的简报。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "wait-what",
+      "description": "停下来重新解释上一条未能让用户理解的消息。仅在用户明确调用时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "wayfinder",
+      "description": "把单次代理会话容纳不下的大型工作规划为 issue tracker 上共享的决策工单地图，并逐项解决，直到通往目标的路径清晰。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "wizard",
+      "description": "生成人机交互式 Bash 向导，引导用户完成只有人类能够执行的步骤。适用于配置基础设施、设置凭据或 CI secret、操作陌生的第三方控制台，或执行一次性迁移与切换。代理能够自行执行的步骤不要使用此 skill。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "writing-for-agents",
+      "description": "为代理编写文档。适用于创建或编辑 skill，或修改 AGENTS.md、CLAUDE.md 时。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "ghost-matt-implement",
+      "description": "按规格和工单在当前分支执行一轮开发、测试与反思审查，交付结论后停下讨论修改方向，不自动修复或进入下一轮。仅在明确要求实施时使用。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-matt"
+    },
+    {
+      "name": "ghost-matt-run-test",
+      "description": "单独执行指定测试范围并收集完整证据，由主线程集中分析失败；默认只测试和分析，不修改代码。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-matt"
+    },
+    {
+      "name": "ghost-matt-spec",
+      "description": "根据讨论与代码证据制定规格，明确模块合同和验收标准；用于规划或修订设计，不直接实施功能。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-matt"
+    },
+    {
+      "name": "ghost-matt-test-report",
+      "description": "根据规格、工单与已有证据汇报测试覆盖、通过情况和缺口；只读汇总，不重新运行测试。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-matt"
+    },
+    {
+      "name": "ghost-matt-ticket",
+      "description": "把确定的规格拆为带依赖、并行边界和验收映射的任务清单；用于任务拆解，不直接开发。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-matt"
+    }
+  ],
+  "files": [
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/PHASE-BOUNDARIES.md",
+      "target": "skills/ask-matt/PHASE-BOUNDARIES.md",
+      "sha256": "d1f19235aaa8bb3e43ff7c363150c3be9fc1114cca480380565b3c457a635245"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
+      "target": "skills/ask-matt/SKILL.md",
+      "sha256": "5468f7dcb50d38af47db7f996705d1a8ab335247823d264adb6c8ef49bb9b4b5"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
+      "target": "skills/code-review/SKILL.md",
+      "sha256": "3a09661ec02205ce2112ce3c516f4140492dbb235cb5cefa70c66185ece5a2d5"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md",
+      "target": "skills/codebase-design/DEEPENING.md",
+      "sha256": "3dd4e17cb844b36fae2ba22c19602797b4e40af891a62d5e696bf21dd4d0c71d"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md",
+      "target": "skills/codebase-design/DESIGN-IT-TWICE.md",
+      "sha256": "7a5d2d72ee0a57edd11c23b4077b61519dc1f77ff9cd865244e74ca52da4a44b"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md",
+      "target": "skills/codebase-design/SKILL.md",
+      "sha256": "233acf2f0f97bc1b2e2c61925426c35e29f4f192aaab560cc3ca1230deefc25d"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md",
+      "target": "skills/diagnosing-bugs/SKILL.md",
+      "sha256": "b0305e7c41f54f425d67c62e3847931e8810383951c620f33737935476c36269"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
+      "target": "skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
+      "sha256": "18ae07e1cc49b32c71767e241a6e8de4be74ef21d5e3b7e39034d9c7335f2d80"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md",
+      "target": "skills/domain-modeling/ADR-FORMAT.md",
+      "sha256": "bb45ba4936b4ffa2d00b3f800efef73328a0d4f75811e4cac3e4e1f6eb24d0d1"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/CONTEXT-FORMAT.md",
+      "target": "skills/domain-modeling/CONTEXT-FORMAT.md",
+      "sha256": "21992e74ab4cecaf3eaef19b6eee3699c7f122ab2191620dd1e632113e0b0959"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md",
+      "target": "skills/domain-modeling/SKILL.md",
+      "sha256": "e748e86c48f313d380155e28eeb26ef09b7110320d4abc39a60773caf1829b03"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md",
+      "target": "skills/grill-me/SKILL.md",
+      "sha256": "13655d98ac165e26bccda4dfc9262128772c1965cf0adc39820a02047ddc240e"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/SKILL.md",
+      "target": "skills/grill-with-docs/SKILL.md",
+      "sha256": "7a2e56545e194068a5aabb4a47d7884ca2f534ae2957926da926c6aa5a7ad009"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md",
+      "target": "skills/grilling/SKILL.md",
+      "sha256": "591729b6d9ba99afe0dfb549c5d32716ae62b15deb11f9640bfdde9b7d71a111"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md",
+      "target": "skills/handoff/SKILL.md",
+      "sha256": "5b7cb2d610df66511d4c920d4af964e52cbee513e0b340471506ad8a4ab09dea"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md",
+      "target": "skills/implement/SKILL.md",
+      "sha256": "0e6d995cbe028aff40fce1fbda3e58edfc874a552edce3060624aeb5af7b65c0"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md",
+      "target": "skills/implement-spec/SKILL.md",
+      "sha256": "107c7ee768555942310d1299c8f6ee9e8b9e591385c720b44552a3a63ccca6d0"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md",
+      "target": "skills/improve-codebase-architecture/HTML-REPORT.md",
+      "sha256": "5347217f61cbb319d82172cb56771131822890892d29dac91f89e01ec4fc3892"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md",
+      "target": "skills/improve-codebase-architecture/SKILL.md",
+      "sha256": "196e9ab99145c5073d81767533b3c909a5ce139cbec0c673ced8ba20a88cac74"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md",
+      "target": "skills/prototype/LOGIC.md",
+      "sha256": "109ff50278ce347112e0200c528968d8735f9183cbf3c55dab209c88bca79fc5"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/prototype/SKILL.md",
+      "target": "skills/prototype/SKILL.md",
+      "sha256": "6ec396772df1f5a0dc4177186b584fdb5a3769046a0074f4a3f8625c6f7b8505"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/prototype/UI.md",
+      "target": "skills/prototype/UI.md",
+      "sha256": "43e8ccc20821f4a4cce3091058bc628d83d2fbd0e811b5790b67fd4af0bb3427"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/research/SKILL.md",
+      "target": "skills/research/SKILL.md",
+      "sha256": "62e9d76f354c4ddaed6120ab0ddcb6abba00d0538782534201ced4706c49dbc8"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/resolving-merge-conflicts/SKILL.md",
+      "target": "skills/resolving-merge-conflicts/SKILL.md",
+      "sha256": "30a513f5714fd3a6ed94f185a186488e25a4a586793f8232e03268e2899c9cf3"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
+      "target": "skills/setup-matt-pocock-skills/SKILL.md",
+      "sha256": "b6ab339970f3608356db894a2f8c80faf1c8720e014eba2047615c00cdc7d1b6"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
+      "target": "skills/setup-matt-pocock-skills/domain.md",
+      "sha256": "3bd350d387ed2ea9d47a3b10c618475e0b09c2ad2d988430b30453fb2438bde8"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
+      "target": "skills/setup-matt-pocock-skills/issue-tracker-github.md",
+      "sha256": "b641b4e8560996b9e9df3af61c90f8fbb38281624a5451341429451b3c8666a7"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+      "target": "skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+      "sha256": "0da6a85c95de82f6e0f4afb6248af6b00204b082e269071d4cf6664089bae177"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md",
+      "target": "skills/setup-matt-pocock-skills/issue-tracker-local.md",
+      "sha256": "69435ff61772aeae1f65f006e77b7a5fb8ce7332fe24335cc8b3edc4a5f11ed2"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md",
+      "target": "skills/setup-matt-pocock-skills/triage-labels.md",
+      "sha256": "6804ac9c86c817bd4f260c3a91be7b3e878f49ad35de1f7db7819d02341b51db"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md",
+      "target": "skills/tdd/SKILL.md",
+      "sha256": "30ac085db4cc0a712ef1ca0d637fdc10c97bd478f48bf95717c2a9c85121089a"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md",
+      "target": "skills/tdd/mocking.md",
+      "sha256": "2ad19e15495c9b480add65abecb877a43aa5195798118537bdb305def3f748cc"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/tests.md",
+      "target": "skills/tdd/tests.md",
+      "sha256": "36d942b28017822a5b4e726b1c1e9ad40d8908e26e2aacc103bc2e8d84c69e6c"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/GLOSSARY-FORMAT.md",
+      "target": "skills/teach/GLOSSARY-FORMAT.md",
+      "sha256": "103234a400b323cf6b856df1269c00b35541ed2ba2bd49b54e9052176b4cf6c8"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/LEARNING-RECORD-FORMAT.md",
+      "target": "skills/teach/LEARNING-RECORD-FORMAT.md",
+      "sha256": "abe84862074fb4a62805c8f0c32c959d23b213aa0f72e0a18b7dfad507fcafce"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/MISSION-FORMAT.md",
+      "target": "skills/teach/MISSION-FORMAT.md",
+      "sha256": "f7e1e10eaf1912cec2fa3b68510af7246741d551711c602f2d681cbf0d007497"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/RESOURCES-FORMAT.md",
+      "target": "skills/teach/RESOURCES-FORMAT.md",
+      "sha256": "1103e557b5ac330c931e396c5228a48ef8f0f4919fb9f658f773cf55aa6f2ff5"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md",
+      "target": "skills/teach/SKILL.md",
+      "sha256": "643a793f1a8e3d085ae9f846027851c700665d3d84e3b9ed041b8b2b2c3799ea"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md",
+      "target": "skills/to-questionnaire/SKILL.md",
+      "sha256": "64390c26d1c627c27942f9c145889b6e34651a7b7b3a67b8c9726a356306baf2"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md",
+      "target": "skills/to-spec/SKILL.md",
+      "sha256": "0ea19efabcb9a4a20bc978717fe8ffabe399928ba302a617bc8ef1ec8ee3f300"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md",
+      "target": "skills/to-tickets/SKILL.md",
+      "sha256": "987ef6465dd79d9a3fe89997799a6b80a8ac2f73c12b2b9eb3d2720c64e49b4a"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md",
+      "target": "skills/triage/AGENT-BRIEF.md",
+      "sha256": "5bd9f715a2fd9e523331062cbd541a662996e5be142bd2be88b96ba4fec2bfae"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/triage/OUT-OF-SCOPE.md",
+      "target": "skills/triage/OUT-OF-SCOPE.md",
+      "sha256": "099518c67b0b2cc3f84748722e60d48176097cee246ef9b42e6e4adbe0869d9d"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md",
+      "target": "skills/triage/SKILL.md",
+      "sha256": "d6f9f160f20451104849428459a67926eddfca9aee4991da7a1891f168bae23f"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md",
+      "target": "skills/wait-what/SKILL.md",
+      "sha256": "52f1957a237763ce3a4b212eba0577e25159e3ed1aec9af58d28a882a092ee7f"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",
+      "target": "skills/wayfinder/SKILL.md",
+      "sha256": "61c7167bbcfe044b011ca3ba55c9432e97a186c7bf31a060fd18b23005aafbb6"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md",
+      "target": "skills/wizard/SKILL.md",
+      "sha256": "14f4735b6a7c420022bc28285b933adc2d012c07d97cfc5f5de9538ab4d73871"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh",
+      "target": "skills/wizard/template.sh",
+      "sha256": "d43dc3f7b6008779ef55e3935bf1df246b5bc194b7f9e1dee3d9340a00922ce6"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md",
+      "target": "skills/writing-for-agents/SKILL-MECHANICS.md",
+      "sha256": "b88d61ffa98ddff2412f7aac90d0b32073d0ff6d81b2b5fb72dcfbb0b4d75427"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
+      "target": "skills/writing-for-agents/SKILL.md",
+      "sha256": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-implement/SKILL.md",
+      "target": "skills/ghost-matt-implement/SKILL.md",
+      "sha256": "c940890eb77a54c71725d2f2b5a9080ffa1bdd4fd3b4f5e32e415710af8719aa"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-implement/references/testing.md",
+      "target": "skills/ghost-matt-implement/references/testing.md",
+      "sha256": "d752f64fa58e756d33a533ad53973074725f83c14d9d0c37de66daef125268a4"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/SKILL.md",
+      "target": "skills/ghost-matt-run-test/SKILL.md",
+      "sha256": "db9692deae3e58b9fdf90ae7f26cb08eba8c87bc1c4cf798432ff7558ddbb937"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/references/repair.md",
+      "target": "skills/ghost-matt-run-test/references/repair.md",
+      "sha256": "a58bf973a9eebe366ef61e4e1bf16fd497b25df4078da1701b6fc46c9a107897"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/references/testing.md",
+      "target": "skills/ghost-matt-run-test/references/testing.md",
+      "sha256": "106772b5740de1e324b23d7fd254ac44e92ae44658a76750f9bd937e56286def"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-spec/SKILL.md",
+      "target": "skills/ghost-matt-spec/SKILL.md",
+      "sha256": "97874730bdadb3aecefe4bbfdfed935e8d7d21b6c24377c833b26c25f8f2fe90"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-test-report/SKILL.md",
+      "target": "skills/ghost-matt-test-report/SKILL.md",
+      "sha256": "1d04c5b4d77f90f55846f0ae093f656618b2950ea745c21a3a45f27e28e84f9c"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-ticket/SKILL.md",
+      "target": "skills/ghost-matt-ticket/SKILL.md",
+      "sha256": "ec0061feead32227b32d63906e7a972e229caf1f85940096f759ab94a68c104a"
+    }
+  ]
+}

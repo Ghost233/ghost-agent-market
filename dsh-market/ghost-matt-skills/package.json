@@ -1,0 +1,13 @@
+{
+  "name": "dsh-ghost-matt-skills",
+  "version": "0.1.0",
+  "description": "26 个 Matt Pocock 中文技能与 5 个 Ghost Matt 工作流的 DSH Bundle。",
+  "type": "module",
+  "main": "index.mjs",
+  "files": ["index.mjs", "cordis.patch.yml", "catalog.json", "skills", "README.md", "LICENSE"],
+  "keywords": ["dsh", "deepseek-harness", "skills", "matt-pocock", "chinese"],
+  "license": "MIT",
+  "author": "Ghost233 <only.yesc@gmail.com>",
+  "repository": {"type": "git", "url": "https://github.com/Ghost233/ghost-agent-market.git", "directory": "dsh-market/ghost-matt-skills"},
+  "dsh": {"bundle": {"patch": "cordis.patch.yml"}}
+}

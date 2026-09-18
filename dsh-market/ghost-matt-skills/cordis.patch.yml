@@ -1,0 +1,3 @@
+- insert:
+    - id: ghost-matt-skills
+      name: './index.mjs'

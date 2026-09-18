@@ -1,5 +1,7 @@
 # Ghost Agent Market
 
+DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-matt-skills/README.md)：包含 26 个 Matt 中文技能和 5 个定制 Ghost Matt 技能，附独立的 DSH 安装与加载验证。
+
 这是一个 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
 `ghost-agent-skills` 内置普通 skill：
