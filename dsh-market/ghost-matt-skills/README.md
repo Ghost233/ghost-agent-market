@@ -41,13 +41,15 @@ dsh --profile web
 
 源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 26 项，以及 `codex-market/plugins/ghost-agent-skills/skills/ghost-matt-*` 的 5 项，不是网络上未审核的更新。生成文件在 `skills/` 与 `catalog.json`；修改源或平台映射后重新运行构建，增加此包版本。构建不会修改 Codex/Claude/ZCode 源文件；清单数量变化会停止构建，要求核对范围。
 
-验证不需要 API key 或付费模型，使用官方 DSH `0.1.5-rc.2`（Node 24）：
+验证不需要 API key 或付费模型，使用 DSH `0.1.6-alpha.1`（Node 24）：
 
 ```sh
-npm install --prefix /tmp/dsh-validation --ignore-scripts --no-audit --no-fund @deepseek-ai/dsh@0.1.5-rc.2
+npm install --prefix /tmp/dsh-validation --ignore-scripts --no-audit --no-fund @deepseek-ai/dsh@0.1.6-alpha.1
 node tests/test_dsh_matt_bundle.mjs /tmp/dsh-validation
 ```
 
 测试覆盖实际 Cordis/DSH registry 注册、31 项完整加载、资源定位、手动/自动调用策略、卸载与重载。可传第三个参数为安装后的 Bundle 目录，对 tarball 安装副本执行同样测试。此验证证明打包和加载，不代表已运行 31 个技能的所有业务流程。
+
+本次发布还使用 DSH-Workflow 固定的子模块 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`（CLI `0.1.6-alpha.1`）现有本地构建，在隔离 `DSH_HOME` 下完成 tarball 安装、`--dump-config` 组合及安装副本的上述 registry 测试；没有修改 DSH 源码或用户 profile，也没有重新构建该宿主。
 
 官方格式依据：[Bundle 架构](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)、[Skill registry 与调用策略](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md)、[官方打包 provider 示例](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-badge/src/index.ts)。

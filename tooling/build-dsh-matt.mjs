@@ -44,7 +44,7 @@ function copyTree(source, target) {
     if (!entry.isFile()) throw Error(`Unexpected resource: ${from}`);
     const raw = readFileSync(from);
     files.push({ source: relative(root, from), target: relative(out, to), sha256: createHash('sha256').update(raw).digest('hex') });
-    if (entry.name.endsWith('.md')) writeFileSync(to, adapt(raw.toString('utf8')), { mode: statSync(from).mode });
+    if (entry.name.endsWith('.md')) writeFileSync(to, adapt(raw.toString('utf8')).trimEnd() + '\n', { mode: statSync(from).mode });
     else copyFileSync(from, to);
   }
 }
@@ -63,7 +63,7 @@ for (const name of all) {
   let body = adapt(original).replace(/^---\n([\s\S]*?)\n---\n/, (_match, fields) =>
     `---\n${fields}${manual && !fields.includes('disable-model-invocation:') ? '\ndisable-model-invocation: true' : ''}\n---\n\n${platform}`);
   if (body.includes('collaboration.spawn_agent')) throw Error(`Unadapted delegation: ${name}`);
-  writeFileSync(join(target, 'SKILL.md'), body);
+  writeFileSync(join(target, 'SKILL.md'), body.trimEnd() + '\n');
   skills.push({ name, description: field(frontmatter, 'description'), invocation: { modelInvocable: !manual, userInvocable: true }, group: name.startsWith('ghost-matt-') ? 'ghost-matt' : 'mattpocock-skills-zh' });
 }
 copyFileSync(join(root, 'codex-market/plugins/mattpocock-skills-zh/LICENSE'), join(out, 'LICENSE'));
