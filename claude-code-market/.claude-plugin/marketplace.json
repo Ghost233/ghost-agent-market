@@ -39,8 +39,8 @@
     {
       "name": "mattpocock-skills-zh",
       "source": "./plugins/mattpocock-skills-zh",
-      "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含 25 个稳定 skill 与实验性 implement-spec。",
-      "version": "0.1.5",
+      "description": "Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，包含 27 个稳定 skill。",
+      "version": "0.1.6",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -56,7 +56,9 @@
         "code-review",
         "domain-modeling",
         "productivity",
-        "implement-spec"
+        "implement-spec",
+        "pr",
+        "retro"
       ]
     }
   ]

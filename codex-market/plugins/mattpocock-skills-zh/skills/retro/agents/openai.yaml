@@ -1,0 +1,6 @@
+# 平台说明：Codex 使用 policy.allow_implicit_invocation: false 对应 Claude Code 的 disable-model-invocation: true。
+interface:
+  display_name: "会话回顾 (Retro)"
+  short_description: "回顾编码会话，按严重程度提出导航、自动化检查、编码标准和工具的改进建议"
+policy:
+  allow_implicit_invocation: false

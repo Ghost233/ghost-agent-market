@@ -11,7 +11,7 @@ disable-model-invocation: true
 本命令以项目领域模型为背景，并使用统一设计词汇：
 
 - 调用 Skill 工具并传入 `codebase-design`，采用其中的 **module（模块）**、**interface（接口）**、**depth（深度）**、**seam（接缝）**、**adapter（适配器）**、**leverage（杠杆效应）**、**locality（局部性）**，以及删除测试、“接口就是测试表面”、“一个适配器是假想接缝，两个才是真实接缝”等原则。所有建议都必须使用这些精确概念，不要漂移到 component、service、API 或 boundary。
-- `CONTEXT.md` 的领域语言为良好接缝命名；`docs/adr/` 中的 ADR 记录了不应无故重新争论的决定。
+- `GLOSSARY.md` 的领域语言为良好接缝命名；`docs/adr/` 中的 ADR 记录了不应无故重新争论的决定。
 
 ## 流程
 
@@ -22,7 +22,7 @@ disable-model-invocation: true
 - 用户指定了模块、子系统或痛点时，直接采用该方向。
 - 否则回看足够长的 `git log --oneline`，找出持续出现的热点文件和区域；若变化分散，再扩大范围。
 
-先阅读 `CONTEXT.md` 和所触及区域的 ADR，再让子代理遍历代码库。不要机械套用启发式规则，应自然探索并记录摩擦：
+先阅读 `GLOSSARY.md` 和所触及区域的 ADR，再让子代理遍历代码库。不要机械套用启发式规则，应自然探索并记录摩擦：
 
 - 理解一个概念是否需要在许多小模块间来回跳转？
 - 是否存在接口与实现几乎同样复杂的**浅模块**？
@@ -49,7 +49,7 @@ disable-model-invocation: true
 
 报告末尾给出**首要推荐**及其优先原因。
 
-领域命名必须来自 `CONTEXT.md`，架构词汇必须来自 `/codebase-design`。例如 `CONTEXT.md` 定义了 Order，就说 “Order intake module”，不要说 “FooBarHandler” 或 “Order service”。
+领域命名必须来自 `GLOSSARY.md`，架构词汇必须来自 `/codebase-design`。例如 `GLOSSARY.md` 定义了 Order，就说 “Order intake module”，不要说 “FooBarHandler” 或 “Order service”。
 
 若候选项与 ADR 冲突，只在摩擦足以值得重启决定时提出，并在卡片中明确警告，例如“与 ADR-0007 冲突，但值得重启讨论，因为……”。不要列出所有被 ADR 理论上禁止的重构。
 
@@ -61,7 +61,7 @@ disable-model-invocation: true
 
 决定形成时，调用 Skill 工具并传入 `domain-modeling`，同步维护领域模型：
 
-- 深化模块使用了 `CONTEXT.md` 中没有的概念时，立即添加；文件不存在则按需创建。
-- 对话中澄清了模糊术语时，立即更新 `CONTEXT.md`。
+- 深化模块使用了 `GLOSSARY.md` 中没有的概念时，立即添加；文件不存在则按需创建。
+- 对话中澄清了模糊术语时，立即更新 `GLOSSARY.md`。
 - 用户以影响未来判断的关键理由否决候选项时，询问是否记录为 ADR，避免后续评审重复提出。临时理由或显而易见的理由无需记录。
 - 若要探索多个接口方案，调用 Skill 工具并传入 `codebase-design`，使用其中“设计两次”的并行子代理模式。

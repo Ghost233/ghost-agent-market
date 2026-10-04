@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-matt-skills/README.md)：包含 26 个 Matt 中文技能和 5 个定制 Ghost Matt 技能，附独立的 DSH 安装与加载验证。
+DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-matt-skills/README.md)：包含 27 个 Matt 中文技能和 5 个定制 Ghost Matt 技能，附独立的 DSH 安装与加载验证。
 
 这是一个 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
@@ -13,7 +13,9 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `ghos-matt-test-report`：子代理按 spec/ticket 分组汇总全部测试与已有结果，条目多时显示通过 N/M
 - `ghos-matt-run-test`：子代理执行指定测试，主线程检查实现、架构及需求偏差，提出修复方案
 
-`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
+
+当前翻译同步至上游 [24fe0ef](https://github.com/mattpocock/skills/commit/24fe0ef7737efae15c87225755e9f6f5965e4888)（1.3.1）：领域词汇约定统一为 `GLOSSARY.md`/`GLOSSARY-MAP.md`，`implement-spec` 以集成分支为目标并按跟踪器约定结项，新增 `pr` 与 `retro`，移除上游已退役的 `resolving-merge-conflicts`。
 
 上游子模块：
 
@@ -89,7 +91,7 @@ codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add mattpocock-skills-zh@ghost-agent-market
 ```
 
-安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 26 个 skill 重新加载。
+安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 27 个 skill 重新加载。
 
 Codex marketplace 文件位置：
 

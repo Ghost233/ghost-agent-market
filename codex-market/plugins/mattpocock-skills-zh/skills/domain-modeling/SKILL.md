@@ -1,11 +1,11 @@
 ---
 name: domain-modeling
-description: 构建并打磨项目领域模型。适用于讨论代码库术语、编写或编辑 `CONTEXT.md`，或记录或编辑 ADR 时。
+description: 构建并打磨项目领域模型。适用于讨论代码库术语、编写或编辑 `GLOSSARY.md`，或记录或编辑 ADR 时。
 ---
 
 # 领域建模
 
-在设计过程中主动构建并打磨项目领域模型。这是一项_主动_纪律——质疑术语、构造边缘场景，并在术语与决策成形的当下写入术语表和决策记录。（仅为读取词汇而查看 `CONTEXT.md` 不属于本 skill——那是任何 skill 都能做到的一行习惯。本 skill 用于改变模型，而不只是使用模型。）
+在设计过程中主动构建并打磨项目领域模型。这是一项_主动_纪律——质疑术语、构造边缘场景，并在术语与决策成形的当下写入术语表和决策记录。（仅为读取词汇而查看 `GLOSSARY.md` 不属于本 skill——那是任何 skill 都能做到的一行习惯。本 skill 用于改变模型，而不只是使用模型。）
 
 ## 文件结构
 
@@ -13,7 +13,7 @@ description: 构建并打磨项目领域模型。适用于讨论代码库术语�
 
 ```
 /
-├── CONTEXT.md
+├── GLOSSARY.md
 ├── docs/
 │   └── adr/
 │       ├── 0001-event-sourced-orders.md
@@ -21,29 +21,29 @@ description: 构建并打磨项目领域模型。适用于讨论代码库术语�
 └── src/
 ```
 
-如果根目录存在 `CONTEXT-MAP.md`，仓库就拥有多个上下文。该 map 会指向每个上下文所在的位置：
+如果根目录存在 `GLOSSARY-MAP.md`，仓库就拥有多个上下文。该 map 会指向每个上下文所在的位置：
 
 ```
 /
-├── CONTEXT-MAP.md
+├── GLOSSARY-MAP.md
 ├── docs/
 │   └── adr/                          ← 系统级决策
 ├── src/
 │   ├── ordering/
-│   │   ├── CONTEXT.md
+│   │   ├── GLOSSARY.md
 │   │   └── docs/adr/                 ← 上下文特定决策
 │   └── billing/
-│       ├── CONTEXT.md
+│       ├── GLOSSARY.md
 │       └── docs/adr/
 ```
 
-按需创建文件——只有真正有内容要写时才创建。若不存在 `CONTEXT.md`，就在第一个术语确定时创建；若不存在 `docs/adr/`，就在需要第一项 ADR 时创建。
+按需创建文件——只有真正有内容要写时才创建。若不存在 `GLOSSARY.md`，就在第一个术语确定时创建；若不存在 `docs/adr/`，就在需要第一项 ADR 时创建。
 
 ## 会话中
 
 ### 对照术语表质疑
 
-用户使用的术语与 `CONTEXT.md` 既有语言冲突时，立即指出。“术语表把 cancellation 定义为 X，但你似乎在表达 Y——到底是哪一个？”
+用户使用的术语与 `GLOSSARY.md` 既有语言冲突时，立即指出。“术语表把 cancellation 定义为 X，但你似乎在表达 Y——到底是哪一个？”
 
 ### 收紧模糊语言
 
@@ -57,11 +57,11 @@ description: 构建并打磨项目领域模型。适用于讨论代码库术语�
 
 用户说明某项机制如何工作时，检查代码是否一致。发现矛盾就明确提出：“代码会取消整个 Order，但你刚才说支持部分取消——哪一个正确？”
 
-### 就地更新 CONTEXT.md
+### 就地更新 GLOSSARY.md
 
-术语一经确定就立即更新 `CONTEXT.md`。不要批量延后——在发生的当下捕获。使用 [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) 中的格式。
+术语一经确定就立即更新 `GLOSSARY.md`。不要批量延后——在发生的当下捕获。使用 [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md) 中的格式。
 
-`CONTEXT.md` 必须完全不含实现细节。不要把 `CONTEXT.md` 当作规格、草稿本或实现决策仓库。它只是术语表，仅此而已。
+`GLOSSARY.md` 必须完全不含实现细节。不要把 `GLOSSARY.md` 当作规格、草稿本或实现决策仓库。它只是术语表，仅此而已。
 
 ### 谨慎建议 ADR
 

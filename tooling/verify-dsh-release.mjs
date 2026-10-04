@@ -27,7 +27,7 @@ assert.equal(packed.length, 1);
 assert.equal(packed[0].filename, `${pkg.name}-${pkg.version}.tgz`);
 const archive = join(out, packed[0].filename);
 const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
-assert.equal(entries.filter(p => p.endsWith('/SKILL.md')).length, 31);
+assert.equal(entries.filter(p => p.endsWith('/SKILL.md')).length, 32);
 for (const entry of entries) {
   assert(entry.startsWith('package/') && !entry.split('/').includes('..'));
   assert.deepEqual(execFileSync('tar', ['-xOzf', archive, entry]), readFileSync(join('dsh-market/ghost-matt-skills', entry.slice(8))));
@@ -45,5 +45,5 @@ const hash = createHash('sha256').update(bytes).digest('hex');
 writeFileSync(join(out, 'SHA256SUMS'), `${hash}  ${packed[0].filename}\n`);
 const repository = process.env.GITHUB_REPOSITORY || 'Ghost233/ghost-agent-market';
 const url = `https://github.com/${repository}/releases/download/${tag}/${packed[0].filename}`;
-writeFileSync(join(out, 'release-notes.md'), `# DSH Ghost Matt Skills ${pkg.version}\n\n26 个 Matt 中文技能 + 5 个 Ghost Matt 技能，含 27 个支持资源。由 GitHub Actions 构建并发布，不发布 npm。\n\n安装：\n\n\`\`\`sh\ndsh plugin --profile web add ${url}\n\`\`\`\n\n验证：Node 24、固定 npm DSH 0.1.6-alpha.1 及锁文件依赖；隔离安装、配置组合、31 项 SkillRegistry 加载/卸载/重载、调用策略、资源与包内容一致性均通过。未运行付费模型或全部技能业务流程；npm 发行包验证不等同于重建 DSH-Workflow 子模块。\n\nSHA-256: \`${hash}\`\n\n大小：${bytes.length} bytes\n`);
+writeFileSync(join(out, 'release-notes.md'), `# DSH Ghost Matt Skills ${pkg.version}\n\n27 个 Matt 中文技能 + 5 个 Ghost Matt 技能，含 28 个支持资源。由 GitHub Actions 构建并发布，不发布 npm。\n\n安装：\n\n\`\`\`sh\ndsh plugin --profile web add ${url}\n\`\`\`\n\n验证：Node 24、固定 npm DSH 0.1.6-alpha.1 及锁文件依赖；隔离安装、配置组合、32 项 SkillRegistry 加载/卸载/重载、调用策略、资源与包内容一致性均通过。未运行付费模型或全部技能业务流程；npm 发行包验证不等同于重建 DSH-Workflow 子模块。\n\nSHA-256: \`${hash}\`\n\n大小：${bytes.length} bytes\n`);
 console.log(`PASS: ${tag}; ${bytes.length} bytes; sha256 ${hash}`);

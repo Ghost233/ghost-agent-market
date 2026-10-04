@@ -38,7 +38,7 @@
     },
     {
       "name": "domain-modeling",
-      "description": "构建并打磨项目领域模型。适用于讨论代码库术语、编写或编辑 `CONTEXT.md`，或记录或编辑 ADR 时。",
+      "description": "构建并打磨项目领域模型。适用于讨论代码库术语、编写或编辑 `GLOSSARY.md`，或记录或编辑 ADR 时。",
       "invocation": {
         "modelInvocable": true,
         "userInvocable": true
@@ -92,7 +92,7 @@
     },
     {
       "name": "implement-spec",
-      "description": "在代码中实施一份带关联工单的规格。仅在用户明确调用时使用。",
+      "description": "在代码中实施 $to-spec 和 $to-tickets 的产出。仅在用户明确调用时使用。",
       "invocation": {
         "modelInvocable": false,
         "userInvocable": true
@@ -104,6 +104,15 @@
       "description": "扫描代码库中的模块深化机会，以可视化 HTML 报告呈现，并针对用户选中的候选项深入追问。",
       "invocation": {
         "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "pr",
+      "description": "编写 PR 正文时使用。",
+      "invocation": {
+        "modelInvocable": true,
         "userInvocable": true
       },
       "group": "mattpocock-skills-zh"
@@ -127,10 +136,10 @@
       "group": "mattpocock-skills-zh"
     },
     {
-      "name": "resolving-merge-conflicts",
-      "description": "用于解决正在进行的 Git merge 或 rebase 冲突。",
+      "name": "retro",
+      "description": "回顾一次编码会话。仅在用户明确调用时使用。",
       "invocation": {
-        "modelInvocable": true,
+        "modelInvocable": false,
         "userInvocable": true
       },
       "group": "mattpocock-skills-zh"
@@ -289,7 +298,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
       "target": "skills/ask-matt/SKILL.md",
-      "sha256": "5468f7dcb50d38af47db7f996705d1a8ab335247823d264adb6c8ef49bb9b4b5"
+      "sha256": "357ca9f0cc2890a6203195b8af614546d4adf4cf29713192e05963a6afe0e100"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
@@ -304,7 +313,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md",
       "target": "skills/codebase-design/DESIGN-IT-TWICE.md",
-      "sha256": "7a5d2d72ee0a57edd11c23b4077b61519dc1f77ff9cd865244e74ca52da4a44b"
+      "sha256": "5bea7b43b0a8a92ce33c3aaee851408c2bfcd3a7b580f0645f99a9cf7ccd5d6e"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md",
@@ -314,7 +323,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md",
       "target": "skills/diagnosing-bugs/SKILL.md",
-      "sha256": "b0305e7c41f54f425d67c62e3847931e8810383951c620f33737935476c36269"
+      "sha256": "103cbe6a9cee8c16b49ce304c2e807e586283d7bb68f048442f6fdb87818b628"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
@@ -327,14 +336,14 @@
       "sha256": "bb45ba4936b4ffa2d00b3f800efef73328a0d4f75811e4cac3e4e1f6eb24d0d1"
     },
     {
-      "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/CONTEXT-FORMAT.md",
-      "target": "skills/domain-modeling/CONTEXT-FORMAT.md",
-      "sha256": "21992e74ab4cecaf3eaef19b6eee3699c7f122ab2191620dd1e632113e0b0959"
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/GLOSSARY-FORMAT.md",
+      "target": "skills/domain-modeling/GLOSSARY-FORMAT.md",
+      "sha256": "fd342eb22920abbca295b14666ad3c76c14e96d5d77cbb55e7ad94a818a96026"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md",
       "target": "skills/domain-modeling/SKILL.md",
-      "sha256": "e748e86c48f313d380155e28eeb26ef09b7110320d4abc39a60773caf1829b03"
+      "sha256": "fe40194fb25e3a21865f571b76dc1f5e77d51bd581ca68bb399c549c0745d2ab"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md",
@@ -364,7 +373,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md",
       "target": "skills/implement-spec/SKILL.md",
-      "sha256": "107c7ee768555942310d1299c8f6ee9e8b9e591385c720b44552a3a63ccca6d0"
+      "sha256": "4512f5d08f410f8a7cb115910f635a76149ea95f19c2fa52471a8f43d864cc83"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md",
@@ -374,7 +383,17 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md",
       "target": "skills/improve-codebase-architecture/SKILL.md",
-      "sha256": "196e9ab99145c5073d81767533b3c909a5ce139cbec0c673ced8ba20a88cac74"
+      "sha256": "01e50da67a71a1d902e6def2ac09fa3155ecd89fb40ba9e15c6f97bfc0574926"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/pr/CREDITS.md",
+      "target": "skills/pr/CREDITS.md",
+      "sha256": "ccecde443f3210f7949ddee03d5df0ea238da5fafc8650af52b112e55be618be"
+    },
+    {
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/pr/SKILL.md",
+      "target": "skills/pr/SKILL.md",
+      "sha256": "ab141c85aa4870ba4a7f25938c322ffbd6706f88e98d45902462adbd585aab57"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md",
@@ -397,19 +416,19 @@
       "sha256": "62e9d76f354c4ddaed6120ab0ddcb6abba00d0538782534201ced4706c49dbc8"
     },
     {
-      "source": "codex-market/plugins/mattpocock-skills-zh/skills/resolving-merge-conflicts/SKILL.md",
-      "target": "skills/resolving-merge-conflicts/SKILL.md",
-      "sha256": "30a513f5714fd3a6ed94f185a186488e25a4a586793f8232e03268e2899c9cf3"
+      "source": "codex-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md",
+      "target": "skills/retro/SKILL.md",
+      "sha256": "eac6ab022bde2c5a458c4b9c44b79ce9cb039d340ac3439a749a7c473a752dc1"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
       "target": "skills/setup-matt-pocock-skills/SKILL.md",
-      "sha256": "b6ab339970f3608356db894a2f8c80faf1c8720e014eba2047615c00cdc7d1b6"
+      "sha256": "ca23ba99610c025cca76a09fa2b50df2cdada8239ca665971f0c182fd3b85b69"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
       "target": "skills/setup-matt-pocock-skills/domain.md",
-      "sha256": "3bd350d387ed2ea9d47a3b10c618475e0b09c2ad2d988430b30453fb2438bde8"
+      "sha256": "a5a49746adf25d92669bdd0f59dde77fcb343711b669ae940b72a3ee6be32089"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
@@ -434,7 +453,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md",
       "target": "skills/tdd/SKILL.md",
-      "sha256": "30ac085db4cc0a712ef1ca0d637fdc10c97bd478f48bf95717c2a9c85121089a"
+      "sha256": "009088de6d4f23c098c3e592ee2a03c824edeb6929e4cfe307282a63e4e5e6b0"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md",
@@ -499,12 +518,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md",
       "target": "skills/triage/SKILL.md",
-      "sha256": "d6f9f160f20451104849428459a67926eddfca9aee4991da7a1891f168bae23f"
+      "sha256": "96c32fb41dcfb474f1e1c08cd0744f8467ac2637dad814611fc63c2f5b489f5a"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md",
       "target": "skills/wait-what/SKILL.md",
-      "sha256": "52f1957a237763ce3a4b212eba0577e25159e3ed1aec9af58d28a882a092ee7f"
+      "sha256": "242522cb238f6a5a6f4eec767d5da749f891449b71b5675b502dcc722292c800"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",

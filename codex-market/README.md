@@ -16,7 +16,7 @@
 - `ghost-matt-run-test`：单独执行指定测试，主线程分析原因
 - `ghost-matt-test-report`：只读汇总覆盖、通过情况与缺口
 
-`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 25 个稳定 skill 与实验性 `implement-spec`。安装一个 plugin 即可加载整批 skill。
+`mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。安装一个 plugin 即可加载整批 skill。
 
 独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；五个 `ghost-matt-*` 工作流独立运行，主线程协调当前分支共享工作区，实施每轮开发后收齐测试结果，反思审查并停下讨论，确认后再执行下一轮；需要子代理时保留 `gpt-5.6-terra/xhigh`。此版先在 Codex 试用，Claude/ZCode 待用户验证后同步。
 

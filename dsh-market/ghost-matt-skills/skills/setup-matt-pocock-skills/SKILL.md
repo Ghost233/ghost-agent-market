@@ -13,7 +13,7 @@ disable-model-invocation: true
 
 - **Issue 跟踪器**：issue 存放位置，默认 GitHub，也原生支持本地 Markdown。
 - **分类标签**：五种规范分类角色实际使用的字符串。
-- **领域文档**：`CONTEXT.md` 和 ADR 的位置，以及读取它们的规则。
+- **领域文档**：`GLOSSARY.md` 和 ADR 的位置，以及读取它们的规则。
 
 这是提示驱动的 skill，不是确定性脚本。先探索，再展示发现，与用户确认后才写入。
 
@@ -25,7 +25,7 @@ disable-model-invocation: true
 
 - `git remote -v` 和 `.git/config`：是否为 GitHub 仓库？具体是哪一个？
 - 仓库根目录的 `AGENTS.md` 和 `CLAUDE.md`：是否存在？是否已有 `## Agent skills` 章节？
-- 根目录的 `CONTEXT.md` 和 `CONTEXT-MAP.md`。
+- 根目录的 `GLOSSARY.md` 和 `GLOSSARY-MAP.md`。
 - `docs/adr/` 以及所有 `src/*/docs/adr/` 目录。
 - `docs/agents/`：本 skill 以前是否已经生成过配置？
 - `.scratch/`：是否已有本地 Markdown issue 跟踪约定。
@@ -59,9 +59,9 @@ disable-model-invocation: true
 
 默认值是五个规范角色，标签字符串与角色同名：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。回答**是**时原样写入。只有用户回答否时才收集覆盖值，通常是跟踪器已有其他名称，例如用 `bug:triage` 表示 `needs-triage`；这样 `triage` 会应用现有标签，而不是创建重复标签。
 
-**C 部分——领域文档。** 默认使用**单上下文**：仓库根目录一个 `CONTEXT.md` 加 `docs/adr/`。这适合几乎所有仓库，无需询问直接写入。
+**C 部分——领域文档。** 默认使用**单上下文**：仓库根目录一个 `GLOSSARY.md` 加 `docs/adr/`。这适合几乎所有仓库，无需询问直接写入。
 
-只有探索发现 monorepo 信号时才提供**多上下文**：根目录 `CONTEXT-MAP.md` 指向各上下文自己的 `CONTEXT.md`。然后确认用户选择哪种布局。
+只有探索发现 monorepo 信号时才提供**多上下文**：根目录 `GLOSSARY-MAP.md` 指向各上下文自己的 `GLOSSARY.md`。然后确认用户选择哪种布局。
 
 ### 3. 确认并编辑
 
