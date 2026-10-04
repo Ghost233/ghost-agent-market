@@ -387,6 +387,194 @@ class GitCommitScriptTest(unittest.TestCase):
             ["vendor/grandchild"],
         )
 
+    def test_excluded_submodule_preserves_worktree_and_gitlink_on_apply(self) -> None:
+        child = self.create_submodule()
+        recorded = self.git_at(child, "rev-parse", "HEAD").stdout.strip()
+        (child / "child.txt").write_text("child update\n", encoding="utf-8")
+        self.git_at(child, "add", "--", "child.txt")
+        self.git_at(child, "commit", "-qm", "advance excluded child")
+        child_head = self.git_at(child, "rev-parse", "HEAD").stdout.strip()
+        (child / "child.txt").write_text("retained dirty content\n", encoding="utf-8")
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        self.write_text("target.txt", "parent change\n")
+        snapshot = self.inspect()
+
+        self.assertEqual(snapshot["excluded_submodules"], ["vendor/child"])
+        self.assertEqual(set(self.changes_by_path(snapshot)), {"target.txt"})
+        self.assertEqual(snapshot["blocking_submodules"], [])
+        self.assertEqual(snapshot["gitlink_updates"], [])
+        self.assertTrue(snapshot["submodules"][0]["excluded"])
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": ["target.txt"], "message": "fix(test): 提交其他改动"}],
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual(payload["committed_count"], 1)
+        self.assertEqual(
+            self.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout,
+            "target.txt\n",
+        )
+        self.assertEqual(self.git("ls-tree", "HEAD", "--", "vendor/child").stdout.split()[2], recorded)
+        self.assertEqual(self.git("ls-files", "--stage", "--", "vendor/child").stdout.split()[1], recorded)
+        self.assertEqual(self.git_at(child, "rev-parse", "HEAD").stdout.strip(), child_head)
+        self.assertEqual((child / "child.txt").read_text(), "retained dirty content\n")
+
+    def test_excluded_submodule_alone_is_not_committable_work(self) -> None:
+        child = self.create_submodule()
+        (child / "child.txt").write_text("excluded dirty content\n", encoding="utf-8")
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+
+        snapshot = self.inspect()
+
+        self.assertFalse(snapshot["has_changes"])
+        self.assertEqual(snapshot["changes"], [])
+        self.assertEqual(snapshot["blocking_submodules"], [])
+        self.assertEqual(snapshot["excluded_submodules"], ["vendor/child"])
+
+    def test_nested_exclusion_does_not_block_ancestor_commit(self) -> None:
+        child, grandchild = self.create_nested_submodule_ignored_by_parent()
+        (grandchild / "grandchild.txt").write_text("retained grandchild\n", encoding="utf-8")
+        self.git_at(child, "config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/grandchild")
+        self.write_text("target.txt", "ancestor change\n")
+        snapshot = self.inspect()
+
+        self.assertEqual(snapshot["blocking_submodules"], [])
+        self.assertEqual(set(self.changes_by_path(snapshot)), {"target.txt"})
+        self.assertFalse(self.inspect(repo=child)["has_changes"])
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": ["target.txt"], "message": "fix(test): 提交祖先改动"}],
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual((grandchild / "grandchild.txt").read_text(), "retained grandchild\n")
+        (child / "child.txt").write_text("ordinary child change\n", encoding="utf-8")
+        self.assertEqual(
+            [item["path"] for item in self.inspect()["blocking_submodules"]],
+            ["vendor/child"],
+        )
+
+    def test_other_dirty_submodule_still_blocks_with_exclusion(self) -> None:
+        child = self.create_submodule()
+        self.git(
+            "-c", "protocol.file.allow=always", "submodule", "add", "-q",
+            str(self.root / "child-source"), "vendor/other",
+        )
+        self.git("commit", "-qm", "add other submodule")
+        (child / "child.txt").write_text("excluded dirty\n", encoding="utf-8")
+        (self.repo / "vendor/other/child.txt").write_text("other dirty\n", encoding="utf-8")
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        self.write_text("target.txt", "parent change\n")
+        snapshot = self.inspect()
+        initial_head = snapshot["head"]
+
+        self.assertEqual(
+            [item["path"] for item in snapshot["blocking_submodules"]],
+            ["vendor/other"],
+        )
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": ["target.txt"], "message": "fix(test): 提交父仓库"}],
+            ),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("vendor/other[worktree-dirty]", payload["error"])
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), initial_head)
+
+    def test_excluded_staged_pointer_is_rejected_without_index_changes(self) -> None:
+        child = self.create_submodule()
+        (child / "child.txt").write_text("new child\n", encoding="utf-8")
+        self.git_at(child, "add", "--", "child.txt")
+        self.git_at(child, "commit", "-qm", "advance child")
+        self.git("add", "--", "vendor/child")
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        before = self.git("ls-files", "--stage").stdout
+
+        result, payload = self.run_script("inspect")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("excluded submodule has staged changes: vendor/child", payload["error"])
+        self.assertEqual(self.git("ls-files", "--stage").stdout, before)
+
+    def test_excluded_conflicted_gitlink_is_rejected(self) -> None:
+        self.create_submodule()
+        child_head = self.git("ls-files", "--stage", "--", "vendor/child").stdout.split()[1]
+        self.git("update-index", "--force-remove", "--", "vendor/child")
+        subprocess.run(
+            ["git", "-C", str(self.repo), "update-index", "--index-info"],
+            input="".join(f"160000 {child_head} {stage}\tvendor/child\n" for stage in (1, 2, 3)),
+            text=True, capture_output=True, check=True,
+        )
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        before = self.git("ls-files", "--stage").stdout
+
+        result, payload = self.run_script("inspect")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("excluded submodule has staged changes: vendor/child", payload["error"])
+        self.assertEqual(self.git("ls-files", "--stage").stdout, before)
+
+    def test_invalid_exclusions_are_rejected(self) -> None:
+        self.create_submodule()
+        for value in ("../vendor/child", "/vendor/child", "vendor/child/", "tracked.txt", "vendor/missing"):
+            with self.subTest(path=value):
+                self.git("config", "--local", "git-commit.excludeSubmodule", value)
+                result, payload = self.run_script("inspect")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("excluded", payload["error"])
+        self.git("config", "--local", "git-commit.excludeSubmodule", "vendor/child")
+        self.git("submodule", "deinit", "-q", "-f", "--", "vendor/child")
+
+        result, payload = self.run_script("inspect")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("excluded submodule is not initialized: vendor/child", payload["error"])
+
+    def test_changed_exclusion_invalidates_reviewed_plan(self) -> None:
+        self.create_submodule()
+        self.write_text("target.txt", "parent change\n")
+        snapshot = self.inspect()
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": ["target.txt"], "message": "fix(test): 提交父仓库"}],
+            ),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("fingerprint changed", payload["error"])
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), snapshot["head"])
+
+    def test_apply_rejects_excluded_gitlink_in_plan(self) -> None:
+        child = self.create_submodule()
+        (child / "child.txt").write_text("excluded dirty\n", encoding="utf-8")
+        self.git("config", "--local", "--add", "git-commit.excludeSubmodule", "vendor/child")
+        self.write_text("target.txt", "parent change\n")
+        snapshot = self.inspect()
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": ["vendor/child"], "message": "chore(test): 提交排除指针"}],
+            ),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not present in inspected changes: vendor/child", payload["error"])
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), snapshot["head"])
+
     def test_staged_pointer_not_checked_out_reports_exact_reason(self) -> None:
         self.create_submodule()
         source = self.root / "child-source"
@@ -423,6 +611,24 @@ class GitCommitScriptTest(unittest.TestCase):
             "vendor/child[staged-pointer-not-checked-out]",
             str(payload["error"]),
         )
+
+    def test_new_staged_submodule_remains_in_committable_changes(self) -> None:
+        self.create_submodule()
+        self.git("reset", "--soft", "HEAD^")
+        snapshot = self.inspect()
+
+        self.assertEqual(set(self.changes_by_path(snapshot)), {".gitmodules", "vendor/child"})
+        self.assertEqual(snapshot["blocking_submodules"], [])
+        result, payload = self.run_script(
+            "apply",
+            plan=self.plan(
+                snapshot,
+                [{"paths": [".gitmodules", "vendor/child"], "message": "chore(test): 添加子模块"}],
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, payload)
+        self.assertEqual(self.git("status", "--porcelain").stdout, "")
 
     def test_apply_commits_clean_unstaged_gitlink_update(self) -> None:
         child = self.create_submodule()

@@ -204,6 +204,37 @@ def identity(repo):
     return actual == required, required
 
 
+def excluded_submodules(repo):
+    values = raw(
+        repo, "config", "--local", "-z", "--get-all",
+        "git-commit.excludeSubmodule", check=False,
+    )
+    excluded = set()
+    for value in values.split(b"\0"):
+        if not value:
+            continue
+        try:
+            path = valid_path(os.fsdecode(value))
+        except PlanError as exc:
+            raise GitError(f"invalid excluded submodule: {exc}") from exc
+        entries = raw(repo, "ls-files", "--stage", "-z", "--", literal(path))
+        records = [record.partition(b"\t") for record in entries.split(b"\0") if record]
+        if not records or any(
+            not separator or header.split()[:1] != [b"160000"]
+            or os.fsdecode(name) != path
+            for header, separator, name in records
+        ):
+            raise GitError(f"excluded path is not a tracked submodule: {path}")
+        if raw(repo, "diff", "--cached", "--ignore-submodules=none", "--name-only", "-z", "--", literal(path)):
+            raise GitError(f"excluded submodule has staged changes: {path}")
+        nested = repo / path
+        nested_root = text(nested, "rev-parse", "--show-toplevel", check=False).strip()
+        if not nested_root or Path(nested_root).resolve() != nested.resolve():
+            raise GitError(f"excluded submodule is not initialized: {path}")
+        excluded.add(path)
+    return sorted(excluded)
+
+
 def status(repo):
     return raw(
         repo,
@@ -213,6 +244,8 @@ def status(repo):
         "--untracked-files=all",
         "--ignore-submodules=none",
         "--no-renames",
+        "--", ".",
+        *(f":(exclude,literal){path}" for path in excluded_submodules(repo)),
     )
 
 
@@ -274,6 +307,7 @@ def fingerprint(repo, changes):
     digest = hashlib.sha256()
     parts = (
         ("HEAD", head(repo).encode()),
+        ("EXCLUSIONS", json.dumps(excluded_submodules(repo)).encode()),
         ("STATUS", status(repo)),
         (
             "INDEX",
@@ -425,6 +459,7 @@ def risks(repo, changes):
 
 
 def submodule_changes(repo, changes):
+    excluded = set(excluded_submodules(repo))
     recorded = {}
     for record in raw(repo, "ls-tree", "-r", "-z", "HEAD").split(b"\0"):
         header, separator, path = record.partition(b"\t")
@@ -463,17 +498,7 @@ def submodule_changes(repo, changes):
         actual = (
             text(nested, "rev-parse", "HEAD", check=False).strip() if initialized else ""
         )
-        nested_dirty = initialized and bool(
-            raw(
-                nested,
-                "status",
-                "--porcelain=v1",
-                "-z",
-                "--untracked-files=all",
-                "--ignore-submodules=none",
-                check=False,
-            )
-        )
+        nested_dirty = initialized and bool(status(nested))
         recorded_head = recorded.get(path)
         pointer_dirty = bool(actual and actual != item["index_head"])
         pointer_update = bool(actual and actual != recorded_head)
@@ -485,7 +510,7 @@ def submodule_changes(repo, changes):
             blocking_reasons.append("merge-conflict")
         if path in changed and not initialized:
             blocking_reasons.append("uninitialized-changed")
-        if nested_dirty:
+        if nested_dirty and path not in excluded:
             blocking_reasons.append("worktree-dirty")
         if (
             initialized
@@ -508,6 +533,7 @@ def submodule_changes(repo, changes):
                     "recorded_head": recorded_head,
                     "head": actual or None,
                     "worktree_dirty": nested_dirty,
+                    "excluded": path in excluded,
                     "pointer_dirty": pointer_dirty,
                     "pointer_update": pointer_update,
                     "staged_pointer": staged_pointer,
@@ -560,6 +586,14 @@ def render_diff(repo, changes):
 
 def inspect(repo, include_diff=False):
     changes = collect_changes(repo)
+    submodules = submodule_changes(repo, changes)
+    unchanged_links = {
+        item["path"] for item in submodules
+        if not item["blocking"] and not item["worktree_dirty"]
+        and not item["pointer_dirty"] and not item["pointer_update"]
+        and not item["staged_pointer"]
+    }
+    changes = [item for item in changes if item["path"] not in unchanged_links]
     identity_ok, required = identity(repo)
     (
         stats,
@@ -570,12 +604,11 @@ def inspect(repo, include_diff=False):
         binary,
         reasons,
     ) = risks(repo, changes)
-    submodules = submodule_changes(repo, changes)
     blocking_submodules = [item for item in submodules if item["blocking"]]
     gitlink_updates = [
         item
         for item in submodules
-        if not item["blocking"] and item["pointer_update"]
+        if not item["blocking"] and not item["excluded"] and item["pointer_update"]
     ]
     if submodules:
         reasons.append("submodule-changes")
@@ -600,6 +633,7 @@ def inspect(repo, include_diff=False):
         "numstat": stats,
         "submodules": submodules,
         "blocking_submodules": blocking_submodules,
+        "excluded_submodules": excluded_submodules(repo),
         "gitlink_updates": gitlink_updates,
         "dirty_submodules": blocking_submodules,
         "sensitive_paths": sensitive,
