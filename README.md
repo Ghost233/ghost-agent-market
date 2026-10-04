@@ -19,10 +19,6 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 
 - `SkillOpt/`：`microsoft/SkillOpt`
 
-Codex hook 插件：
-
-- `rtk-hook`：基于 `Ghost233/rtk-hook` 的 PreToolUse hook，通过 `rtk rewrite` 透明改写 RTK 支持的 shell 命令，不支持的命令原样放行
-
 仓库级说明使用标准文件名：`AGENTS.md` 和 `CLAUDE.md`。
 
 ## 目录结构
@@ -52,12 +48,7 @@ ghost-agent-market/
         ├── ghost-agent-skills/
         │   ├── .codex-plugin/plugin.json
         │   └── skills/
-        ├── mattpocock-skills-zh/
-        └── rtk-hook/
-            ├── .codex-plugin/plugin.json
-            ├── hooks/
-            ├── scripts/
-            └── rules.json
+        └── mattpocock-skills-zh/
 ```
 
 ## 安装 Claude Code Market
@@ -96,12 +87,9 @@ codex plugin marketplace upgrade ghost-agent-market
 ```bash
 codex plugin add ghost-agent-skills@ghost-agent-market
 codex plugin add mattpocock-skills-zh@ghost-agent-market
-codex plugin add rtk-hook@ghost-agent-market
 ```
 
 安装或更新 `mattpocock-skills-zh` 后，请新开一个 Claude Code 会话或 Codex 任务，让 26 个 skill 重新加载。
-
-安装 `rtk-hook` 后，开启新的 Codex 线程并通过 `/hooks` 信任 `RTK Hook`。
 
 Codex marketplace 文件位置：
 

@@ -5,18 +5,6 @@
   },
   "plugins": [
     {
-      "name": "rtk-hook",
-      "source": {
-        "source": "local",
-        "path": "./plugins/rtk-hook"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    },
-    {
       "name": "ghost-agent-skills",
       "source": {
         "source": "local",
