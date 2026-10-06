@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ghswitch_dir=$(pwd -P); while :; do if [ -e \"$ghswitch_dir/.ghswitch\" ] || [ -L \"$ghswitch_dir/.ghswitch\" ]; then exec bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ghswitch.sh\"; fi; if [ -e \"$ghswitch_dir/.git\" ] || [ \"$ghswitch_dir\" = / ]; then exit 0; fi; ghswitch_dir=${ghswitch_dir%/*}; ghswitch_dir=${ghswitch_dir:-/}; done",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

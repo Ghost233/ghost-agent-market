@@ -13,6 +13,8 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `ghos-matt-test-report`：子代理按 spec/ticket 分组汇总全部测试与已有结果，条目多时显示通过 N/M
 - `ghos-matt-run-test`：子代理执行指定测试，主线程检查实现、架构及需求偏差，提出修复方案
 
+`ghost-agent-skills` 还包含 `.ghswitch` 命令前 hook：在项目根目录创建只写一行 GitHub 用户名的 `.ghswitch`（例如 `Ghost233`），agent 直接执行 `git` 或 `gh` 前会先切换并验证 `github.com` 身份，失败就阻止工具调用。当前项目无配置时，入口直接放行，不启动主脚本，也不检查 `jq`。使用方式与覆盖范围见 [hook 说明](codex-market/plugins/ghost-agent-skills/README.md#ghswitch-命令前-hook)。
+
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
 当前翻译同步至上游 [24fe0ef](https://github.com/mattpocock/skills/commit/24fe0ef7737efae15c87225755e9f6f5965e4888)（1.3.1）：领域词汇约定统一为 `GLOSSARY.md`/`GLOSSARY-MAP.md`，`implement-spec` 以集成分支为目标并按跟踪器约定结项，新增 `pr` 与 `retro`，移除上游已退役的 `resolving-merge-conflicts`。
