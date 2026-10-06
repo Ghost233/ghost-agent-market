@@ -153,7 +153,45 @@ class GhSwitchHookTests(unittest.TestCase):
     def test_missing_config_does_not_call_gh(self):
         result = self.run_hook("git status && gh pr list")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stdout + result.stderr, "")
+        self.assertEqual(self.calls(), [])
+
+    def test_main_script_without_config_needs_no_dependencies_or_input(self):
+        environment = dict(self.env, PATH=str(self.root / "empty"))
+        for plugin in PLUGINS:
+            with self.subTest(plugin=plugin):
+                result = subprocess.run(
+                    ["/bin/bash", str(plugin / "hooks/ghswitch.sh")],
+                    input="not JSON", text=True, capture_output=True,
+                    env=environment, cwd=self.repo,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout + result.stderr, "")
+        self.assertEqual(self.calls(), [])
+
+    def test_main_script_without_config_does_not_inspect_commands(self):
+        for plugin in PLUGINS:
+            for command in ["cd $PROJECT && gh pr list", "git status '"]:
+                with self.subTest(plugin=plugin, command=command):
+                    result = self.run_hook(command, script=plugin / "hooks/ghswitch.sh")
+                    self.assertEqual(result.stdout + result.stderr, "")
+        self.assertEqual(self.calls(), [])
+
+    def test_missing_config_symlink_target_silently_skips_hook(self):
+        (self.repo / ".ghswitch").symlink_to(self.repo / "missing-config")
+        environment = dict(self.env, PATH=str(self.root / "empty"))
+        for plugin in PLUGINS:
+            with self.subTest(plugin=plugin):
+                result = self.run_registered_hook(plugin, payload="not JSON", environment=environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout + result.stderr, "")
+                result = subprocess.run(
+                    ["/bin/bash", str(plugin / "hooks/ghswitch.sh")],
+                    input="not JSON", text=True, capture_output=True,
+                    env=environment, cwd=self.repo,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout + result.stderr, "")
         self.assertEqual(self.calls(), [])
 
     def test_unrelated_commands_and_mentions_do_not_call_gh(self):
@@ -204,6 +242,7 @@ class GhSwitchHookTests(unittest.TestCase):
         self.assertEqual(self.calls(), [SWITCH, VERIFY, SWITCH, VERIFY])
 
     def test_cd_and_git_C_find_target_config(self):
+        self.configure()
         other = self.root / "other project"
         other.mkdir()
         self.configure(repo=other)
@@ -214,6 +253,7 @@ class GhSwitchHookTests(unittest.TestCase):
         self.assertEqual(self.calls(), [SWITCH, VERIFY, SWITCH, VERIFY])
 
     def test_escaped_paths_and_quoted_operator_arguments(self):
+        self.configure()
         other = self.root / "other project"
         other.mkdir()
         self.configure(repo=other)
@@ -284,9 +324,10 @@ class GhSwitchHookTests(unittest.TestCase):
         self.assertEqual(self.calls(), [SWITCH, VERIFY])
 
     def test_missing_jq_blocks_with_exit_2(self):
+        self.configure()
         environment = dict(self.env, PATH=str(self.root / "empty"))
         result = subprocess.run(["/bin/bash", str(SCRIPT)], input="{}",
-                                text=True, capture_output=True, env=environment)
+                                text=True, capture_output=True, env=environment, cwd=self.repo)
         self.assertEqual(result.returncode, 2)
         self.assertIn("jq", result.stderr)
         self.assertEqual(self.calls(), [])

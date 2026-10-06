@@ -2,6 +2,15 @@
 # Switch and verify the project GitHub account before a Bash tool call.
 # Compatible with macOS Bash 3.2. Never evaluate the pending command.
 
+# A missing config is the normal disabled state, before dependencies or input.
+ghswitch_dir=$(pwd -P)
+while :; do
+  [[ -e $ghswitch_dir/.ghswitch ]] && break
+  [[ -e $ghswitch_dir/.git || $ghswitch_dir == / ]] && exit 0
+  ghswitch_dir=${ghswitch_dir%/*}
+  ghswitch_dir=${ghswitch_dir:-/}
+done
+
 deny() {
   jq -cn --arg reason "ghswitch: $1" '{hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny",
@@ -186,7 +195,7 @@ expected_user=''
 for directory in "${target_dirs[@]}"; do
   while :; do
     config=$directory/.ghswitch
-    if [[ -e $config || -L $config ]]; then
+    if [[ -e $config ]]; then
       [[ -f $config && -r $config ]] || deny "$config 必须是可读文件。"
       user=$(cat "$config")
       user=${user#"${user%%[![:space:]]*}"}
