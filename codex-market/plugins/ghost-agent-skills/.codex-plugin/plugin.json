@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.4.7+codex.20261007140210",
-  "description": "\u7ba1\u7406 Git \u63d0\u4ea4\u3001\u590d\u6742\u5408\u5e76\u51b2\u7a81\u4e0e\u9879\u76ee GitHub \u8d26\u53f7\u914d\u7f6e\u3002",
+  "version": "0.4.8+codex.20261007153959",
+  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置与 spec 开发交付。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -24,22 +24,24 @@
     "git-merge-conflict",
     "merge-conflict",
     "history-archaeology",
-    "configure-gh-account"
+    "configure-gh-account",
+    "spec-delivery"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "Git \u63d0\u4ea4\u3001\u5408\u5e76\u51b2\u7a81\u4e0e\u9879\u76ee GitHub \u8d26\u53f7\u914d\u7f6e\u3002",
-    "longDescription": "\u4e09\u4e2a\u72ec\u7acb\u6280\u80fd\uff1a\u5b89\u5168\u521b\u5efa Git \u63d0\u4ea4\u3001\u8003\u53e4\u5386\u53f2\u5e76\u89e3\u51b3\u590d\u6742\u5408\u5e76\u51b2\u7a81\uff0c\u4ee5\u53ca\u590d\u7528\u5df2\u6709 gh \u767b\u5f55\u914d\u7f6e\u9879\u76ee\u7684 GitHub \u8d26\u53f7\u73af\u5883\u3002",
+    "shortDescription": "Git 提交、合并冲突、账号配置与 spec 开发交付。",
+    "longDescription": "四个独立技能：安全创建 Git 提交、解决复杂合并冲突、配置项目 GitHub 账号环境，以及按 spec 并行实施、审查复盘和 PR 交付。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
       "Skills"
     ],
     "defaultPrompt": [
-      "\u4f7f\u7528 $git-commit \u9012\u5f52\u68c0\u67e5\u5f53\u524d\u4ed3\u5e93\u53ca\u5df2\u6388\u6743\u5b50\u6a21\u5757\uff0c\u521b\u5efa\u89c4\u8303\u7684\u4e2d\u6587 Git \u63d0\u4ea4\u3002",
-      "\u4f7f\u7528 $git-merge-conflict \u8003\u53e4\u4e24\u4fa7\u5386\u53f2\u5e76\u89e3\u51b3\u5f53\u524d\u4e25\u91cd\u7684 Git \u51b2\u7a81\u3002",
-      "\u4f7f\u7528 $configure-gh-account \u4e3a\u5f53\u524d\u9879\u76ee\u914d\u7f6e\u72ec\u7acb\u7684 GitHub \u8d26\u53f7\u73af\u5883\u3002"
+      "使用 $git-commit 递归检查当前仓库及已授权子模块，创建规范的中文 Git 提交。",
+      "使用 $git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突。",
+      "使用 $configure-gh-account 为当前项目配置独立的 GitHub 账号环境。",
+      "使用 $spec-delivery 并行实施已确认的 spec，逐阶段审查复盘并提交总 PR。"
     ]
   }
 }

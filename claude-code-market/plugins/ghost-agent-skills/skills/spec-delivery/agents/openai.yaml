@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec 完整交付"
+  short_description: "并行实施 spec，逐阶段审查复盘修复问题并提交总 PR"
+  default_prompt: "建立持续 goal，使用 $spec-delivery 交付当前已确认的 spec。"

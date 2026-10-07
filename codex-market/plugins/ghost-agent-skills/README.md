@@ -1,12 +1,13 @@
 # Ghost Agent Skills：Codex
 
-包含 Git 提交、复杂合并冲突与项目 GitHub 账号配置三个独立 skill。
+包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置与 spec 开发交付四个独立 skill。
 
 | 入口 | 职责 |
 | --- | --- |
 | `$git-commit` | 检查改动并通过安全脚本创建 Git 提交 |
 | `$git-merge-conflict` | 考古两侧历史并解决严重 Git 冲突 |
 | `$configure-gh-account` | 配置项目的 Codex GitHub 账号环境 |
+| `$spec-delivery` | 并行实施 spec，逐阶段审查复盘并提交总 PR；依赖 `mattpocock-skills-zh` |
 
 每个技能目录自包含：必需规则位于自己的 `SKILL.md`，配套参考和脚本位于技能内部，可单独复制使用。
 

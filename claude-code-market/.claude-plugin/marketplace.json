@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./plugins/ghost-agent-skills",
-      "description": "Git commits, merge-conflict resolution, and per-project GitHub account configuration.",
-      "version": "0.4.3",
+      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, and spec delivery.",
+      "version": "0.4.4",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -27,7 +27,8 @@
         "agent-skills",
         "claude-code",
         "read-only-analysis",
-        "configure-gh-account"
+        "configure-gh-account",
+        "spec-delivery"
       ]
     },
     {

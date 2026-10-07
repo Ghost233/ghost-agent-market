@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "管理 Git 提交、复杂合并冲突与项目 GitHub 账号配置。",
-  "version": "0.4.3",
+  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置与 spec 开发交付。",
+  "version": "0.4.4",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -23,6 +23,7 @@
     "git-merge-conflict",
     "merge-conflict",
     "history-archaeology",
-    "configure-gh-account"
+    "configure-gh-account",
+    "spec-delivery"
   ]
 }
