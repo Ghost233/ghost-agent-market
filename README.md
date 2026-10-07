@@ -9,7 +9,6 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `git-commit`：在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `configure-gh-account`：复用已登录的 gh 凭据，为目标项目的 `.codex/config.toml` 配置独立账号目录，支持多个仓库并行操作 GitHub
-- `compile-feature-knowledge`：把确认结论与验收证据合并为长期维护的 OKF 功能档案
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
@@ -34,7 +33,6 @@ ghost-agent-market/
 │       ├── ghost-agent-skills/
 │       │   ├── .claude-plugin/plugin.json
 │       │   └── skills/
-│       │       ├── compile-feature-knowledge/
 │       │       ├── configure-gh-account/
 │       │       ├── git-commit/
 │       │       └── git-merge-conflict/

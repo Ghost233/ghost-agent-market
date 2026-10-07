@@ -1,7 +1,0 @@
-interface:
-  display_name: "维护功能知识"
-  short_description: "从未提交改动和对话记忆自动整理长期功能档案。"
-  default_prompt: "使用 $compile-feature-knowledge 根据当前未提交改动和对话记忆整理功能知识。"
-
-policy:
-  allow_implicit_invocation: false
