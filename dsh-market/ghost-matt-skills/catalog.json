@@ -242,51 +242,6 @@
         "userInvocable": true
       },
       "group": "mattpocock-skills-zh"
-    },
-    {
-      "name": "ghost-matt-implement",
-      "description": "按规格和工单在当前分支执行一轮开发、测试与反思审查，交付结论后停下讨论修改方向，不自动修复或进入下一轮。仅在明确要求实施时使用。",
-      "invocation": {
-        "modelInvocable": false,
-        "userInvocable": true
-      },
-      "group": "ghost-matt"
-    },
-    {
-      "name": "ghost-matt-run-test",
-      "description": "单独执行指定测试范围并收集完整证据，由主线程集中分析失败；默认只测试和分析，不修改代码。",
-      "invocation": {
-        "modelInvocable": false,
-        "userInvocable": true
-      },
-      "group": "ghost-matt"
-    },
-    {
-      "name": "ghost-matt-spec",
-      "description": "根据讨论与代码证据制定规格，明确模块合同和验收标准；用于规划或修订设计，不直接实施功能。",
-      "invocation": {
-        "modelInvocable": false,
-        "userInvocable": true
-      },
-      "group": "ghost-matt"
-    },
-    {
-      "name": "ghost-matt-test-report",
-      "description": "根据规格、工单与已有证据汇报测试覆盖、通过情况和缺口；只读汇总，不重新运行测试。",
-      "invocation": {
-        "modelInvocable": false,
-        "userInvocable": true
-      },
-      "group": "ghost-matt"
-    },
-    {
-      "name": "ghost-matt-ticket",
-      "description": "把确定的规格拆为带依赖、并行边界和验收映射的任务清单；用于任务拆解，不直接开发。",
-      "invocation": {
-        "modelInvocable": false,
-        "userInvocable": true
-      },
-      "group": "ghost-matt"
     }
   ],
   "files": [
@@ -549,46 +504,6 @@
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
       "target": "skills/writing-for-agents/SKILL.md",
       "sha256": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-implement/SKILL.md",
-      "target": "skills/ghost-matt-implement/SKILL.md",
-      "sha256": "c940890eb77a54c71725d2f2b5a9080ffa1bdd4fd3b4f5e32e415710af8719aa"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-implement/references/testing.md",
-      "target": "skills/ghost-matt-implement/references/testing.md",
-      "sha256": "d752f64fa58e756d33a533ad53973074725f83c14d9d0c37de66daef125268a4"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/SKILL.md",
-      "target": "skills/ghost-matt-run-test/SKILL.md",
-      "sha256": "db9692deae3e58b9fdf90ae7f26cb08eba8c87bc1c4cf798432ff7558ddbb937"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/references/repair.md",
-      "target": "skills/ghost-matt-run-test/references/repair.md",
-      "sha256": "a58bf973a9eebe366ef61e4e1bf16fd497b25df4078da1701b6fc46c9a107897"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-run-test/references/testing.md",
-      "target": "skills/ghost-matt-run-test/references/testing.md",
-      "sha256": "106772b5740de1e324b23d7fd254ac44e92ae44658a76750f9bd937e56286def"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-spec/SKILL.md",
-      "target": "skills/ghost-matt-spec/SKILL.md",
-      "sha256": "97874730bdadb3aecefe4bbfdfed935e8d7d21b6c24377c833b26c25f8f2fe90"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-test-report/SKILL.md",
-      "target": "skills/ghost-matt-test-report/SKILL.md",
-      "sha256": "1d04c5b4d77f90f55846f0ae093f656618b2950ea745c21a3a45f27e28e84f9c"
-    },
-    {
-      "source": "codex-market/plugins/ghost-agent-skills/skills/ghost-matt-ticket/SKILL.md",
-      "target": "skills/ghost-matt-ticket/SKILL.md",
-      "sha256": "ec0061feead32227b32d63906e7a972e229caf1f85940096f759ab94a68c104a"
     }
   ]
 }

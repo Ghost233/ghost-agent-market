@@ -5,21 +5,16 @@
 - `ghost-agent-skills`
 - `mattpocock-skills-zh`
 
-`ghost-agent-skills` 包含九个独立 skill：
+`ghost-agent-skills` 包含四个独立 skill：
 
 - `git-commit`
 - `git-merge-conflict`
 - `configure-gh-account`：配置项目的 Codex GitHub 账号环境，复用已有 gh 登录并验证身份
 - `compile-feature-knowledge`
-- `ghost-matt-spec`：规划规格、模块合同与验收标准
-- `ghost-matt-ticket`：拆解任务、依赖与并行边界
-- `ghost-matt-implement`：每次执行一轮开发、测试与反思审查，停下讨论修改方向后再推进下一轮
-- `ghost-matt-run-test`：单独执行指定测试，主线程分析原因
-- `ghost-matt-test-report`：只读汇总覆盖、通过情况与缺口
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。安装一个 plugin 即可加载整批 skill。
 
-独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；五个 `ghost-matt-*` 工作流独立运行，主线程协调当前分支共享工作区，实施每轮开发后收齐测试结果，反思审查并停下讨论，确认后再执行下一轮；需要子代理时保留 `gpt-5.6-terra/xhigh`。此版先在 Codex 试用，Claude/ZCode 待用户验证后同步。
+独立 `ghost-agent-skills` 插件中的 `git-commit` 在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交；`git-merge-conflict` 在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突；`compile-feature-knowledge` 把确认结论与验收证据合并为长期维护的 OKF 功能档案；`configure-gh-account` 配置项目的 Codex GitHub 账号环境，复用已有登录并验证身份。
 
 ## 安装
 

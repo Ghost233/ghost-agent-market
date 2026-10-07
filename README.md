@@ -1,6 +1,6 @@
 # Ghost Agent Market
 
-DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-matt-skills/README.md)：包含 27 个 Matt 中文技能和 5 个定制 Ghost Matt 技能，附独立的 DSH 安装与加载验证。
+DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-matt-skills/README.md)：包含 27 个 Matt 中文原版技能，附独立的 DSH 安装与加载验证。
 
 这是一个 agent marketplace 工作区，包含 Claude Code / Codex 可安装插件，并以 Git submodule 跟踪 Microsoft SkillOpt。
 
@@ -10,9 +10,6 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `configure-gh-account`：复用已登录的 gh 凭据，为目标项目的 `.codex/config.toml` 配置独立账号目录，支持多个仓库并行操作 GitHub
 - `compile-feature-knowledge`：把确认结论与验收证据合并为长期维护的 OKF 功能档案
-- `ghost-implement-spec`：复用 Matt 的工单调度，以独立 worktree 实施、串行合入用户本地目标分支并审查交付，不使用 PR；Codex 子代理固定为 `gpt-5.6-terra/xhigh`，Claude Code 子代理固定为 Sonnet
-- `ghos-matt-test-report`：子代理按 spec/ticket 分组汇总全部测试与已有结果，条目多时显示通过 N/M
-- `ghos-matt-run-test`：子代理执行指定测试，主线程检查实现、架构及需求偏差，提出修复方案
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
@@ -38,11 +35,9 @@ ghost-agent-market/
 │       │   ├── .claude-plugin/plugin.json
 │       │   └── skills/
 │       │       ├── compile-feature-knowledge/
+│       │       ├── configure-gh-account/
 │       │       ├── git-commit/
-│       │       ├── git-merge-conflict/
-│       │       ├── ghost-implement-spec/
-│       │       ├── ghos-matt-test-report/
-│       │       └── ghos-matt-run-test/
+│       │       └── git-merge-conflict/
 │       └── mattpocock-skills-zh/
 │           └── skills/
 └── codex-market/
@@ -103,7 +98,5 @@ codex-market/.agents/plugins/marketplace.json
 ## 安装 ZCode Marketplace
 
 ZCode 兼容读取 Claude 格式的 marketplace 与插件清单，无需单独维护 ZCode 副本。在 ZCode 客户端打开 **Settings → Plugin Management → Discover**，点击 **`+`** 添加 GitHub 仓库 `Ghost233/ghost-agent-market`，然后在 Discover 列表中安装 `ghost-agent-skills` 与 `mattpocock-skills-zh`。
-
-`ghos-matt-test-report` 与 `ghos-matt-run-test` 在 ZCode 调用 `zcode-agents/` 中的专用子代理，模型固定为 `glm-5.3-flash`；测试结果的最终分析与修复方案仍由主线程负责。
 
 如果添加或安装时克隆、下载失败，先为 ZCode 设置代理环境变量 `ZCODE_HTTP_PROXY=http://host:port`（裸 `http_proxy` 不会被读取），再重试。

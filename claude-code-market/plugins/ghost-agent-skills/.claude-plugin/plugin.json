@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "以 Sonnet 子代理实施规格、汇总测试状态和执行指定测试，由主线程分析修复方案；同时管理 Git 改动、复杂合并冲突与功能知识。",
-  "version": "0.3.9",
+  "description": "管理 Git 提交、复杂合并冲突、功能知识与项目 GitHub 账号配置。",
+  "version": "0.4.0",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -24,12 +24,9 @@
     "merge-conflict",
     "history-archaeology",
     "feature-knowledge",
+    "compile-feature-knowledge",
     "okf",
     "knowledge-maintenance",
-    "configure-gh-account",
-    "ghost-implement-spec",
-    "spec-implementation",
-    "ghos-matt-test-report",
-    "ghos-matt-run-test"
+    "configure-gh-account"
   ]
 }

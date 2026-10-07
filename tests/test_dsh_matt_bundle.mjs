@@ -15,9 +15,9 @@ const { Context } = await import(pathToFileURL(requireRuntime.resolve('@deepseek
 const { default: SkillRegistry, renderSkillContent, isModelInvocable, isUserInvocable } = await import(pathToFileURL(requireRuntime.resolve('@deepseek-ai/dsh-skill')));
 const bundle = await import(pathToFileURL(join(bundlePath, 'index.mjs')));
 const catalog = JSON.parse(readFileSync(join(bundlePath, 'catalog.json'), 'utf8'));
-assert.equal(catalog.skills.length, 32);
+assert.equal(catalog.skills.length, 27);
 assert.equal(catalog.skills.filter(s => s.group === 'mattpocock-skills-zh').length, 27);
-assert.equal(catalog.skills.filter(s => s.group === 'ghost-matt').length, 5);
+assert(catalog.skills.every(s => s.group === 'mattpocock-skills-zh'));
 assert.deepEqual(readdirSync(join(bundlePath, 'skills')).sort(), catalog.skills.map(s => s.name).sort());
 for (const file of catalog.files) {
   assert(existsSync(join(bundlePath, file.target)), file.target);
@@ -30,7 +30,7 @@ const mounted = await ctx.plugin(bundle);
 try {
   const snapshot = await ctx.skills.snapshot();
   assert.equal(snapshot.complete, true);
-  assert.equal(snapshot.skills.length, 32);
+  assert.equal(snapshot.skills.length, 27);
   for (const expected of catalog.skills) {
     const skill = await ctx.skills.get(expected.name);
     assert(skill, expected.name);
@@ -44,14 +44,14 @@ try {
       if (!match[1].includes('://')) assert(existsSync(resolve(skill.resourceBase.path, match[1])), expected.name + ': ' + match[1]);
     }
   }
-  assert.equal((await ctx.skills.get('ghost-matt-implement')).invocation.modelInvocable, false);
+  assert.equal((await ctx.skills.get('implement-spec')).invocation.modelInvocable, false);
   assert.equal((await ctx.skills.get('tdd')).invocation.modelInvocable, true);
   await mounted.dispose();
   assert.equal((await ctx.skills.list()).length, 0, 'Unload must remove all contributions.');
   const reloaded = await ctx.plugin(bundle);
-  assert.equal((await ctx.skills.list()).length, 32, 'Reload must not duplicate contributions.');
+  assert.equal((await ctx.skills.list()).length, 27, 'Reload must not duplicate contributions.');
   await reloaded.dispose();
-  console.log('PASS: 32 skills, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
+  console.log('PASS: 27 original skills, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
 } finally {
   await mounted.dispose();
   await registry.dispose();
