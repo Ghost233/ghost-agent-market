@@ -1,11 +1,11 @@
 ---
 name: configure-gh-account
-description: "为项目配置独立的 gh 账号环境，复用已登录凭据并将 GH_CONFIG_DIR 写入项目的 .codex/config.toml；用于多个仓库并行操作 GitHub 时固定各自账号。"
+description: "为项目配置独立的 Git 与 gh 账号，写入 Git 本地提交身份和 HTTPS 认证，并将 GH_CONFIG_DIR 写入项目的 .codex/config.toml；用于多个仓库并行操作 GitHub 时固定各自账号。"
 ---
 
 # 配置项目 GitHub 账号
 
-为目标仓库配置 GitHub.com 账号，配置入口固定为项目根目录的 `.codex/config.toml`。账号配置目录位于用户目录，项目文件只保存绝对路径。默认 gh 配置和其他项目的账号选择保持不变。
+为目标仓库配置 GitHub.com 账号：Codex 环境写入项目根目录的 `.codex/config.toml`，提交身份和 GitHub HTTPS 认证写入 Git `--local` 配置。账号目录位于用户目录，配置文件只保存路径及账号信息。默认 gh 配置、Git 全局配置和其他项目的账号选择保持不变。
 
 平台范围：本 skill 在 Claude Code 和 Codex 发布同一内容；Claude Code / ZCode 调用时也配置目标项目的 Codex 环境，配置不会自动作用于它们自身或普通终端。
 
@@ -15,8 +15,9 @@ description: "为项目配置独立的 gh 账号环境，复用已登录凭据�
 - 读取目标项目的账号约束、已有 `.codex/config.toml`、根目录 `.gitignore` 和有效的 shell 环境设置。用 `git ls-files -- .codex/config.toml` 确认配置是否已跟踪；保留模型、权限、MCP、插件等其他配置，以及 TOML 注释。
 - 账号以用户明确选择或项目明确约束为准；已有 `GH_CONFIG_DIR` 中的实际登录可用于确认当前绑定。仓库 owner、组织名和提交邮箱不能替代登录身份。选择仍不明确时，列出已登录账号并询问一次。
 - 查询已登录账号时显式指定凭据来源目录，并清除本次命令的 `GH_TOKEN`、`GITHUB_TOKEN` 覆盖。使用隐藏 token 的 `gh auth status` 输出；凭据仅在后续导入过程中读取。
+- 读取项目要求与现有 `git config --local user.name`、`user.email`，确定提交姓名和邮箱。优先使用用户明确给出的值或项目规定；已有本地值只在确认属于所选账号时复用，不能照搬全局身份。仍缺失时，在验证后的账号环境中查询 `user` 和 `user/emails` 的已验证主邮箱；接口无权限或没有合适值时，一次性询问缺失的姓名、邮箱，不拼造邮箱或自动扩大 token 权限。
 
-完成条件：目标根目录、GitHub 登录名、凭据来源目录和账号配置目录都已确定。默认账号目录为 `${XDG_CONFIG_HOME:-$HOME/.config}/gh-profiles/<登录名>`，写入 TOML 前展开为绝对路径。
+完成条件：目标根目录、GitHub 登录名、凭据来源目录和账号配置目录都已确定；提交姓名、邮箱有明确来源，在 Git 写入前补齐。默认账号目录为 `${XDG_CONFIG_HOME:-$HOME/.config}/gh-profiles/<登录名>`，写入 TOML 前展开为绝对路径。
 
 ## 2. 复用并验证登录
 
@@ -50,14 +51,30 @@ GITHUB_TOKEN = "exclude"
 
 完成条件：有效设置选择目标账号目录，token 覆盖已消除，配置已被 Git 忽略且未被跟踪，原有环境过滤和其他配置仍保留。已跟踪状态未解决时明确交付剩余事项。此操作不安装命令 hook，也不改变用户级 Codex 默认配置。
 
-## 4. 核对 Git 与交付
+## 4. 写入 Git 本地配置
+
+姓名、邮箱确定且账号验证通过后，使用本技能的 [Git 本地配置脚本](scripts/configure_local_git.py)。先将 `SKILL_ROOT` 设置为本技能所在目录，其他变量使用前面确定的真实值：
+
+```bash
+python3 "$SKILL_ROOT/scripts/configure_local_git.py" \
+  --project "$project_root" --account "$profile_account" \
+  --profile "$profile_dir" --name "$git_name" --email "$git_email"
+```
+
+脚本将 `user.name`、`user.email` 写入目标仓库的 `--local` 配置。GitHub HTTPS 远程会绑定显式账号目录的 `gh auth git-credential`，先用空 helper 重置继承链，再设置固定 helper；匹配远程 URL 的本地条目覆盖更具体的继承设置。helper 清除 token 环境覆盖，token 仍由 gh 保存，不写入 Git 配置。已有 GitHub helper 不再决定本仓库的账号，其他 host 的设置保留。
+
+脚本不改变远程地址；发现 HTTPS URL 嵌入凭据或用户名与所选账号不一致时，在 Git 写入前停止并报告。SSH 远程继续使用已有 SSH 配置，报告其认证仍需单独验证，不自动迁移协议或创建 key。
+
+完成条件：`git config --local --get user.name`、`user.email` 与确定值一致；用 `git var GIT_AUTHOR_IDENT` 核对有效身份，环境或 worktree 配置有覆盖时报告具体来源，不声称已经生效。GitHub HTTPS helper 已绑定所选目录，重复执行不积累 helper 条目。
+
+## 5. 核对 Git 与交付
 
 配置影响 Codex 启动的命令，不会自动改变当前聊天已经加载的环境。先以显式账号目录验证 `gh api ... user --jq .login`，再核对项目文件；说明新开该仓库的聊天后用 `printenv GH_CONFIG_DIR` 和同一 API 命令确认实际加载。项目需受信任；不替用户全局信任目录。
 
-检查 Git 远程协议和有效 credential helper。HTTPS 经 `gh auth git-credential` 获取凭据时可继承该环境；其他 helper 可能抢先提供凭据，SSH 则使用自己的 key。只配置 Codex 环境时保留 Git 作者、远程地址及 helper；若 Git 认证接线不足，明确报告尚需配置。只有用户同时要求配置 Git 认证时，才修改对应仓库的本地 helper，保留其他 host 的设置。
+核对 GitHub HTTPS 远程的有效 username/helper，包括 URL 匹配条目。需要验证真实 Git 认证身份时，以 `GIT_TERMINAL_PROMPT=0` 调用 `git credential fill`，在进程内捕获密码，再用该凭据查询 GitHub `user`；只输出登录名和校验结果，不打印 credential 输出、token 或带凭据的 URL。SSH 和其他 host 按实际认证方式报告状态。
 
 `git ls-remote origin HEAD` 可验证远程读取；公开仓库读取成功不能证明认证账号，也不能证明推送权限。只在实际协议和 helper 接线有证据时报告 Git 已使用所选账号。多项目请求分别验证各自目录与实际登录，默认 gh 配置保持不变。
 
-交付目标配置文件、账号与目录、`.gitignore` 规则及实际跟踪状态、验证结果，以及新聊天的生效检查或 Git 尚需处理的部分。仅创建本 skill 时，不执行真实账号配置；账号目录初始化是调用本 skill 时的工作。
+交付目标配置文件、账号与目录、Git 本地姓名/邮箱及认证绑定、`.gitignore` 规则及实际跟踪状态、验证结果，以及新聊天的生效检查或 Git 尚需处理的部分。仅创建或更新本 skill 时，不执行真实账号配置；账号目录初始化和 Git 本地写入是调用本 skill 时的工作。
 
-官方依据：[gh 环境变量](https://cli.github.com/manual/gh_help_environment)、[Codex 项目配置与 shell 环境](https://learn.chatgpt.com/docs/config-file/config-advanced)。
+官方依据：[gh 环境变量](https://cli.github.com/manual/gh_help_environment)、[Codex 项目配置与 shell 环境](https://learn.chatgpt.com/docs/config-file/config-advanced)、[Git 凭据匹配与 helper](https://git-scm.com/docs/gitcredentials)。

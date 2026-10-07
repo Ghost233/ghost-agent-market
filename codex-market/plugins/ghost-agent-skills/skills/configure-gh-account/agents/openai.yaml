@@ -1,4 +1,4 @@
 interface:
   display_name: "配置项目 GitHub 账号"
-  short_description: "复用已登录的 gh 凭据，为项目配置可并行使用的 GitHub 账号。"
-  default_prompt: "使用 $configure-gh-account 为当前仓库选择 GitHub 账号，并将 GH_CONFIG_DIR 配置到项目的 .codex/config.toml。"
+  short_description: "配置 Git 本地提交身份和认证，复用 gh 登录隔离项目账号。"
+  default_prompt: "使用 $configure-gh-account 为当前仓库配置 Git 本地身份和认证，并将 gh 账号环境写入项目的 .codex/config.toml。"

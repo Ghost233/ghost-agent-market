@@ -11,7 +11,7 @@
       "name": "ghost-agent-skills",
       "source": "./claude-code-market/plugins/ghost-agent-skills",
       "description": "Git commits, merge-conflict resolution, and per-project GitHub account configuration.",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"

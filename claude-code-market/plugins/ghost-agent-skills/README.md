@@ -4,7 +4,7 @@
 
 推荐入口：
 
-另提供 \`configure-gh-account\`，复用已有 gh 登录并配置目标项目的 \`.codex/config.toml\`。该配置用于 Codex，不自动改变 Claude Code / ZCode 的命令环境。
+另提供 \`configure-gh-account\`，配置 Git 本地提交身份和 HTTPS 认证，复用已有 gh 登录并配置目标项目的 \`.codex/config.toml\`。项目 TOML 用于 Codex，不自动改变 Claude Code / ZCode 的命令环境。
 
 \`\`\`text
 /ghost-agent-skills:git-commit 检查当前改动并创建清晰的 Git 提交

@@ -9,7 +9,7 @@
 
 - `git-commit`
 - `git-merge-conflict`
-- `configure-gh-account`：配置项目的 Codex GitHub 账号环境，复用已有 gh 登录并验证身份
+- `configure-gh-account`：配置 Git 本地身份、HTTPS 认证和 Codex 账号环境，复用已有 gh 登录并验证身份
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。安装一个 plugin 即可加载整批 skill。
 
