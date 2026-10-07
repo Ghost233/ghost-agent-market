@@ -12,7 +12,7 @@ description: "为项目配置独立的 gh 账号环境，复用已登录凭据�
 ## 1. 确定项目与账号
 
 - 按用户指定路径定位 Git 根目录；未指定时使用当前仓库。只处理获准的目标项目。
-- 读取目标项目的账号约束、已有 `.codex/config.toml` 和有效的 shell 环境设置。保留模型、权限、MCP、插件等其他配置，以及 TOML 注释。
+- 读取目标项目的账号约束、已有 `.codex/config.toml`、根目录 `.gitignore` 和有效的 shell 环境设置。用 `git ls-files -- .codex/config.toml` 确认配置是否已跟踪；保留模型、权限、MCP、插件等其他配置，以及 TOML 注释。
 - 账号以用户明确选择或项目明确约束为准；已有 `GH_CONFIG_DIR` 中的实际登录可用于确认当前绑定。仓库 owner、组织名和提交邮箱不能替代登录身份。选择仍不明确时，列出已登录账号并询问一次。
 - 查询已登录账号时显式指定凭据来源目录，并清除本次命令的 `GH_TOKEN`、`GITHUB_TOKEN` 覆盖。使用隐藏 token 的 `gh auth status` 输出；凭据仅在后续导入过程中读取。
 
@@ -44,8 +44,11 @@ GITHUB_TOKEN = "exclude"
 - 存在 include 白名单时，将 `GH_CONFIG_DIR` 纳入白名单，保留其他条目；规范过滤键按大小写不敏感处理，避免重复键。
 - 显式 `set` 在排除之后生效。检查项目层及继承层是否设置了这两个 token；有覆盖时，在项目的 `set` 中将对应值设为空字符串，避免继承凭据恢复。其他环境变量保持原值。
 - 项目层若已有无效 TOML、互斥过滤配置或受管理策略限制，先报告具体问题；只修复本次账号配置所需的部分，不重写整个配置文件。
+- 将本机配置加入目标仓库根目录 `.gitignore`：已有有效忽略规则则复用，否则追加精确规则 `/.codex/config.toml`。保留其他规则与注释，不重复添加条目，也不扩大为忽略整个 `.codex/`。
+- `.gitignore` 对已跟踪文件不生效。配置已跟踪时，先说明现有配置可能包含共享设置；用户已明确要求停止跟踪时，执行 `git rm --cached -- .codex/config.toml` 并保留磁盘文件。授权不明确时，先交付忽略规则，报告仍在跟踪，待用户决定后再写入本机账号路径。
+- 用 `git check-ignore -q -- .codex/config.toml` 和 `git ls-files -- .codex/config.toml` 核对配置确实被忽略且未被跟踪；需要定位规则时使用 `git check-ignore -v`。已跟踪文件只添加了规则时，不能报告忽略已经生效。
 
-完成条件：有效设置选择目标账号目录，token 覆盖已消除，原有环境过滤和其他配置仍保留。此操作不安装命令 hook，也不改变用户级 Codex 默认配置。
+完成条件：有效设置选择目标账号目录，token 覆盖已消除，配置已被 Git 忽略且未被跟踪，原有环境过滤和其他配置仍保留。已跟踪状态未解决时明确交付剩余事项。此操作不安装命令 hook，也不改变用户级 Codex 默认配置。
 
 ## 4. 核对 Git 与交付
 
@@ -55,6 +58,6 @@ GITHUB_TOKEN = "exclude"
 
 `git ls-remote origin HEAD` 可验证远程读取；公开仓库读取成功不能证明认证账号，也不能证明推送权限。只在实际协议和 helper 接线有证据时报告 Git 已使用所选账号。多项目请求分别验证各自目录与实际登录，默认 gh 配置保持不变。
 
-交付目标配置文件、账号与目录、验证结果，以及新聊天的生效检查或 Git 尚需处理的部分。仅创建本 skill 时，不执行真实账号配置；账号目录初始化是调用本 skill 时的工作。
+交付目标配置文件、账号与目录、`.gitignore` 规则及实际跟踪状态、验证结果，以及新聊天的生效检查或 Git 尚需处理的部分。仅创建本 skill 时，不执行真实账号配置；账号目录初始化是调用本 skill 时的工作。
 
 官方依据：[gh 环境变量](https://cli.github.com/manual/gh_help_environment)、[Codex 项目配置与 shell 环境](https://learn.chatgpt.com/docs/config-file/config-advanced)。
