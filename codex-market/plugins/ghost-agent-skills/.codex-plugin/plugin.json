@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.4.1+codex.20261006154712",
+  "version": "0.4.3+codex.20261007122744",
   "description": "\u4e2d\u6587\u89c4\u683c\u89c4\u5212\u3001\u4efb\u52a1\u62c6\u89e3\u3001\u5f53\u524d\u5206\u652f\u5e76\u884c\u5f00\u53d1\u3001\u72ec\u7acb\u6d4b\u8bd5\u4e0e\u8bc1\u636e\u6c47\u62a5\uff1bCodex \u8bd5\u7528\u7248\uff0cClaude \u5f85\u9a8c\u8bc1\u540e\u540c\u6b65\u3002",
   "author": {
     "name": "Ghost233",
@@ -27,6 +27,7 @@
     "feature-knowledge",
     "okf",
     "knowledge-maintenance",
+    "configure-gh-account",
     "spec-implementation",
     "ghost-matt-spec",
     "ghost-matt-ticket",

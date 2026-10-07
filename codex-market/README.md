@@ -5,10 +5,11 @@
 - `ghost-agent-skills`
 - `mattpocock-skills-zh`
 
-`ghost-agent-skills` 包含八个独立 skill：
+`ghost-agent-skills` 包含九个独立 skill：
 
 - `git-commit`
 - `git-merge-conflict`
+- `configure-gh-account`：配置项目的 Codex GitHub 账号环境，复用已有 gh 登录并验证身份
 - `compile-feature-knowledge`
 - `ghost-matt-spec`：规划规格、模块合同与验收标准
 - `ghost-matt-ticket`：拆解任务、依赖与并行边界
