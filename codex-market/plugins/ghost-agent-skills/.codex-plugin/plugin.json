@@ -1,6 +1,6 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.4.8+codex.20261007153959",
+  "version": "0.5.0+codex.20261008025432",
   "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置与 spec 开发交付。",
   "author": {
     "name": "Ghost233",
