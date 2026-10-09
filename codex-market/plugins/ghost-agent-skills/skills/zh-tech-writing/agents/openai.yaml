@@ -1,0 +1,4 @@
+interface:
+  display_name: "中文技术文档写作"
+  short_description: "编写和修改中文技术文档，检查句子、结构、排版和 AI 腔。"
+  default_prompt: "使用 $zh-tech-writing 编写或修改中文技术文档，并按写作规范检查全文。"

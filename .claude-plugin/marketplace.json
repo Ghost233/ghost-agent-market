@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./claude-code-market/plugins/ghost-agent-skills",
-      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, and spec delivery.",
-      "version": "0.4.6",
+      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, spec delivery, and Chinese technical writing.",
+      "version": "0.4.7",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -28,7 +28,8 @@
         "claude-code",
         "read-only-analysis",
         "configure-gh-account",
-        "spec-delivery"
+        "spec-delivery",
+        "zh-tech-writing"
       ]
     },
     {

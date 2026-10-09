@@ -1,6 +1,6 @@
 # Ghost Agent Skills Claude Code 插件
 
-包含 \`configure-gh-account\`、\`git-commit\`、\`git-merge-conflict\` 和 \`spec-delivery\` 四个独立 skill。
+包含 \`configure-gh-account\`、\`git-commit\`、\`git-merge-conflict\`、\`spec-delivery\` 和 \`zh-tech-writing\` 五个独立 skill。
 
 推荐入口：
 
@@ -11,6 +11,9 @@
 /ghost-agent-skills:git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突
 /ghost-agent-skills:configure-gh-account 为目标项目配置 Codex GitHub 账号环境
 /ghost-agent-skills:spec-delivery 并行实施已确认 spec，逐阶段审查复盘并提交总 PR
+/ghost-agent-skills:zh-tech-writing 编写或修改中文技术文档
 \`\`\`
 
 `spec-delivery` 依赖 `mattpocock-skills-zh` 插件。
+
+`zh-tech-writing` 引自 [leter/zh-tech-writing](https://github.com/leter/zh-tech-writing)，同步自上游 [ffda935](https://github.com/leter/zh-tech-writing/commit/ffda9353768dece8aabd26ccb3a4978025e9437c)。保留原始 skill、参考文档和 MIT 许可文件。`autocorrect` 是可选工具；未安装时按 skill 规则手动检查排版。
