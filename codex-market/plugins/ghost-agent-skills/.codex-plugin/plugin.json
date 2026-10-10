@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.5.1+codex.20261009123930",
-  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、spec 开发交付与中文技术文档写作。",
+  "version": "0.5.4+codex.20261010042257",
+  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -26,13 +26,15 @@
     "history-archaeology",
     "configure-gh-account",
     "spec-delivery",
-    "zh-tech-writing"
+    "zh-tech-writing",
+    "container-dev-workflow",
+    "apple-container"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "Git 提交、合并冲突、账号配置、spec 交付与中文技术文档写作。",
-    "longDescription": "五个独立技能：安全创建 Git 提交、解决复杂合并冲突、配置项目 GitHub 账号环境、按 spec 并行实施与交付，以及编写和修改中文技术文档。",
+    "shortDescription": "Git 提交、合并冲突、账号配置、spec 交付、容器化开发、Apple 容器操作和中文技术文档写作。",
+    "longDescription": "七个独立技能：安全创建 Git 提交、解决复杂合并冲突、配置项目 GitHub 账号环境、按 spec 并行实施与交付、遵循项目现有容器开发流程、使用本机 Apple container 和 Orchard，以及编写和修改中文技术文档。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
@@ -43,6 +45,8 @@
       "使用 $git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突。",
       "使用 $configure-gh-account 为当前项目配置独立的 GitHub 账号环境。",
       "使用 $spec-delivery 并行实施已确认的 spec，逐阶段审查复盘并提交总 PR。",
+      "使用 $container-dev-workflow，按当前项目的容器指引和检查入口完成本次开发与验证。",
+      "使用 $apple-container，按项目入口使用本机 Apple container 与 Orchard 运行、构建和诊断容器。",
       "使用 $zh-tech-writing 编写或修改中文技术文档。"
     ]
   }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "本机 Apple container / Orchard"
+  short_description: "使用 Orchard 与 Apple container 原生命令运行、构建和诊断本机容器"
+  default_prompt: "使用 $apple-container，按项目入口使用本机 Apple container 与 Orchard 运行、构建和诊断容器。"

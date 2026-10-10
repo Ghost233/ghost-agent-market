@@ -13,7 +13,7 @@ CODEX_MATT = ROOT / "codex-market/plugins/mattpocock-skills-zh"
 CLAUDE_MATT = ROOT / "claude-code-market/plugins/mattpocock-skills-zh"
 GHOST_SKILLS = {
     "git-commit", "git-merge-conflict", "configure-gh-account", "spec-delivery",
-    "zh-tech-writing",
+    "zh-tech-writing", "container-dev-workflow", "apple-container",
 }
 
 

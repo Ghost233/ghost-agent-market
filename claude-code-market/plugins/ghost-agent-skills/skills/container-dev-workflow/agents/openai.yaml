@@ -1,0 +1,4 @@
+interface:
+  display_name: "容器化开发流程"
+  short_description: "使用项目容器入口，按输入变化准备依赖、构建、验证和更新产物"
+  default_prompt: "使用 $container-dev-workflow，按当前项目的容器指引和检查入口完成本次开发与验证。"

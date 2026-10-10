@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from typing import Optional
 import unittest
 
 
@@ -29,7 +30,7 @@ class GitMergeConflictScriptTests(unittest.TestCase):
     def git(
         self,
         *args: str,
-        cwd: Path | None = None,
+        cwd: Optional[Path] = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -50,7 +51,7 @@ class GitMergeConflictScriptTests(unittest.TestCase):
     def run_script(
         self,
         *args: str,
-        cwd: Path | None = None,
+        cwd: Optional[Path] = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", str(SCRIPT), *args],

@@ -51,6 +51,12 @@ git config user.email
 - `codex-market/`：Codex 本地 marketplace/plugin 入口
 - `SkillOpt/`：`microsoft/SkillOpt` Git submodule
 
+## 容器化开发
+
+用户或项目指引已要求容器化开发时，读取并遵循 [container-dev-workflow](codex-market/plugins/ghost-agent-skills/skills/container-dev-workflow/SKILL.md)。具体命令使用项目容器指引与现有检查入口。
+
+使用本机原生容器时，读取并遵循 [apple-container](codex-market/plugins/ghost-agent-skills/skills/apple-container/SKILL.md)。服务器继续遵循项目的 Docker / Docker Compose 指引。
+
 ## Skill 同步规则
 
 更新两端共有的 skill 内容时，必须按其所属插件同步 Claude Code 和 Codex 对应内容。

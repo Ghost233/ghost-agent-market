@@ -5,11 +5,13 @@
 - `ghost-agent-skills`
 - `mattpocock-skills-zh`
 
-`ghost-agent-skills` 包含三个独立 skill：
+`ghost-agent-skills` 提供以下独立 skill 入口：
 
 - `git-commit`
 - `git-merge-conflict`
 - `configure-gh-account`：配置 Git 本地身份、HTTPS 认证和 Codex 账号环境，复用已有 gh 登录并验证身份
+- `container-dev-workflow`：使用项目现有容器入口，按输入变化准备依赖、构建、验证和更新产物
+- `apple-container`：使用 Orchard、Apple container 和原生 Compose 操作本机容器
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。安装一个 plugin 即可加载整批 skill。
 
