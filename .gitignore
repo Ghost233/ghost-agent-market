@@ -1,6 +1,5 @@
 .DS_Store
 .codebase-memory/
-.skillopt-reinforce/
 .ghost-agent-workflow/*
 !.ghost-agent-workflow/.gitignore
 !.ghost-agent-workflow/config.json

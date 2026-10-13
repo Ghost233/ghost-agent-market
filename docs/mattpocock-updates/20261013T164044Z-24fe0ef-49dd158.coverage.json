@@ -1,0 +1,2534 @@
+{
+  "upstream_commit": "49dd158d1076134a641b33efb035946536778336",
+  "files": [
+    {
+      "source": ".agents/adr/0001-explicit-setup-pointer-only-for-hard-dependencies.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.agents/adr/0001-explicit-setup-pointer-only-for-hard-dependencies.md"
+      ],
+      "status": "translated",
+      "source_sha256": "8f60cf9bf19f1ee8cc09a15c2e06e1d7a9cb51f79d9a273dd9b20b8a2a494f80",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.agents/adr/0001-explicit-setup-pointer-only-for-hard-dependencies.md": "b84e49535bc33d8b79a496aec9105cda4c98b184074a3cd40c13d443636d1c84"
+      }
+    },
+    {
+      "source": ".agents/adr/0002-ship-as-a-claude-code-plugin.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.agents/adr/0002-ship-as-a-claude-code-plugin.md"
+      ],
+      "status": "translated",
+      "source_sha256": "75216252f259880e7121b75bab2b8d9a571dcbd0bc4dafcc014232c73e295fd4",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.agents/adr/0002-ship-as-a-claude-code-plugin.md": "20754d295274ee38946b1beb57b8bc2ba45dec3585ebb2610ab93bcded1850c6"
+      }
+    },
+    {
+      "source": ".agents/install-block.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.agents/install-block.md"
+      ],
+      "status": "translated",
+      "source_sha256": "1cc0c600e68b745613c2d9b0b348c28da28b53e16bd99301c8e5c586ff0dfdc9",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.agents/install-block.md": "f5d79f2961673f27cd97aafb8660c4f9d375af10b948dbd69aef44d8ec4fc285"
+      }
+    },
+    {
+      "source": ".agents/invocation.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.agents/invocation.md"
+      ],
+      "status": "translated",
+      "source_sha256": "a8ee3ff9cab8fe247c5de4312320117c001df548960970a2769856349ec09402",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.agents/invocation.md": "07cd96bb82807a66405a0f2b97d2784123416b3333753dc5b86ddea3004df3e5"
+      }
+    },
+    {
+      "source": ".agents/writing-docs.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.agents/writing-docs.md"
+      ],
+      "status": "translated",
+      "source_sha256": "5ab85d0351589f5d9bc3b05b3735d7cbe342b75cf2fb5dc6b489e6099566bfd0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.agents/writing-docs.md": "579480f38fd905cc1ff39276ba4a76d6f74f616c6620c44a9e5fdadf4be1cd70"
+      }
+    },
+    {
+      "source": ".changeset/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/README.md"
+      ],
+      "status": "translated",
+      "source_sha256": "495bd4805f8362853bce99689c1cd75db8c475dfa38930619d2e197d7554db27",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/README.md": "c2b12b4bc294e004147f58212330baa1f1984267ed250ebec49b03a257fccb63"
+      }
+    },
+    {
+      "source": ".changeset/ask-matt-read-skill-first.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/ask-matt-read-skill-first.md"
+      ],
+      "status": "translated",
+      "source_sha256": "a9a8434022e8ba4334c41f80f8f01a04f4a6cd19b8f9b9415f6ab67922979e08",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/ask-matt-read-skill-first.md": "0bb280be834e250d70667a908ee5d1d7351a06ff751cdc7fbccaedf16398a3a5"
+      }
+    },
+    {
+      "source": ".changeset/code-review-standards-and-subagents.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/code-review-standards-and-subagents.md"
+      ],
+      "status": "translated",
+      "source_sha256": "c5fb24a1b485436d13a67513d4386705d6a2191685d1e71d521c3083b1157de4",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/code-review-standards-and-subagents.md": "fed46d0fa2f10c0b3ba9a97751a47c9a8e6ac5f8dee868911b8828fe3e8f090d"
+      }
+    },
+    {
+      "source": ".changeset/config.json",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/config.json"
+      ],
+      "status": "original-code",
+      "reason": "纯配置或代码，无需翻译的自然语言；按原文和权限保留。",
+      "source_sha256": "61717b21675ba9d99f0fc363253ead2716895a4c043c779727d8c685d48684e8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/config.json": "61717b21675ba9d99f0fc363253ead2716895a4c043c779727d8c685d48684e8"
+      }
+    },
+    {
+      "source": ".changeset/diagnosing-bugs-prove-mutation.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/diagnosing-bugs-prove-mutation.md"
+      ],
+      "status": "translated",
+      "source_sha256": "644051db39329181784bd1e403520b32c3e5e0a04f9421ae21dc2f52e33a4f08",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/diagnosing-bugs-prove-mutation.md": "a0a5a96f4451918198a3944efe6f718962133b381012eea763c451cc1df4f00a"
+      }
+    },
+    {
+      "source": ".changeset/github-tracker-external-pr-list.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/github-tracker-external-pr-list.md"
+      ],
+      "status": "translated",
+      "source_sha256": "68ee9e72fe623788e5f43dafaa8ba7fee68369ac994f1404fe6dbd9381f0caf6",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/github-tracker-external-pr-list.md": "7a5aa9ea8d5f58a9b830c747d2e7961910cfd86d45828f393ca34976164997b4"
+      }
+    },
+    {
+      "source": ".changeset/grilling-yes-accepts-recommendation.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/grilling-yes-accepts-recommendation.md"
+      ],
+      "status": "translated",
+      "source_sha256": "434cfe97ec2d4dbe2ca7ab004c55a46a8db6ee08228299161ad24b5e186422af",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/grilling-yes-accepts-recommendation.md": "0f056334166c288def2c55b2369d594a9fd80ef69a5345559351d74fbfd8b082"
+      }
+    },
+    {
+      "source": ".changeset/handoff-temp-dir.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/handoff-temp-dir.md"
+      ],
+      "status": "translated",
+      "source_sha256": "757c5b99ee36b11040294daa37bda957e7ebe30e1fa0c5114dc5bcfa561ac55a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/handoff-temp-dir.md": "7e90bf59013945361106eb376d612a9ae8e3ce78f37371d65093fe426dac93fb"
+      }
+    },
+    {
+      "source": ".changeset/implement-skill-tool-wording.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/implement-skill-tool-wording.md"
+      ],
+      "status": "translated",
+      "source_sha256": "8c1dd792b7d2880778fe21d2e921db657cb206293fdd01c1f8069c379c60a5c1",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/implement-skill-tool-wording.md": "bc152b494e440c7f82695a82d783515bd5139200d75c09dbf67916095d81f9b0"
+      }
+    },
+    {
+      "source": ".changeset/implement-ticket-reference.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/implement-ticket-reference.md"
+      ],
+      "status": "translated",
+      "source_sha256": "16d871f6ef8194ce116cc1685b06374affa38cde41ab9c5a7eb3691f9ebe0b07",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/implement-ticket-reference.md": "11afaf98e95f9cb31b5c5667b8fd366a165530d4eb738d6821bbc13b0c8958b8"
+      }
+    },
+    {
+      "source": ".changeset/setup-tracker-fixes.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/setup-tracker-fixes.md"
+      ],
+      "status": "translated",
+      "source_sha256": "e42b94eb34df86c315f91a4164b3ae132398a142eb2c56b9f4482d1c2b0244ac",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/setup-tracker-fixes.md": "2ab1628417eeb5d581abc18604aceb95b9084f6510b78e5956de67400fa07b11"
+      }
+    },
+    {
+      "source": ".changeset/tdd-seam-tradeoffs.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/tdd-seam-tradeoffs.md"
+      ],
+      "status": "translated",
+      "source_sha256": "403a418164dd58068949b26e0fd0d32bf40e5082334e127e540783159cb04f33",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/tdd-seam-tradeoffs.md": "a5d3c58cd63dcfcca0bb7f94e71b5362dc4873cf953e1bd29b47839134f8122a"
+      }
+    },
+    {
+      "source": ".changeset/teach-quiz-answer-position.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/teach-quiz-answer-position.md"
+      ],
+      "status": "translated",
+      "source_sha256": "23998e0c26d91a7c0fab1b20f3504af1d131ff56117493b4739aa676afd5732a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/teach-quiz-answer-position.md": "9d09bda2acba39aa4554d52e059b3b9bf0b13155f524aa0a3c6e775e59fbaddd"
+      }
+    },
+    {
+      "source": ".changeset/teach-workspace-root.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/teach-workspace-root.md"
+      ],
+      "status": "translated",
+      "source_sha256": "444f6b2cf0e39057200ad91260bac553bd41a954ca47aa7014e6b11520c3a801",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/teach-workspace-root.md": "a725d55a761a266c3950c3de089770bca22b70a500a3b41efae1132724e693ea"
+      }
+    },
+    {
+      "source": ".changeset/to-tickets-sub-issues.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/to-tickets-sub-issues.md"
+      ],
+      "status": "translated",
+      "source_sha256": "004c4f10285ffcd6e6c80509046ca50057a8791e1701dfaf60b6385ce4a28a41",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/to-tickets-sub-issues.md": "803015759360c4814c9eb5e5cf40b4674c1806698c45b2fac27165f227943f04"
+      }
+    },
+    {
+      "source": ".changeset/wayfinder-labels-refs-research-prs.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/wayfinder-labels-refs-research-prs.md"
+      ],
+      "status": "translated",
+      "source_sha256": "eb40737504c340c3795b6cc9854282f680b65b4ff8771812c3316c54100cf915",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/wayfinder-labels-refs-research-prs.md": "0e147249527c1716c012580761a018ed9fd957e2c1c7e75bdaecbbef0d0313d3"
+      }
+    },
+    {
+      "source": ".changeset/wizard-template-fixes-2.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/wizard-template-fixes-2.md"
+      ],
+      "status": "translated",
+      "source_sha256": "39b8d00c160176be980e5796964199dbdc94d264a23e9b838c29e9d1b775ae77",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/wizard-template-fixes-2.md": "b31b9e306f9df1a729946f39033e09b10c7cf54e7bea46614d56e1a1fb64ec73"
+      }
+    },
+    {
+      "source": ".changeset/wizard-template-fixes.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.changeset/wizard-template-fixes.md"
+      ],
+      "status": "translated",
+      "source_sha256": "1bd42c9701b035d9e658325eb0cc1ad2ec3fdf7145af287e7fa702ecb86b1e99",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.changeset/wizard-template-fixes.md": "54790956c3ac15d802bb6707519f223cdbcef02e9429f1ed2df96da7ebc92b16"
+      }
+    },
+    {
+      "source": ".claude-plugin/marketplace.json",
+      "targets": [
+        "docs/mattpocock-skills-zh/.claude-plugin/marketplace.json"
+      ],
+      "status": "original-config",
+      "reason": "上游版本、脚本和发布清单的原始机器配置；保留标识符及接口语义，中文说明见 README 和维护资料",
+      "source_sha256": "83e889fed719fc92dc17a4accc69beed7d6c28bc87ec064b515a90a030f72e13",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.claude-plugin/marketplace.json": "83e889fed719fc92dc17a4accc69beed7d6c28bc87ec064b515a90a030f72e13"
+      }
+    },
+    {
+      "source": ".claude-plugin/plugin.json",
+      "targets": [
+        "docs/mattpocock-skills-zh/.claude-plugin/plugin.json"
+      ],
+      "status": "original-config",
+      "reason": "上游版本、脚本和发布清单的原始机器配置；保留标识符及接口语义，中文说明见 README 和维护资料",
+      "source_sha256": "15a5a7227915917856ea019ad82584ee877309b5bc3cabfb86b83b7e2cc6e238",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.claude-plugin/plugin.json": "15a5a7227915917856ea019ad82584ee877309b5bc3cabfb86b83b7e2cc6e238"
+      }
+    },
+    {
+      "source": ".github/ISSUE_TEMPLATE/bug.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/bug.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "c80f1a2a403e9df89be8d2ae705f72d4b2234e7d9faa14d2f43dd9081205e735",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/bug.yml": "3bf8dd07430d69397aeed0a59c732716cdc027813bc80138cc94ca23a6cc50f0"
+      }
+    },
+    {
+      "source": ".github/ISSUE_TEMPLATE/config.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/config.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "28bccadc3e34198eb01e7cd368db628b7b528a69f11a86e6d08577e969e56a99",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/config.yml": "5de525bb9463b1c18a0546e2a7dac5f3f4b6a7ceb9fd6c8968f75c98d8581dfd"
+      }
+    },
+    {
+      "source": ".github/ISSUE_TEMPLATE/idea.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/idea.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "fe1f9d7efcfd0062e467bf4783787f53bf6e01322c89c226ff2048abcd3f9bd0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/ISSUE_TEMPLATE/idea.yml": "4b92575297eedb9b233501867b8d521ee8ced4c705ae8b136f9c3bcbe71ad2a5"
+      }
+    },
+    {
+      "source": ".github/workflows/needs-info.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/workflows/needs-info.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "d1f57c0e864694e66f319bf9c3d7096a019b47bcf4d59fe5e747074c429a2f67",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/workflows/needs-info.yml": "7e506e2826288fea1d2212ede2d71356c62a474e4bf1311c46e1ed406bdebb40"
+      }
+    },
+    {
+      "source": ".github/workflows/release.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/workflows/release.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "73ce81a83de90d93a63272dae7e1a3ff8d57dc2f8e99424694289dc7174eec46",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/workflows/release.yml": "892e0918c520265e3584dacede7564ae9b802303fb179a1001dbc323d13aa20d"
+      }
+    },
+    {
+      "source": ".github/workflows/triage-label.yml",
+      "targets": [
+        "docs/mattpocock-skills-zh/.github/workflows/triage-label.yml"
+      ],
+      "status": "translated",
+      "reason": "维护参考副本，不是本仓库启用的 GitHub workflow",
+      "source_sha256": "d17784874e9b37e7e90743f5fa019ecd3a9b31e0623a4014a2aa68782eef330e",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.github/workflows/triage-label.yml": "e9a727697bdfb0f9392b1c9c5ee3f2627e098f21e8997e3fa57b65d1b106038a"
+      }
+    },
+    {
+      "source": ".gitignore",
+      "targets": [],
+      "status": "excluded",
+      "reason": "上游环境忽略规则或 npm 发布依赖锁；不属于 skill 中文资料或本仓库插件构建输入，原文件由固定子模块保留",
+      "source_sha256": "a7e7370254fc919ab78ddf61e0e3763b80ea7ade18863c6650c329da44b8ec7b",
+      "target_sha256": {}
+    },
+    {
+      "source": ".out-of-scope/frozen-misc-skills.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/frozen-misc-skills.md"
+      ],
+      "status": "translated",
+      "source_sha256": "df55c265d366a5365437c8402bfc6376f0095b4d2d0d9772abaae4dfb731db4e",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/frozen-misc-skills.md": "65da04e6ee73cede60e8d76cdbe71003d3733bbcb22e47598ab7b3bc53142dbb"
+      }
+    },
+    {
+      "source": ".out-of-scope/harness-name-collisions.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/harness-name-collisions.md"
+      ],
+      "status": "translated",
+      "source_sha256": "d4fae0db17921efb822edcad7af449c700a62beea3a4f3193d73655817580b2c",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/harness-name-collisions.md": "7026d65788fefda9feac931a32fdd4e4d29490a28377041e7222b8208b420782"
+      }
+    },
+    {
+      "source": ".out-of-scope/lazy-load-writing-for-agents.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/lazy-load-writing-for-agents.md"
+      ],
+      "status": "translated",
+      "source_sha256": "632d9a790290c4eaec5a4d972e2a157994abd7f4bf940a81406177bb55fde811",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/lazy-load-writing-for-agents.md": "8cab92916c86c1e38a5b46e3c2cc04daa99ddd9a8d6d2a960a05bf1a7f08af5a"
+      }
+    },
+    {
+      "source": ".out-of-scope/mainstream-issue-trackers-only.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/mainstream-issue-trackers-only.md"
+      ],
+      "status": "translated",
+      "source_sha256": "1a0f3c328099efb3810186fb347a29170e93d4c098ec0b19a376fbc9de36f790",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/mainstream-issue-trackers-only.md": "3a9ae417b21f04d0dfec02960c8748ce6dabc7c22db0117a1342195d36fc2f08"
+      }
+    },
+    {
+      "source": ".out-of-scope/native-question-tool.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/native-question-tool.md"
+      ],
+      "status": "translated",
+      "source_sha256": "24b3780c245e514c6fc8a015cbe701a35b8dae0b65f91518c27631cd1843b9fc",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/native-question-tool.md": "6f77b4492cd27d8d0fd561877f9031c2c267c4a44901937e39f6cad0405fb2fe"
+      }
+    },
+    {
+      "source": ".out-of-scope/new-skills.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/new-skills.md"
+      ],
+      "status": "translated",
+      "source_sha256": "4c82c95cf84ae340a09513db8764848c2e144f94d183ae0407e90eba44c8c52f",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/new-skills.md": "bd702d2f41e1d4809514aa2727b5973ea7c8eb6f546a5cc0da3f5f9c8fdd879a"
+      }
+    },
+    {
+      "source": ".out-of-scope/question-limits.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/question-limits.md"
+      ],
+      "status": "translated",
+      "source_sha256": "a4c7ab33523e8f88b75be6549f657cf086b86d77be48b87d48276311e368cc9d",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/question-limits.md": "16c4ba338dc939e2bb8bf1a46c6871a4a8d70266c80e67a9cd85db025f177856"
+      }
+    },
+    {
+      "source": ".out-of-scope/setup-skill-verify-mode.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/setup-skill-verify-mode.md"
+      ],
+      "status": "translated",
+      "source_sha256": "aba793ba7b3457fd75e7c2560ec0e98e75a051ecfc5f91f73f16fc97475919bd",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/setup-skill-verify-mode.md": "c0d0a9323adffe02ed2c44ec2443b22d5bfd59a379ba8689e8e1f2bd4bbbf517"
+      }
+    },
+    {
+      "source": ".out-of-scope/subagent-recursion.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/.out-of-scope/subagent-recursion.md"
+      ],
+      "status": "translated",
+      "source_sha256": "27f48a714d63e1a0f5e6ed827855ba45183622429f8ece30036de15573b170cc",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/.out-of-scope/subagent-recursion.md": "3a2488524cbfb748ff3f7a0f1e1335a9f4177f7717f5f1b7b79db1cb7caf6071"
+      }
+    },
+    {
+      "source": "AGENTS.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/AGENTS.md"
+      ],
+      "status": "translated",
+      "source_sha256": "cd5ad06f3a1f8aa7548e749b12e85f6c2bc4d3911e25853eea3d4324ad742dcb",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/AGENTS.md": "44db51a585bc123f99a8ebb3711abbdd9666c5fa33b05f91eac5257ec1458bcc"
+      }
+    },
+    {
+      "source": "CHANGELOG.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/CHANGELOG.md"
+      ],
+      "status": "translated",
+      "source_sha256": "d1fc00f3751b6ef35935251dd461fb126381631be277aec1d21edd485b4ae89a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/CHANGELOG.md": "d831b10b1b9a7e6761ad512cf318bb2e7d8eacd85785050c7d899e89f86d6ae1"
+      }
+    },
+    {
+      "source": "CLAUDE.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/CLAUDE.md"
+      ],
+      "status": "translated",
+      "source_sha256": "cd5ad06f3a1f8aa7548e749b12e85f6c2bc4d3911e25853eea3d4324ad742dcb",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/CLAUDE.md": "44db51a585bc123f99a8ebb3711abbdd9666c5fa33b05f91eac5257ec1458bcc"
+      }
+    },
+    {
+      "source": "GLOSSARY.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/GLOSSARY.md"
+      ],
+      "status": "translated",
+      "source_sha256": "4b5291aae26ee0cca5ee31c20b4652d3988a063b2348ed48a751ce9c660a5614",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/GLOSSARY.md": "e78efccecc8a65885c33bb6dab466a02ac815f1a60546cf305e428ab058d63ae"
+      }
+    },
+    {
+      "source": "LICENSE",
+      "targets": [
+        "docs/mattpocock-skills-zh/LICENSE",
+        "claude-code-market/plugins/mattpocock-skills-zh/LICENSE",
+        "codex-market/plugins/mattpocock-skills-zh/LICENSE",
+        "dsh-market/ghost-matt-skills/LICENSE"
+      ],
+      "status": "original-license",
+      "source_sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/LICENSE": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
+        "claude-code-market/plugins/mattpocock-skills-zh/LICENSE": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
+        "codex-market/plugins/mattpocock-skills-zh/LICENSE": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
+        "dsh-market/ghost-matt-skills/LICENSE": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+      }
+    },
+    {
+      "source": "README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/README.md"
+      ],
+      "status": "translated",
+      "source_sha256": "345041d56cf1411b6b3ca1cc54014d26c563890f817f4cb9e2cb193dcd771a3e",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/README.md": "98a0231525fad8a84037bab55afd047d497de3ed62e0f473368a84a1f94002b6"
+      }
+    },
+    {
+      "source": "SCOPE.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/SCOPE.md"
+      ],
+      "status": "translated",
+      "source_sha256": "4d5c09ef33193d9db3dac2e6e11e5d6b1abcfe08135d20c8a6d9cd3b0d6ed866",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/SCOPE.md": "b3506d5312966ae8043a0c87b4ce2d2dfc7d7bf69b0bfc34a0a2811b864955cd"
+      }
+    },
+    {
+      "source": "docs/agents/triage-labels.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/agents/triage-labels.md"
+      ],
+      "status": "translated",
+      "source_sha256": "a44f6ede99c2f01e969685d7b33e53d47386d74d6a365adedb8a42c3b329bcce",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/agents/triage-labels.md": "66f46db7fa7bc0c8f56ebe854b06b82b058e57efd40058d363635a938a16fc49"
+      }
+    },
+    {
+      "source": "docs/engineering/ask-matt.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/ask-matt.md"
+      ],
+      "status": "translated",
+      "source_sha256": "ecefe252d5e91a079350d564ebd0a3c3ea8c4dc3274bebb332f3ce5223757bfa",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/ask-matt.md": "4e5e8141b3cbbc1c5ea96d97bfc4caa8b7a583360c90bd75e4188f86633c93b0"
+      }
+    },
+    {
+      "source": "docs/engineering/code-review.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/code-review.md"
+      ],
+      "status": "translated",
+      "source_sha256": "2c14aa2f82064132ee3a5ab16cf3ccb0bc5679801b1e3dcdf4e33b4b738c9330",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/code-review.md": "72ea58f0e26c922363e21908946cbda778b52b71b98bcdeff0052a02b5dd4785"
+      }
+    },
+    {
+      "source": "docs/engineering/codebase-design.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/codebase-design.md"
+      ],
+      "status": "translated",
+      "source_sha256": "06ae3f8d86a89d0a6cf98d36c36605564c6e219aebe5214aa37b476337573f3d",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/codebase-design.md": "2cba00a0fddd6b81c98c2ea9502bbe9308472878409fdec3414d67690134bea0"
+      }
+    },
+    {
+      "source": "docs/engineering/diagnosing-bugs.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/diagnosing-bugs.md"
+      ],
+      "status": "translated",
+      "source_sha256": "0d2f5ab04d9c2af36168ab43e30ac63e3156b732c0a445b5b5ddd81d3f98ead0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/diagnosing-bugs.md": "edf1906f9e0e090cc9b16cfafd5c10c773b181b4a3fe768140067a1bb14ec0b4"
+      }
+    },
+    {
+      "source": "docs/engineering/domain-modeling.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/domain-modeling.md"
+      ],
+      "status": "translated",
+      "source_sha256": "c5bc4c5cc72814ab242e4a7bc411d44938ec758eba2fcb66a1fb4ebd7f048b37",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/domain-modeling.md": "3b7b842fe9f11193df3cbe91e07d5efeff62197a35d08a64bdb7c81673c85832"
+      }
+    },
+    {
+      "source": "docs/engineering/grill-with-docs.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/grill-with-docs.md"
+      ],
+      "status": "translated",
+      "source_sha256": "b15edc0ac4bb4bc2b4cb6f32307d03255108ed282290b10ea83ed9170bbc2181",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/grill-with-docs.md": "42b958e679498c966d832442666725674345bf90aed1938b31b09f0981fb7203"
+      }
+    },
+    {
+      "source": "docs/engineering/implement-spec.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/implement-spec.md"
+      ],
+      "status": "translated",
+      "source_sha256": "6778976cfef5fccf6a4b8974f32517e119dd18fe0bbd00f233f13fa1f00194b7",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/implement-spec.md": "b01727e44524a3a3fd6ea053901dc2a5525a7c13787d5755a0eede1d9739e171"
+      }
+    },
+    {
+      "source": "docs/engineering/implement.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/implement.md"
+      ],
+      "status": "translated",
+      "source_sha256": "8106f9328412a97f4cad3fad9ff4ccf61e609e9a3d384407c78a4ac6e02609f0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/implement.md": "ba268f9f93a5e0d98b26aced77b103716ae0585ccfad82c63d03b066345401d8"
+      }
+    },
+    {
+      "source": "docs/engineering/improve-codebase-architecture.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/improve-codebase-architecture.md"
+      ],
+      "status": "translated",
+      "source_sha256": "abefc0f2577bbc7cdf586581993f2025b0dc8284f2c2371aa308de567cf5eea8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/improve-codebase-architecture.md": "0b0f99f97357c82c930821129f75f0ac0e90eb384a80a07d738a92165d48f53b"
+      }
+    },
+    {
+      "source": "docs/engineering/pr.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/pr.md"
+      ],
+      "status": "translated",
+      "source_sha256": "6ddd7b93d01efc16dfb4e28106f8f75b02b61f3049c22cb39117209549acb226",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/pr.md": "d37b0b17a323b2158c40de4b4f1307ec07379dd6261a623f52e3533c607fada2"
+      }
+    },
+    {
+      "source": "docs/engineering/prototype.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/prototype.md"
+      ],
+      "status": "translated",
+      "source_sha256": "339d6ac4917d1c129860788d6d6aad308299996c3ee034646055d4c91e9df6b5",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/prototype.md": "c2f1d6290240eab81875844681cc161f613f59b7878154d7efe1b911431bc545"
+      }
+    },
+    {
+      "source": "docs/engineering/research.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/research.md"
+      ],
+      "status": "translated",
+      "source_sha256": "9953179696fa5d4e8ea82aaf900aaa08d84ce2a43b0a3f87213a73bb9bc60c40",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/research.md": "ab3f506bedbdf93b5668abcf12909c3d2010119042a6cc4a415f5f9e28cab268"
+      }
+    },
+    {
+      "source": "docs/engineering/resolving-merge-conflicts.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/resolving-merge-conflicts.md"
+      ],
+      "status": "translated",
+      "source_sha256": "4b302655469683cdfc5e130ea4d4d2341ececd91525e28ee9d3fc9cb566a46c8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/resolving-merge-conflicts.md": "0605a6cfbe326d244b6f7fae9de9006180cbdf0348ed78edf5f8b7f9e3a90f55"
+      }
+    },
+    {
+      "source": "docs/engineering/retro.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/retro.md"
+      ],
+      "status": "translated",
+      "source_sha256": "fbe0893f6e95e6110a18a22246dbfb940f1a0ee9a1c804dce883546c9ef899f8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/retro.md": "0fd86db90b69eac919316f44b324491cfd0661af3916820a96431e1d26cfa284"
+      }
+    },
+    {
+      "source": "docs/engineering/setup-matt-pocock-skills.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/setup-matt-pocock-skills.md"
+      ],
+      "status": "translated",
+      "source_sha256": "ee9a734b73a5c0cd851904fd073255248af7889ca8cb03b33f9207bf211227b6",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/setup-matt-pocock-skills.md": "cdca2678b2d3b69cfeb1b8bc4a54f0e7d4f7ad3019744fc12a9703798329bbfb"
+      }
+    },
+    {
+      "source": "docs/engineering/tdd.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/tdd.md"
+      ],
+      "status": "translated",
+      "source_sha256": "63bc8fe89693efa68ca0859398155c761f031af1fdbc4419d498b78d9cc2cdc9",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/tdd.md": "5a6f91a93d37d090884a1a3b08a12ec756d409a660ae82970e63a24a6b75073e"
+      }
+    },
+    {
+      "source": "docs/engineering/to-spec.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/to-spec.md"
+      ],
+      "status": "translated",
+      "source_sha256": "f623ea0bbe94e9b314657dd0c9da4c4b7dbb71830cba78af7c2bb70ca79ffa90",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/to-spec.md": "32f60e4b9804a07adadc57a15178265f84875d453edb59785370690cc1acab41"
+      }
+    },
+    {
+      "source": "docs/engineering/to-tickets.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/to-tickets.md"
+      ],
+      "status": "translated",
+      "source_sha256": "e0f2812c8e47c5951a0efd2715062ed93a4f47e2bfce47cf20960e2ffbb6e72a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/to-tickets.md": "1d1c0025963a3be79a7a5c3024bea6d47afa38e644bbc271e9a528c8cf088311"
+      }
+    },
+    {
+      "source": "docs/engineering/triage.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/triage.md"
+      ],
+      "status": "translated",
+      "reason": "工程文档全文译文；保留上游已有问题、历史叙述和原始链接，不以技能当前实现改写文档来源。",
+      "source_sha256": "88cb240a6e3d9961732d1b537b8a4fc402d938db7ce1d91425be32ee5d67fdba",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/triage.md": "5f53502c2e5f0b137f4a95086af21f235cd4e3c9f86e6b1bc15df2760a28acd0"
+      }
+    },
+    {
+      "source": "docs/engineering/wayfinder.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/wayfinder.md"
+      ],
+      "status": "translated",
+      "reason": "工程文档全文译文；保留上游已有问题、历史叙述和原始链接，不以技能当前实现改写文档来源。",
+      "source_sha256": "7b123473848da896714e3bd3dbea6fe02341c40c186cb7c9c1f0b3735a12c376",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/wayfinder.md": "ebafe4d6f3838ca27d6d5fc134a564c87bbb870c02b7867a57660fe1d89ab613"
+      }
+    },
+    {
+      "source": "docs/engineering/wizard.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/engineering/wizard.md"
+      ],
+      "status": "translated",
+      "reason": "工程文档全文译文；保留上游已有问题、历史叙述和原始链接，不以技能当前实现改写文档来源。",
+      "source_sha256": "286831fa86754efd12b94899be87fe8223ed607882e0c37580dab852db8dc5a3",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/engineering/wizard.md": "4d7f71a393813290a49a6f7aa2b07ec19601f9c93731d071084e71f2276a70ef"
+      }
+    },
+    {
+      "source": "docs/productivity/grill-me.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/grill-me.md"
+      ],
+      "status": "translated",
+      "source_sha256": "3ad2294740ad7de999cbaa1e99badd8b2b1461359639749dea379bfc8b6341dc",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/grill-me.md": "6f6b702e610723c003f52b0d1311ff4b4620c789ed27cbb51f0eca3d56ac83d7"
+      }
+    },
+    {
+      "source": "docs/productivity/grilling.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/grilling.md"
+      ],
+      "status": "translated",
+      "source_sha256": "091d40afb66804d1b7f7e65745ee4b911edddc18d76faf9e9ba9f210f0570bb8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/grilling.md": "ff5fdba50f2ad80bbe6d00b030e4876dd2f275f998f041a7d80b6085c705c634"
+      }
+    },
+    {
+      "source": "docs/productivity/handoff.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/handoff.md"
+      ],
+      "status": "translated",
+      "source_sha256": "8f372c040ce1c785eb1894d5ce2468df29956ed9fb353ac3e0b79449d87bb9a7",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/handoff.md": "a083a51a1ef71fe6c067c850d5ff980131b55a4d34188cd898c1b699fa4b2204"
+      }
+    },
+    {
+      "source": "docs/productivity/teach.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/teach.md"
+      ],
+      "status": "translated",
+      "source_sha256": "eccbc2f26a22a71f330b21701eeddd6b6fd4534fb09b5cd8ffdc30cff7e6bda7",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/teach.md": "3909cb1d660579018eb954696ba93208709d5844133eef76f75ae0557a3498d7"
+      }
+    },
+    {
+      "source": "docs/productivity/to-questionnaire.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/to-questionnaire.md"
+      ],
+      "status": "translated",
+      "source_sha256": "0a6de031ecf541cc0b84433ed6658f18a3de45042857841e4e0f78fd846ac23a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/to-questionnaire.md": "2573972b2086b012e11cd98c87bb152c608d8a23513cee8c66c90768128d3d7a"
+      }
+    },
+    {
+      "source": "docs/productivity/wait-what.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/wait-what.md"
+      ],
+      "status": "translated",
+      "source_sha256": "2725483b1ba687fe31e2178e89d265a7ea34e51c88aeef9b6b6f35bfe0339fa8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/wait-what.md": "9a2afec4650310d34ff42d3de015fd519d543762d24a386f70f6d9633bc75fe3"
+      }
+    },
+    {
+      "source": "docs/productivity/writing-for-agents.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/docs/productivity/writing-for-agents.md"
+      ],
+      "status": "translated",
+      "source_sha256": "c2f3971e2f4bc1c901c59f5dbbb9343276e601f618bee1d40b1927afe3678365",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/docs/productivity/writing-for-agents.md": "cf8c586256d2da20ac552084da327cd1640df40d73bb88941b99245686e2efbd"
+      }
+    },
+    {
+      "source": "package-lock.json",
+      "targets": [],
+      "status": "excluded",
+      "reason": "上游环境忽略规则或 npm 发布依赖锁；不属于 skill 中文资料或本仓库插件构建输入，原文件由固定子模块保留",
+      "source_sha256": "b89967d44b654ceb7b9fcc7e0d6c3f74fb110bb96eb66c65bac14099c729338d",
+      "target_sha256": {}
+    },
+    {
+      "source": "package.json",
+      "targets": [
+        "docs/mattpocock-skills-zh/package.json"
+      ],
+      "status": "original-config",
+      "reason": "上游版本、脚本和发布清单的原始机器配置；保留标识符及接口语义，中文说明见 README 和维护资料",
+      "source_sha256": "95475078ea00a7d064fed8e296ca6c18022240a0d826d8e63ae8401f2b148d6f",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/package.json": "95475078ea00a7d064fed8e296ca6c18022240a0d826d8e63ae8401f2b148d6f"
+      }
+    },
+    {
+      "source": "scripts/link-skills.sh",
+      "targets": [
+        "docs/mattpocock-skills-zh/scripts/link-skills.sh"
+      ],
+      "status": "translated",
+      "reason": "翻译注释及用户提示，保留标识符、控制流与执行权限；未执行业务安装或发布操作。",
+      "source_sha256": "ae1ce5404a1eb90c1e80f6b6ecf101ed05e4efbc5ef62d6d83f896a9377b3878",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/scripts/link-skills.sh": "2ff7c1b6f8777a86ce9aa2241f1740f46d713ccc5133dc2d25774ef5e99c7f7d"
+      }
+    },
+    {
+      "source": "scripts/list-skills.sh",
+      "targets": [
+        "docs/mattpocock-skills-zh/scripts/list-skills.sh"
+      ],
+      "status": "original-code",
+      "reason": "纯配置或代码，无需翻译的自然语言；按原文和权限保留。",
+      "source_sha256": "9968c1b679e2a08a8e3204f6e72afeea3b51df50299faec12a4c8eed6bcf2f6a",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/scripts/list-skills.sh": "9968c1b679e2a08a8e3204f6e72afeea3b51df50299faec12a4c8eed6bcf2f6a"
+      }
+    },
+    {
+      "source": "scripts/sync-plugin-version.mjs",
+      "targets": [
+        "docs/mattpocock-skills-zh/scripts/sync-plugin-version.mjs"
+      ],
+      "status": "translated",
+      "reason": "翻译注释及用户提示，保留标识符、控制流与执行权限；未执行业务安装或发布操作。",
+      "source_sha256": "1ef892ec79e2f41ffe4c4d051f0e29d70401219499b6a11e717e5db337d78984",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/scripts/sync-plugin-version.mjs": "4a42202bd92624952ca2a3224859a2c9b94faf16d42d79e47a57cb054c85d4b3"
+      }
+    },
+    {
+      "source": "skills/deprecated/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/deprecated/README.md"
+      ],
+      "status": "translated",
+      "source_sha256": "8b2009e31b7353f318a4321901b1141377e4d395f092934bacde7e9c5b070e26",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/deprecated/README.md": "304fcafe837ca0c5d40c19a3eb8648779eaac226dde59a0333b04a17464259b4"
+      }
+    },
+    {
+      "source": "skills/engineering/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/engineering/README.md"
+      ],
+      "status": "translated",
+      "reason": "分类 README 的本地 skill 链接映射到 Claude Code 中文正式源，保持可达；不复制正式 skill 到存档目录。",
+      "source_sha256": "32d9469dda4e6103d952909cb83e657b7bec01bc582b6be4cec3b493f66920fd",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/engineering/README.md": "2cfdfb0472855f522fb8ff892599b6506bd284e316d31ae4119f34d7ac12c61f"
+      }
+    },
+    {
+      "source": "skills/engineering/ask-matt/PHASE-BOUNDARIES.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/PHASE-BOUNDARIES.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/PHASE-BOUNDARIES.md",
+        "dsh-market/ghost-matt-skills/skills/ask-matt/PHASE-BOUNDARIES.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "a8aa20158609ef39e2b308b6ba0660c91066838d07a867202e63a7744a88a3ed",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/PHASE-BOUNDARIES.md": "c4f46cc70b572766abdf3954f43e1aa854780c5950260a0ef4a1126c7d65ba5e",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/PHASE-BOUNDARIES.md": "d1f19235aaa8bb3e43ff7c363150c3be9fc1114cca480380565b3c457a635245",
+        "dsh-market/ghost-matt-skills/skills/ask-matt/PHASE-BOUNDARIES.md": "d41b94043f51cad0f2c74416c22584857fe28b9956819c29ccb97aafefff462b"
+      }
+    },
+    {
+      "source": "skills/engineering/ask-matt/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/ask-matt/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "1371f5ce005de0992a44b137748bfb960a56948aa9871b405fe9d90b24332e3c",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md": "9b510fde90248176757107c3199361f8e8573f64beaf4e4fb2d5ef4da9b69675",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md": "66770f31c5413515a4c87059e9d0b2c5e5c0dd89919768a80b590190d277c8bd",
+        "dsh-market/ghost-matt-skills/skills/ask-matt/SKILL.md": "a4259f0fc6e47b5003dc0909c2d1c4c5b7d83ffd1dca68e697a3c2321d999353"
+      }
+    },
+    {
+      "source": "skills/engineering/ask-matt/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "bdffbc5a0a99ed1b6ef3253d251d755fd18162b9845972e380007f844b09b05c",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/ask-matt/agents/openai.yaml": "41f92210c8c895710774f7e316e146e40861fc7040c98aa331e9bc4ba1f6ec69",
+        "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/agents/openai.yaml": "e5b60645d119029e3aa8ba685a42ce4b38d527c1487d6343d15ac9c6fa0bde16",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/code-review/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/code-review/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "09eb147f793e4647949edd32dbad278f0554dfb56e0d46b699cd4c2c55bf0357",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md": "133bd4dd734bc2a118bc6d67eaa0457d6e5e90db8b119e13647fef386def8ca1",
+        "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md": "99634091f7547cd31d8397b4b1ae406a37708c25d0949278e394d332e304404c",
+        "dsh-market/ghost-matt-skills/skills/code-review/SKILL.md": "69cfcf67cd6b072d8bcfbc236fb7c47e05083fac4976ca1f3993d04022f0c01d"
+      }
+    },
+    {
+      "source": "skills/engineering/code-review/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/code-review/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/code-review/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "8229ca854e11dc8e6aef2131ee03f31fb1561cf905fab9ccc325180cf3331352",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/code-review/agents/openai.yaml": "46f37d9dee524033c8263d0d6a8dda88b582c791ef8c1cb60a02021740a9aa3a",
+        "codex-market/plugins/mattpocock-skills-zh/skills/code-review/agents/openai.yaml": "46f37d9dee524033c8263d0d6a8dda88b582c791ef8c1cb60a02021740a9aa3a",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/codebase-design/DEEPENING.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/DEEPENING.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "f3dd099ce99289bd213914d8ee3e2429b78309c3957ca4583f7659551b1d53c1",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md": "3dd4e17cb844b36fae2ba22c19602797b4e40af891a62d5e696bf21dd4d0c71d",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md": "3dd4e17cb844b36fae2ba22c19602797b4e40af891a62d5e696bf21dd4d0c71d",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/DEEPENING.md": "3dd4e17cb844b36fae2ba22c19602797b4e40af891a62d5e696bf21dd4d0c71d"
+      }
+    },
+    {
+      "source": "skills/engineering/codebase-design/DESIGN-IT-TWICE.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/DESIGN-IT-TWICE.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "52b52e75655a27aea59c6966b410bac82448968ad46ef1ebb9f07c274e3ae010",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md": "5bea7b43b0a8a92ce33c3aaee851408c2bfcd3a7b580f0645f99a9cf7ccd5d6e",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DESIGN-IT-TWICE.md": "5bea7b43b0a8a92ce33c3aaee851408c2bfcd3a7b580f0645f99a9cf7ccd5d6e",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/DESIGN-IT-TWICE.md": "caa6683c205f48f1a8434aaf0ba6faadf2df6153c6b09b6662bff5f65855a177"
+      }
+    },
+    {
+      "source": "skills/engineering/codebase-design/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md": "233acf2f0f97bc1b2e2c61925426c35e29f4f192aaab560cc3ca1230deefc25d",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/SKILL.md": "233acf2f0f97bc1b2e2c61925426c35e29f4f192aaab560cc3ca1230deefc25d",
+        "dsh-market/ghost-matt-skills/skills/codebase-design/SKILL.md": "4298bdac90d7adbb0443912fca77f7e3abbe31a859c77bbfc97a9d3a39f8646f"
+      }
+    },
+    {
+      "source": "skills/engineering/codebase-design/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "edebc9e4fcfe102114012575eaa9600b9b5fd08c311664f389c36e7bc717740f",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/codebase-design/agents/openai.yaml": "0f5f820c10fb7aff3fe7ef54143e4a6749d32eb466cde9a86eb6ac7a343e544a",
+        "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/agents/openai.yaml": "0f5f820c10fb7aff3fe7ef54143e4a6749d32eb466cde9a86eb6ac7a343e544a",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/diagnosing-bugs/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md": "4d8e533bea007c20243919cbb7502ea20d4aa4cff8f736d42d5ef41fd796a9f0",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md": "4d8e533bea007c20243919cbb7502ea20d4aa4cff8f736d42d5ef41fd796a9f0",
+        "dsh-market/ghost-matt-skills/skills/diagnosing-bugs/SKILL.md": "1424f5d0172b52825a2cd0a443fcebde3ed69a866d2488811de7e1af17a6dc4b"
+      }
+    },
+    {
+      "source": "skills/engineering/diagnosing-bugs/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "3e430dbe4334a87597488c060cb3dc3786bb00c9182877d6f5ec41f62490e90b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/agents/openai.yaml": "82a768a085e2b600610536023ea40ad6b06084585c2b2feb18a5c1c853c659f4",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/agents/openai.yaml": "82a768a085e2b600610536023ea40ad6b06084585c2b2feb18a5c1c853c659f4",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/diagnosing-bugs/scripts/hitl-loop.template.sh",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
+        "dsh-market/ghost-matt-skills/skills/diagnosing-bugs/scripts/hitl-loop.template.sh"
+      ],
+      "status": "translated-refined",
+      "reason": "补齐现有复现模板的中文注释与用户提示，保持逻辑和输出KEY不变",
+      "source_sha256": "35103539fc36873eea36074769ad454f9379d6fc8b2dc0e26ce987fd3bfe5503",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh": "7361b3d75fac536b30373183cc71e5e80f638903e418f4367edd5ea9d5068e9c",
+        "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh": "7361b3d75fac536b30373183cc71e5e80f638903e418f4367edd5ea9d5068e9c",
+        "dsh-market/ghost-matt-skills/skills/diagnosing-bugs/scripts/hitl-loop.template.sh": "7361b3d75fac536b30373183cc71e5e80f638903e418f4367edd5ea9d5068e9c"
+      }
+    },
+    {
+      "source": "skills/engineering/domain-modeling/ADR-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/ADR-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "944c92aa790e8fbdc9199640b170979abb8a34ba8d0fe18c2a01a63bce140ca0",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md": "bb45ba4936b4ffa2d00b3f800efef73328a0d4f75811e4cac3e4e1f6eb24d0d1",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md": "bb45ba4936b4ffa2d00b3f800efef73328a0d4f75811e4cac3e4e1f6eb24d0d1",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/ADR-FORMAT.md": "27dd37df13319370c1b30d9c7f3de21c94a3da00e40357d937127d10c2f02a62"
+      }
+    },
+    {
+      "source": "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/GLOSSARY-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/GLOSSARY-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/GLOSSARY-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/GLOSSARY-FORMAT.md": "bbe1322906b2b13b0d97be58dbf15ada74ad626a379d5b53bcb3e321a281a50f",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/GLOSSARY-FORMAT.md": "bbe1322906b2b13b0d97be58dbf15ada74ad626a379d5b53bcb3e321a281a50f",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/GLOSSARY-FORMAT.md": "bbe1322906b2b13b0d97be58dbf15ada74ad626a379d5b53bcb3e321a281a50f"
+      }
+    },
+    {
+      "source": "skills/engineering/domain-modeling/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md": "fe40194fb25e3a21865f571b76dc1f5e77d51bd581ca68bb399c549c0745d2ab",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/SKILL.md": "fe40194fb25e3a21865f571b76dc1f5e77d51bd581ca68bb399c549c0745d2ab",
+        "dsh-market/ghost-matt-skills/skills/domain-modeling/SKILL.md": "1b792bba3afbd98d401186949b98bea6f43c4e321a65341ef5733c30da3deebf"
+      }
+    },
+    {
+      "source": "skills/engineering/domain-modeling/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "f6bf2aa996c6e6f53fdd0708e18a0d16a56aed8322cca59fedbe3c0d2c75f06b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/domain-modeling/agents/openai.yaml": "5dfffacd7e0101ee0572db12396edca1d59de1e97f517b6659232422c6cdbf44",
+        "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/agents/openai.yaml": "5dfffacd7e0101ee0572db12396edca1d59de1e97f517b6659232422c6cdbf44",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/grill-with-docs/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/grill-with-docs/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "7de372c13488f1ee96cc11cd8907b56b6809cc93eef776eeddd37de6b6cbe3fe",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/SKILL.md": "eb85d9577746f54e6d5a38e33e8b26a9975d757229edc8fe806b5f956a393b43",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/SKILL.md": "7a2e56545e194068a5aabb4a47d7884ca2f534ae2957926da926c6aa5a7ad009",
+        "dsh-market/ghost-matt-skills/skills/grill-with-docs/SKILL.md": "a5553f6e5a352cd9cb4a8f781de7840a1b11988df572ece8bb149390f8914d4b"
+      }
+    },
+    {
+      "source": "skills/engineering/grill-with-docs/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "94cd0ab161fb468a836349f5ed482ba58ce8e709a05c57ce533d739dbd35cca9",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/agents/openai.yaml": "e7ddc5abd977635b11c4949a470f416eabe966e439f08aa5e42e5ae2f3bff745",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-with-docs/agents/openai.yaml": "13926dae347faef10d2c65dc30b0260f81927dc70e9086e882b11dfd2d6fcff6",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/implement-spec/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/implement-spec/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "7a22dd2e60b8fcece478ced9d2533582adf3520d695acd3ab715341535c9e56d",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md": "06b6e207bfa44fd52151cbeaa82b44f21f45f1208ac57f823d990405e63ec0f2",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md": "4512f5d08f410f8a7cb115910f635a76149ea95f19c2fa52471a8f43d864cc83",
+        "dsh-market/ghost-matt-skills/skills/implement-spec/SKILL.md": "82e351af8f4f1f17c009768d1aa8a4731e309aee8957534b0226142edba33661"
+      }
+    },
+    {
+      "source": "skills/engineering/implement-spec/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement-spec/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "fd41efb42c60c96320d6531be7e4bf15cbf5518cd652d57dff27ccffa46988e9",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement-spec/agents/openai.yaml": "59786831c3410426e479cd700c131ce96bfdea4265c3bd6596c5dcb3fb64f6ed",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/agents/openai.yaml": "b1b120d32d2a4fce2ef2394ee55e4e6f32734b3a259c730aa2f9a9f425b76e89",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/implement/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/implement/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "483bdc4ccf4ac31d86ac7beeaa0d0db80313e71e120bb8c59b3196ae5decd53d",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md": "bf6f2677138e4a208820b67651e3254e63511d85845df589981478f948cb1c2a",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md": "ff053cb628aa768bf337f1aac498b0ea7d86c86d828775953e060ce505319334",
+        "dsh-market/ghost-matt-skills/skills/implement/SKILL.md": "cc31d06b68b3f4350ad0df3bf25144ec1d576c79525fe35aaf41ed600dfae20b"
+      }
+    },
+    {
+      "source": "skills/engineering/implement/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "8970a8596ade0c28ab427f41a4ea242d6bdf6186c59ebf55e1238dbecaab79dc",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/implement/agents/openai.yaml": "01686c197338347f6aabf5b6a1f81acaa05dc3d50db465f23b90484b02e8a401",
+        "codex-market/plugins/mattpocock-skills-zh/skills/implement/agents/openai.yaml": "5aaae1a34c913a19bd53b9fb481a1c9ac570aa5bc480de92ed0a4cb4d0106722",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/improve-codebase-architecture/HTML-REPORT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md",
+        "dsh-market/ghost-matt-skills/skills/improve-codebase-architecture/HTML-REPORT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "581e8bb5a521e46bbda8ca7e19b15948bed882187108092ebb90c62513b77528",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md": "7d11e9e9795cd12ff28439351b3a97c94169768981695d54ea585de1130b9a6c",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/HTML-REPORT.md": "5347217f61cbb319d82172cb56771131822890892d29dac91f89e01ec4fc3892",
+        "dsh-market/ghost-matt-skills/skills/improve-codebase-architecture/HTML-REPORT.md": "aff6237b856f6ee8b673f8fa319cd4eb8070cfcda24b664e8d5e663ec64af569"
+      }
+    },
+    {
+      "source": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/improve-codebase-architecture/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "552240a5ab5cec6b67c15dd1ad6e9f6962b1bca6ce870059a8c2713760c20392",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md": "12fc40e936b2a6872c2f94f625fde41be0dee081b50feb27f612de58b2cae0a9",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/SKILL.md": "01e50da67a71a1d902e6def2ac09fa3155ecd89fb40ba9e15c6f97bfc0574926",
+        "dsh-market/ghost-matt-skills/skills/improve-codebase-architecture/SKILL.md": "978c5bc29712dc03d6e6dbc8e1a1799be12f9e6843cb578c8cb042388d5abba9"
+      }
+    },
+    {
+      "source": "skills/engineering/improve-codebase-architecture/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "c8cb20f68ebf0edb4e497bc11ae5fcaa196004e661cd189015b04f4109ced7f1",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/agents/openai.yaml": "28c7bc6a5a01b2895aca7605473c3a48cd5da706296923e57adf88c49fa05f47",
+        "codex-market/plugins/mattpocock-skills-zh/skills/improve-codebase-architecture/agents/openai.yaml": "6d211619c37152edb1722ff76a1a24b99b30fda320d72694bc2554cf09d6cdd4",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/pr/CREDITS.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/CREDITS.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/CREDITS.md",
+        "dsh-market/ghost-matt-skills/skills/pr/CREDITS.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "a7a087127665d7298a72280ef6e19c41ad8404523712a788c8dc3ab414bc2497",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/CREDITS.md": "ccecde443f3210f7949ddee03d5df0ea238da5fafc8650af52b112e55be618be",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/CREDITS.md": "ccecde443f3210f7949ddee03d5df0ea238da5fafc8650af52b112e55be618be",
+        "dsh-market/ghost-matt-skills/skills/pr/CREDITS.md": "ccecde443f3210f7949ddee03d5df0ea238da5fafc8650af52b112e55be618be"
+      }
+    },
+    {
+      "source": "skills/engineering/pr/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/pr/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "ab63f1cf78647389edcd386c9427c5dfca27ed2836930c24773ffee834c19bcd",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/SKILL.md": "ab141c85aa4870ba4a7f25938c322ffbd6706f88e98d45902462adbd585aab57",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/SKILL.md": "ab141c85aa4870ba4a7f25938c322ffbd6706f88e98d45902462adbd585aab57",
+        "dsh-market/ghost-matt-skills/skills/pr/SKILL.md": "853c9f8b709591829f2d348b915e284e17749ff045b2978503b1af762bbd3ac6"
+      }
+    },
+    {
+      "source": "skills/engineering/pr/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "2295b586624db4ef546f3fd4695492f039d941a46d8a1593a702ce3ca511b8ad",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/pr/agents/openai.yaml": "959f938d14dcb823dfbe61cfe26080f44b37e93ebd3c694fe29762a754c9bb06",
+        "codex-market/plugins/mattpocock-skills-zh/skills/pr/agents/openai.yaml": "959f938d14dcb823dfbe61cfe26080f44b37e93ebd3c694fe29762a754c9bb06",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/prototype/LOGIC.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md",
+        "dsh-market/ghost-matt-skills/skills/prototype/LOGIC.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "f61c7d249e786a79ef289018901c348271e1798dd0b0bc5607b5c6f4d4a01ab9",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md": "109ff50278ce347112e0200c528968d8735f9183cbf3c55dab209c88bca79fc5",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/LOGIC.md": "109ff50278ce347112e0200c528968d8735f9183cbf3c55dab209c88bca79fc5",
+        "dsh-market/ghost-matt-skills/skills/prototype/LOGIC.md": "109ff50278ce347112e0200c528968d8735f9183cbf3c55dab209c88bca79fc5"
+      }
+    },
+    {
+      "source": "skills/engineering/prototype/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/prototype/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/SKILL.md": "6ec396772df1f5a0dc4177186b584fdb5a3769046a0074f4a3f8625c6f7b8505",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/SKILL.md": "6ec396772df1f5a0dc4177186b584fdb5a3769046a0074f4a3f8625c6f7b8505",
+        "dsh-market/ghost-matt-skills/skills/prototype/SKILL.md": "12d4d3deaab50ed84f5653579b5222bb6e8ce9e5cccb165a7930e86b39f0979b"
+      }
+    },
+    {
+      "source": "skills/engineering/prototype/UI.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/UI.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/UI.md",
+        "dsh-market/ghost-matt-skills/skills/prototype/UI.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "723211e878acbc7b6ff09755263f3295cde724ba902ff0064da41eed51d45ad3",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/UI.md": "43e8ccc20821f4a4cce3091058bc628d83d2fbd0e811b5790b67fd4af0bb3427",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/UI.md": "43e8ccc20821f4a4cce3091058bc628d83d2fbd0e811b5790b67fd4af0bb3427",
+        "dsh-market/ghost-matt-skills/skills/prototype/UI.md": "43e8ccc20821f4a4cce3091058bc628d83d2fbd0e811b5790b67fd4af0bb3427"
+      }
+    },
+    {
+      "source": "skills/engineering/prototype/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "5af65e43ab41a350436697b81e27b7f848d36782043b73c322bb2c9fa9cc55dc",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/prototype/agents/openai.yaml": "7feabdc407fdaf512c8135adc96f2e1199555e43e5671b1a5f2ce974a9fbbebc",
+        "codex-market/plugins/mattpocock-skills-zh/skills/prototype/agents/openai.yaml": "7feabdc407fdaf512c8135adc96f2e1199555e43e5671b1a5f2ce974a9fbbebc",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/research/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/research/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/research/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/research/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "985569f15739c713d6784887c3d186d4ef9ac85bec5ad9c068d25bf0739928e4",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/research/SKILL.md": "62e9d76f354c4ddaed6120ab0ddcb6abba00d0538782534201ced4706c49dbc8",
+        "codex-market/plugins/mattpocock-skills-zh/skills/research/SKILL.md": "62e9d76f354c4ddaed6120ab0ddcb6abba00d0538782534201ced4706c49dbc8",
+        "dsh-market/ghost-matt-skills/skills/research/SKILL.md": "cfeb0ce4e6775b933ac068e7801e5f81ff7285c40c882d32e27f5e4d29a8bfe5"
+      }
+    },
+    {
+      "source": "skills/engineering/research/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/research/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/research/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "9b4c470d63221c1f68f22df70b83e2f12401b317babe0d1b7b5f24a974474d0d",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/research/agents/openai.yaml": "1e20f95be18e729030129f7bec2adeeec397a58afcbe0df0ada0ffb32d2972d7",
+        "codex-market/plugins/mattpocock-skills-zh/skills/research/agents/openai.yaml": "1e20f95be18e729030129f7bec2adeeec397a58afcbe0df0ada0ffb32d2972d7",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/retro/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/retro/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "33fbc28568e3146f20fd908b12998bc0ab30aa4f4c87288199a40793efa94696",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md": "fdf063b042b69f86219b78cd2ed32126d7a00c52e3af00052d6ec37396086897",
+        "codex-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md": "eac6ab022bde2c5a458c4b9c44b79ce9cb039d340ac3439a749a7c473a752dc1",
+        "dsh-market/ghost-matt-skills/skills/retro/SKILL.md": "4dac09109165899389fd36a8f458c259c2014ededca5f04cf71be06169b928b8"
+      }
+    },
+    {
+      "source": "skills/engineering/retro/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/retro/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/retro/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "cb6fb9d7e6b4be5975f41f6def1dd00a1255bad5d9b02696b124c924a8b8745c",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/retro/agents/openai.yaml": "34ca14d068c9e32451f83262e2761d4511bf8ec8a8bbd168210ff6eb3bd54e22",
+        "codex-market/plugins/mattpocock-skills-zh/skills/retro/agents/openai.yaml": "16932dc0447a4fc3c24fb1db7bebc6d0944542a6069b1923ed4973bd3fff0316",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "f148858ffb7f63c03c06fca06e6fdb1d91a35c6b293244b8fdfacd5f4cc028c4",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md": "2bc708b3aaf968cee1e44e72308f2917d4fe312c247810a78f1c3778b639d02c",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md": "9fe724adb39ca6d161d64872eecedd9ee5d58c70a04437dbdfd8196e90ab1d5c",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/SKILL.md": "a587b7242c1de1abe6fe2e55a79ec99afdbfb62914402661291e13187eb506a7"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "9527de0110541c45712319025155aeab8dc7d77c6ed6e5e83271bab1851ab939",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/agents/openai.yaml": "0b9a71b8004c89317407e013625d8098c37e47a996569cb07a67c9de7a40eba3",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/agents/openai.yaml": "c16509ed8047ab9b7c80dcddb5d393da5c64e3cc2f2968a395df384d202f6f18",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/domain.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/domain.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "593a7042218689f1d24df89df14eaf0a20e19e0d0a7d479a01947ac78f0784b9",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md": "0281bd912c7ff1c89ab2c6a37c99ba5d1b42b36478727f74adbc312bbbb20375",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md": "a5a49746adf25d92669bdd0f59dde77fcb343711b669ae940b72a3ee6be32089",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/domain.md": "31c17783ee458a75a24ece72acd7b7120d7c19e444f77ad0dce17d0e61e82608"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/issue-tracker-github.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-github.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "f0653fe106dd8ee7b33be27bd7fe3104b40555896cb45f61997aed20467020c3",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md": "a94aece505e78812ae66070d00e470d2595d1072ea706ce49ab9b29cd4f45a42",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md": "cd11e3f01cda179871e7c6fa98df30ccc2eb13b0148d10ac59d77e536c9f7774",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-github.md": "a1d9df19baaccce7858330db6ff6fb09f26ac1d140fa731cbd1a7b07aa7af4ef"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "591a9e7057382aaccdfbed3f7ea3f2ad07e0cd29f012d18b82ee4e485fd81e24",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md": "62449c79ddafd09fd1622b52140ddf84f5d9ffccbd53abacbcdc7ab1787416f4",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md": "e055619466ee16401ee021e4ceb0d8b4920bddfc0477a0c61790214276d07371",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md": "40e534fcb238f3c09b0c8df03286da6981f3e9a001487183f07c1228a6f76dc4"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/issue-tracker-local.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-local.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "7dcda20a2eb4bdc89b95d1143423c0691309921cadae3132e6424f371030506e",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md": "e4a9e9f3431540307514724150b637d2ad34f5f41a23218da4a1cb1eecbff5b0",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md": "69435ff61772aeae1f65f006e77b7a5fb8ce7332fe24335cc8b3edc4a5f11ed2",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/issue-tracker-local.md": "6a3d62986cf4a2518aba4054052be62a3e27e9cc38d043eaa17ec48685b1b1ea"
+      }
+    },
+    {
+      "source": "skills/engineering/setup-matt-pocock-skills/triage-labels.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/triage-labels.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "ae512af838c78b8750471c42cd2b20fa32319553e61d84c9a23d171b40ce14aa",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md": "82c28b2c3f4c57967aeb74e57178c0390481f99c9c813cb2c03704cdbde1961f",
+        "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md": "82c28b2c3f4c57967aeb74e57178c0390481f99c9c813cb2c03704cdbde1961f",
+        "dsh-market/ghost-matt-skills/skills/setup-matt-pocock-skills/triage-labels.md": "82c28b2c3f4c57967aeb74e57178c0390481f99c9c813cb2c03704cdbde1961f"
+      }
+    },
+    {
+      "source": "skills/engineering/tdd/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/tdd/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md": "a463368a5c37c27d6d89c0c7ca9eaf8ccf14e17f27e69f2962fd268f91aa33bb",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md": "a463368a5c37c27d6d89c0c7ca9eaf8ccf14e17f27e69f2962fd268f91aa33bb",
+        "dsh-market/ghost-matt-skills/skills/tdd/SKILL.md": "307289b4bec6346e29608269e48d80555f3c4bc216e0d2fb0fb2adacbc61a22b"
+      }
+    },
+    {
+      "source": "skills/engineering/tdd/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "ea6f01cf1b8c06a4b0f5b649d74b1b8ce8685e72af1b38d70d877693e092af0b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/agents/openai.yaml": "cefac0294c73a2ecb29dfdf3a5f063ddac4dac0b05080fded5969eb387f6e9aa",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/agents/openai.yaml": "cefac0294c73a2ecb29dfdf3a5f063ddac4dac0b05080fded5969eb387f6e9aa",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/tdd/mocking.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md",
+        "dsh-market/ghost-matt-skills/skills/tdd/mocking.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md": "2ad19e15495c9b480add65abecb877a43aa5195798118537bdb305def3f748cc",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md": "2ad19e15495c9b480add65abecb877a43aa5195798118537bdb305def3f748cc",
+        "dsh-market/ghost-matt-skills/skills/tdd/mocking.md": "2ad19e15495c9b480add65abecb877a43aa5195798118537bdb305def3f748cc"
+      }
+    },
+    {
+      "source": "skills/engineering/tdd/tests.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/tests.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/tests.md",
+        "dsh-market/ghost-matt-skills/skills/tdd/tests.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "859f9e592c188fda4fc7277dd180e4ce9c7a2e13f6efe1f6f29eccc9d28c106a",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/tdd/tests.md": "36d942b28017822a5b4e726b1c1e9ad40d8908e26e2aacc103bc2e8d84c69e6c",
+        "codex-market/plugins/mattpocock-skills-zh/skills/tdd/tests.md": "36d942b28017822a5b4e726b1c1e9ad40d8908e26e2aacc103bc2e8d84c69e6c",
+        "dsh-market/ghost-matt-skills/skills/tdd/tests.md": "36d942b28017822a5b4e726b1c1e9ad40d8908e26e2aacc103bc2e8d84c69e6c"
+      }
+    },
+    {
+      "source": "skills/engineering/to-spec/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/to-spec/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "43ad9cf318e5e7d3d1fa360253a37021796dc87a0c2e595ad262661a10f85088",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md": "04facb668cfb9e75664207eaf80f371da97752c54f50e02331759991dfa6f6e5",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md": "0ea19efabcb9a4a20bc978717fe8ffabe399928ba302a617bc8ef1ec8ee3f300",
+        "dsh-market/ghost-matt-skills/skills/to-spec/SKILL.md": "018b32a32d1779e4cf4d4cba2bbcc5c98ee96db655a69c23c00a52bcea4350e5"
+      }
+    },
+    {
+      "source": "skills/engineering/to-spec/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-spec/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-spec/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "1c5b4d1e3d8e52287ef19cc2742fdbbfae1914ac75d33af3e4c8174f08cc55bb",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-spec/agents/openai.yaml": "d0dc73bd65b5fb23185b362bec8ef3f2a5cb5d5bf930de50dcd419dc5b8c7fd3",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-spec/agents/openai.yaml": "581e85e429f5a2c00f77cdc5547b65ad5d37721f58ef251d8257404278411d9c",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/to-tickets/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/to-tickets/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "56ec23c5b2782785d4e65bff9e315b6d3aeb4ef977c174a219e99489fada1995",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md": "d4406aca9246281988aa8a48aced4a3ff24d6f6c215e39111e48a2a571d4e2cf",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md": "160e42b64fe85f40306b5a92ad7fec57341448131662f0ffc0594e4b0356463f",
+        "dsh-market/ghost-matt-skills/skills/to-tickets/SKILL.md": "3cb4ad87b040c08a1974b18db1f853dd0822fa14bc6aaefd0531889ef69738d8"
+      }
+    },
+    {
+      "source": "skills/engineering/to-tickets/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-tickets/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "21bc6215fffcd7614e9f772bb1760e87cc5fc7dcc707e7d282bc9414267a6090",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-tickets/agents/openai.yaml": "cd59c397e21316877f81852a30efdb79b9f45ef46971eb727e30e05ad869b190",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/agents/openai.yaml": "c7cd79062cdb35e83c09c77c3ea9bb3cddad1aa2366a4e1d47d61668ef7eee07",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/triage/AGENT-BRIEF.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md",
+        "dsh-market/ghost-matt-skills/skills/triage/AGENT-BRIEF.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "7f5f87fed3033df1b06e083c480f3e847b1fbb0647746b8a4c6a50f9f26ef44f",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md": "a5351256802c5e74667af17cb39803d17e96fe298c6e4e9846e5749a230c47f2",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md": "5bd9f715a2fd9e523331062cbd541a662996e5be142bd2be88b96ba4fec2bfae",
+        "dsh-market/ghost-matt-skills/skills/triage/AGENT-BRIEF.md": "21cfa552105a7c7b606f287382522bead362c22865f4358e8445c889c2c97c18"
+      }
+    },
+    {
+      "source": "skills/engineering/triage/OUT-OF-SCOPE.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/OUT-OF-SCOPE.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/OUT-OF-SCOPE.md",
+        "dsh-market/ghost-matt-skills/skills/triage/OUT-OF-SCOPE.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "1fbf9b432130c6380aa65813b55553cfda150309b27c595e183f8e335b8a190d",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/OUT-OF-SCOPE.md": "099518c67b0b2cc3f84748722e60d48176097cee246ef9b42e6e4adbe0869d9d",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/OUT-OF-SCOPE.md": "099518c67b0b2cc3f84748722e60d48176097cee246ef9b42e6e4adbe0869d9d",
+        "dsh-market/ghost-matt-skills/skills/triage/OUT-OF-SCOPE.md": "099518c67b0b2cc3f84748722e60d48176097cee246ef9b42e6e4adbe0869d9d"
+      }
+    },
+    {
+      "source": "skills/engineering/triage/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/triage/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "917b0baf74be583e74f110857ed45df2766617f75c00baf61fd136d7af515edf",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md": "bbddf8f7bf882eee35301277d2da2596ffb2060ae0891fa5a9a48d09b101ef20",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/SKILL.md": "96c32fb41dcfb474f1e1c08cd0744f8467ac2637dad814611fc63c2f5b489f5a",
+        "dsh-market/ghost-matt-skills/skills/triage/SKILL.md": "0aaebd6660d3e8d8756255bb4943983768f22d9a993ecefdb29729adb624eecf"
+      }
+    },
+    {
+      "source": "skills/engineering/triage/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "2e683717720cf456d165d0bb1a68bb600d0b6a8ccb61841c172e50d26f95351c",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/triage/agents/openai.yaml": "c66fe947b155a965384e7cb153bac328d07e38f92ac7eb0003e4b812a18daa4d",
+        "codex-market/plugins/mattpocock-skills-zh/skills/triage/agents/openai.yaml": "0fdfe4a16051f3003fa2cbf8f2779630f2997c0a86ac1095169683a4e1b6ccca",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/wayfinder/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/wayfinder/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "9be7b478c389605a24517d27752f278933588da97a1b5921b165f455edf4c5b7",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md": "5145cda702173e8bfa641f0c1d485a56eb9d68d506ee739d9abda431e57d378a",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md": "e630ebc17c31e15108b640b14d056ea18cf7ad20dc8356a6b2720e2badd94eb6",
+        "dsh-market/ghost-matt-skills/skills/wayfinder/SKILL.md": "074e622fcb5fba10f3c0a7c838963b8c693f5d3446b9615cdde4eecfa024ffd6"
+      }
+    },
+    {
+      "source": "skills/engineering/wayfinder/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wayfinder/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "88bc81a11a6d52ac67aeaa76b8b619e387020d47c5133a4dd4927fd15c4ad073",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wayfinder/agents/openai.yaml": "dc1a3e8c0dadfe3d5d8d31a1c132cec80c4becdd933214b3d13f3975827d0dab",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/agents/openai.yaml": "55a59c10b0986bccb6630982c3fea93e9f59269390fe867ab2d4a01d6b3f4489",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/wizard/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/wizard/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "bdf31d48211ea559878f95a4f344aeabf8d85897488ba564382bab0b000daac1",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md": "14f4735b6a7c420022bc28285b933adc2d012c07d97cfc5f5de9538ab4d73871",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md": "14f4735b6a7c420022bc28285b933adc2d012c07d97cfc5f5de9538ab4d73871",
+        "dsh-market/ghost-matt-skills/skills/wizard/SKILL.md": "fcfbb62689ea9d13abcb8b658d9564530dfebc1d279b75359de9d388ef1c38df"
+      }
+    },
+    {
+      "source": "skills/engineering/wizard/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "98f44d682d58e262f160dc59a8befc365e0aa65820dd0261864af26aa8e59d83",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/agents/openai.yaml": "438ebce8201d4c27d85d7216380959dc4c3e9cab6250e71b02fa70cba6679d3f",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/agents/openai.yaml": "438ebce8201d4c27d85d7216380959dc4c3e9cab6250e71b02fa70cba6679d3f",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/engineering/wizard/template.sh",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh",
+        "dsh-market/ghost-matt-skills/skills/wizard/template.sh"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "6566f147299bc6f1d941e64591ed04385416d543e11f96f564c7228f5018d0ed",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh": "acd3dfbd2c1c731af2110a8938244efb7aca8d44bac1b8f1a6c0e76cfe6b7fb2",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh": "acd3dfbd2c1c731af2110a8938244efb7aca8d44bac1b8f1a6c0e76cfe6b7fb2",
+        "dsh-market/ghost-matt-skills/skills/wizard/template.sh": "acd3dfbd2c1c731af2110a8938244efb7aca8d44bac1b8f1a6c0e76cfe6b7fb2"
+      }
+    },
+    {
+      "source": "skills/in-progress/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/README.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "740e1d097748d68ebc00cb98de7b2dadbbac0e714af37a0d6a251819c0073584",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/README.md": "ea3949bc78e99717358fa22143f2245aceed0d45857482b5eef119e6e58f1ba3"
+      }
+    },
+    {
+      "source": "skills/in-progress/chief-of-staff/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/chief-of-staff/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。上游分类 README 未列此 skill，完整保留其 SKILL.md 和 UI 元数据。",
+      "source_sha256": "6cc6e47ab5022f3e45e5be0fedbb0f6e645f4f0190d6b0c51c7cd60c2d7c1d98",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/chief-of-staff/SKILL.md": "163fbe4a5a30e111c563b8e3701046ed117624f81ba11fecb9ffc1fd3ba257c9"
+      }
+    },
+    {
+      "source": "skills/in-progress/chief-of-staff/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/chief-of-staff/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。上游分类 README 未列此 skill，完整保留其 SKILL.md 和 UI 元数据。",
+      "source_sha256": "c0f68ed9da6977adc97a791be3bb0830d301b2d27f9c635d92d6f325bffefb83",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/chief-of-staff/agents/openai.yaml": "499e551ce71b85ffbeb6bfd8a45bc51efe1a9ae42c15a76c8b8bf2402102963c"
+      }
+    },
+    {
+      "source": "skills/in-progress/claude-handoff/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/claude-handoff/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "79357a18425d66d4c24048bedf83dceb79d3bba356f38014950f764a7fab4026",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/claude-handoff/SKILL.md": "04386517d0e193b56c47b9d1487f78dfded3169f64a1200f9c2116adbb395ec6"
+      }
+    },
+    {
+      "source": "skills/in-progress/claude-handoff/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/claude-handoff/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "2308a672978864633286fb9f0792b08657e501426b3f7883fc418d5d2eac5eb0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/claude-handoff/agents/openai.yaml": "ce492e0f420c0260721d840c9164ae43cb36e5561ff1b5aeef1dfe77c461ef74"
+      }
+    },
+    {
+      "source": "skills/in-progress/loop-me/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/loop-me/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "e44d1cc3e760fb86ac42964c2a5f1fcac511715db50fb375f3f7be814de1eaa7",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/loop-me/SKILL.md": "2f6df5f8585788929a18530a395fa834d5c01e40632b500bd665d7b6b7b3e468"
+      }
+    },
+    {
+      "source": "skills/in-progress/loop-me/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/loop-me/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "b66fa10079957051be6a812f45e55b67ac394b71d5ba88349962b4c9205802c3",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/loop-me/agents/openai.yaml": "72965b316c71c59f50a7c755d58f7bd15871da1c068aab08ff7bad515bfadca5"
+      }
+    },
+    {
+      "source": "skills/in-progress/setup-ts-deep-modules/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "29acca66ac99d4532e2a6f0370d8125d7cba1e87c9ac66573203c75189d3e6c7",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/SKILL.md": "2a8d94588c5bb6417216ce2b7f976fe1a3df460db2e6118778139938be34768f"
+      }
+    },
+    {
+      "source": "skills/in-progress/setup-ts-deep-modules/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "159f680217d50747702620c05fd65734a152185b3219a8ca5ee4630878a354fa",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/agents/openai.yaml": "b54bb7c52a695903d25ed2f263cae2ffeff8e835258bb50ba4d4707fb91645de"
+      }
+    },
+    {
+      "source": "skills/in-progress/setup-ts-deep-modules/dependency-cruiser.config.cjs",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/dependency-cruiser.config.cjs"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "3c4973bec69f73b2117654abf9e666a7c28665b213be20e6d39869e29842428e",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/setup-ts-deep-modules/dependency-cruiser.config.cjs": "a4fa37e828262e32d39072b34cf422ffd168b827188c8b2df8e73bcf43a2b2df"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-beats/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-beats/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "a96abafa2372eede8267d770138b322d6125da8adaa7ccf0a5e08e4ee13ee71e",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-beats/SKILL.md": "96684596530698ff798bc14c08a08bee42d769a759424dc10bbe59c7731e059e"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-beats/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-beats/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "ddaef01da61d8e3c5f482c4403033c20cf5823f08a1dbf1d4c871670831d01e2",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-beats/agents/openai.yaml": "4aa6fdf45ab617a65a4d44689b56ae10cbf37e4683e6218860e19c4d78a99a5f"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-fragments/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-fragments/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "298b0edd23df229183630de592ed8aa4289233560f2040691f6eb77caeaad4ea",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-fragments/SKILL.md": "6bb2601b6b87b93a0af9c03cc6ff41067384e658abf1ff89c949a6f713e83b0a"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-fragments/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-fragments/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "81167f25ee8ea1bb4b4958f12b6702ea972ad31b05e03ec91e39fa4bae0c2641",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-fragments/agents/openai.yaml": "808ac92b28f017b8c2bd012148fe13bb05b666cd9b15d9396c8f21b4f04292b3"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-shape/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-shape/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "f5e6c57bdd85178ace4a260c92f46da6b64ddee18215b461d875739c68976f72",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-shape/SKILL.md": "a4a66bdf3c26df3e56b424997faeb6fe404c6853f78b63f497047b8a0c813c9e"
+      }
+    },
+    {
+      "source": "skills/in-progress/writing-shape/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-shape/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游开发中、未正式发布的资料，仅保存参考译文，不加入插件清单。",
+      "source_sha256": "56de45430e23104ff178415f5ecf7821d51a9cfabd8814b1607ebf39da2ef5cd",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/in-progress/writing-shape/agents/openai.yaml": "84df0ac07c4191a39e6f860c949cbdd0c1f660ec7def7b6a1423161c0ef2d4fc"
+      }
+    },
+    {
+      "source": "skills/misc/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/README.md"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "95f0b467b7f3a2bb27421c6536f35392b6846f5ad26b44ab7df00380ed02edf0",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/README.md": "4c37316437434638550adf77a93d47e7619cc79a2c96a271f2a34d8610dec369"
+      }
+    },
+    {
+      "source": "skills/misc/git-guardrails-claude-code/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "69b291d655626a01602b998a1836fcb93c058ede68dfafddfd71e87f17074764",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/SKILL.md": "4e3f842a929c14a218d4b154699f3e984815edb302f64e552f6c6ab81391d2c7"
+      }
+    },
+    {
+      "source": "skills/misc/git-guardrails-claude-code/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "d53cd783fc0ac208dec9a4c267989284384785aab6422dccdaed42f9e40243ec",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/agents/openai.yaml": "56dc8e87f6b45f7d0f41e3a946084e3caa84cd0e4640bafbbc2d530b0b1873ca"
+      }
+    },
+    {
+      "source": "skills/misc/git-guardrails-claude-code/scripts/block-dangerous-git.sh",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/scripts/block-dangerous-git.sh"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "234922b83c0a1737ee7300806c21ac0f389b07aaeb65c2d71ccedafbc5e1ea4b",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/git-guardrails-claude-code/scripts/block-dangerous-git.sh": "be5616abf584f7aaaf7c700130a528f583c96f80d1eba10dc0b11096b38458d7"
+      }
+    },
+    {
+      "source": "skills/misc/migrate-to-shoehorn/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/migrate-to-shoehorn/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "de4da4c11d924fac79c924b2ee3d2db4a5cb98386eb490a599119463d036ae72",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/migrate-to-shoehorn/SKILL.md": "46131409ab2bacdca2397cd7589ac3f336e3fd95fc800a63451b722be5135b5c"
+      }
+    },
+    {
+      "source": "skills/misc/migrate-to-shoehorn/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/migrate-to-shoehorn/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "395c2db852e66a199f1cd07f7ed92d66cb6f0787460c5475926f1a5e778b699d",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/migrate-to-shoehorn/agents/openai.yaml": "6eb82ce1ebc4625af9592eda5f1527dc8626b5998ca8453866a1df98480d8897"
+      }
+    },
+    {
+      "source": "skills/misc/scaffold-exercises/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/scaffold-exercises/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "75f5c9d771606fb9762f16522efc954df11c324f87148d8ff069bce166257de9",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/scaffold-exercises/SKILL.md": "02f36e98eebebb16a3ed92477e23f553f2af85a27c84dd40b39fbbd1a07c4693"
+      }
+    },
+    {
+      "source": "skills/misc/scaffold-exercises/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/scaffold-exercises/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "525b33913340bea7947ad2de17f2a7c5fb94be543345fe80ae753b9a44ba601d",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/scaffold-exercises/agents/openai.yaml": "f1af64f60cb5c64014da4706f132ffa7389716a8f3650f05635f169c74b83253"
+      }
+    },
+    {
+      "source": "skills/misc/setup-pre-commit/SKILL.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/setup-pre-commit/SKILL.md"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "c9819d7f1e3b198064edc1faa3154224ed67395e9f07f5d3cea4b67cf0a11a98",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/setup-pre-commit/SKILL.md": "2b659d07dbb5e5912741212b6ca2148f041f5af1586637c7e7c8a0548e4e78fe"
+      }
+    },
+    {
+      "source": "skills/misc/setup-pre-commit/agents/openai.yaml",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/misc/setup-pre-commit/agents/openai.yaml"
+      ],
+      "status": "translated",
+      "reason": "上游冻结且未正式发布的 misc 资料；保存参考译文，脚本逻辑与执行权限保留。",
+      "source_sha256": "acf41db398c5c43afe504008bb7d615a97b6498b0f1f6c5b2395254c0bfb57d1",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/misc/setup-pre-commit/agents/openai.yaml": "6b7ee6f2de3653e82ad24b415745f695a82c4f519d422f6bdda88196d4911a0a"
+      }
+    },
+    {
+      "source": "skills/productivity/README.md",
+      "targets": [
+        "docs/mattpocock-skills-zh/skills/productivity/README.md"
+      ],
+      "status": "translated",
+      "reason": "分类 README 的本地 skill 链接映射到 Claude Code 中文正式源，保持可达；不复制正式 skill 到存档目录。",
+      "source_sha256": "8e39d23dc60e4b3e433ea17f0ed79510c73873a2779e9852920c9791a217efc8",
+      "target_sha256": {
+        "docs/mattpocock-skills-zh/skills/productivity/README.md": "b4195dc125bffbadac676511274287fa2273db912b0fcc6c076a1f7b5d7ed917"
+      }
+    },
+    {
+      "source": "skills/productivity/grill-me/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/grill-me/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "caaf8b8de1684f96e26b28f3c29189db5c89cce4b73e1c93d86164f66ef88637",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md": "c2374479e91f71826a7bde1447a5c46705b06f8655707e1e812a624400d5dce6",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/SKILL.md": "13655d98ac165e26bccda4dfc9262128772c1965cf0adc39820a02047ddc240e",
+        "dsh-market/ghost-matt-skills/skills/grill-me/SKILL.md": "3f3269989164b04f0901024bc0e20f9e83da872bf2d692a58a5a433eec6ff208"
+      }
+    },
+    {
+      "source": "skills/productivity/grill-me/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-me/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "c061e39c3e0f9d865fb1b97556d485704af2a8a58f4b8221a8917a5c2074a32b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grill-me/agents/openai.yaml": "801db62a8840e1943c66b72d83a96b53777dc7499934e4242064fbd95c006d84",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grill-me/agents/openai.yaml": "5772f133b2f0bcc6ca7faec1b0bd23c998a7b56580312735650c190b3f3acb4d",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/grilling/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/grilling/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "befdff1e27a1dfe2a294d5871169ac1afe16d983911daa4f32627514a48c1e15",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md": "524e0592ebbfc123d6359acd5725d8a9820a0a5b4a02767ea18b5dc00b2257b9",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md": "524e0592ebbfc123d6359acd5725d8a9820a0a5b4a02767ea18b5dc00b2257b9",
+        "dsh-market/ghost-matt-skills/skills/grilling/SKILL.md": "d31bf20e84f1162fd8537dc70ebe6826ef135deb7ec25f1306876fb53c3a5cf7"
+      }
+    },
+    {
+      "source": "skills/productivity/grilling/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grilling/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grilling/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "1411d7df7d99b7e621a1ff8283c8133cc2464be63d064e52d8ce169c6800ee9b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/grilling/agents/openai.yaml": "c5c206c0c8655c68adb4543bb2275e6177a13aeaf1d0b2dcd2b47060ac73431e",
+        "codex-market/plugins/mattpocock-skills-zh/skills/grilling/agents/openai.yaml": "c5c206c0c8655c68adb4543bb2275e6177a13aeaf1d0b2dcd2b47060ac73431e",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/handoff/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/handoff/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "4cbb043950dad2ffd3662ff1a5a0b51ae676004b5cae10e3787e8ee7a4ee69d3",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md": "a5546dbc3dbcac9d3d3ddd782180699183ae946b5d783b2d8973cb2e9bfd4cc4",
+        "codex-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md": "6681e814fd83ccacb528303ea404a6b8b978370fb681a15f7ec14e98057705c0",
+        "dsh-market/ghost-matt-skills/skills/handoff/SKILL.md": "1ead1908371ec139deefd5b452d57faa8f0c1fc942604ee11f6e3fe0290e494c"
+      }
+    },
+    {
+      "source": "skills/productivity/handoff/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/handoff/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "5c479fd562c691851690e8b18c8501045bef0943c10743d636b2fae26add1d28",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/agents/openai.yaml": "36dd923cd7e9099aa0f3b4c821416b1c7fd33e96bb591c4c194f213171d9110c",
+        "codex-market/plugins/mattpocock-skills-zh/skills/handoff/agents/openai.yaml": "2496ee48d43ee0956df87d6902ec2b0a6a2c743d9b30ecc703d4fd8119ec8bf8",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/GLOSSARY-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/GLOSSARY-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/GLOSSARY-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/teach/GLOSSARY-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "9b99859ec28437668130d8f2ce5a342938970f8a1ed4fd38c3eab4f4b5fff210",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/GLOSSARY-FORMAT.md": "103234a400b323cf6b856df1269c00b35541ed2ba2bd49b54e9052176b4cf6c8",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/GLOSSARY-FORMAT.md": "103234a400b323cf6b856df1269c00b35541ed2ba2bd49b54e9052176b4cf6c8",
+        "dsh-market/ghost-matt-skills/skills/teach/GLOSSARY-FORMAT.md": "103234a400b323cf6b856df1269c00b35541ed2ba2bd49b54e9052176b4cf6c8"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/LEARNING-RECORD-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/LEARNING-RECORD-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/LEARNING-RECORD-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/teach/LEARNING-RECORD-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "701fa34b6748aa89e6c960ffb815257f481a7d77fb2900f9028f7edf3fdd6052",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/LEARNING-RECORD-FORMAT.md": "abe84862074fb4a62805c8f0c32c959d23b213aa0f72e0a18b7dfad507fcafce",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/LEARNING-RECORD-FORMAT.md": "abe84862074fb4a62805c8f0c32c959d23b213aa0f72e0a18b7dfad507fcafce",
+        "dsh-market/ghost-matt-skills/skills/teach/LEARNING-RECORD-FORMAT.md": "abe84862074fb4a62805c8f0c32c959d23b213aa0f72e0a18b7dfad507fcafce"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/MISSION-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/MISSION-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/MISSION-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/teach/MISSION-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "8cacbb3c0644d3ae0ea4965564797099401a6930a23f7cf462918576587f2418",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/MISSION-FORMAT.md": "f7e1e10eaf1912cec2fa3b68510af7246741d551711c602f2d681cbf0d007497",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/MISSION-FORMAT.md": "f7e1e10eaf1912cec2fa3b68510af7246741d551711c602f2d681cbf0d007497",
+        "dsh-market/ghost-matt-skills/skills/teach/MISSION-FORMAT.md": "f7e1e10eaf1912cec2fa3b68510af7246741d551711c602f2d681cbf0d007497"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/RESOURCES-FORMAT.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/RESOURCES-FORMAT.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/RESOURCES-FORMAT.md",
+        "dsh-market/ghost-matt-skills/skills/teach/RESOURCES-FORMAT.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "e9cacf34026e11a8d1c8f9de88abe5bcbf654f4ebdb25cae8c0de0d5f48f44ec",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/RESOURCES-FORMAT.md": "1103e557b5ac330c931e396c5228a48ef8f0f4919fb9f658f773cf55aa6f2ff5",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/RESOURCES-FORMAT.md": "1103e557b5ac330c931e396c5228a48ef8f0f4919fb9f658f773cf55aa6f2ff5",
+        "dsh-market/ghost-matt-skills/skills/teach/RESOURCES-FORMAT.md": "1103e557b5ac330c931e396c5228a48ef8f0f4919fb9f658f773cf55aa6f2ff5"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/teach/SKILL.md"
+      ],
+      "status": "translated-updated",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "550482c2d674b085c9043b87bfdc14a8f2ec453c736119e7fcbb1e9332bffeba",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md": "432c9f87feedd78f1cb6c64dc0cd7b189f3a6e23bf1b881ec164b93f7ed467a2",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md": "2988f3b383e9892f4cb8e9c6f310e79e232d73acc34387f23e4f076b95a22908",
+        "dsh-market/ghost-matt-skills/skills/teach/SKILL.md": "1be554ed36a765b1ccc14c5ea4df616865706662a1469e87881235e10cd9ae28"
+      }
+    },
+    {
+      "source": "skills/productivity/teach/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "5856f3ae8aec742f1499c640aecdd5f1d6af5fa210a7c6ec794de8263a6f733f",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/teach/agents/openai.yaml": "d51b78fd18e94d78873172d820e68d438a7d36d1201b62a41e19c4458143eb9d",
+        "codex-market/plugins/mattpocock-skills-zh/skills/teach/agents/openai.yaml": "3e9f0c905bf6c3953acfbb84993128fa7945cecd23fb5e55ff28cd2684d30893",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/to-questionnaire/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/to-questionnaire/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "b5eb929842ee0e93d867c5e906d183d350f2f2d149eaeaa86967d94d8eda1d3b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md": "cf2dc502ba5fc794637311db2c1cad85c29557998b90a45ef011d2f39ab2c342",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md": "64390c26d1c627c27942f9c145889b6e34651a7b7b3a67b8c9726a356306baf2",
+        "dsh-market/ghost-matt-skills/skills/to-questionnaire/SKILL.md": "c49e79cdce8d013b39a95ccf0bfee829c537343409aee529f5d7ad0ca313a0a4"
+      }
+    },
+    {
+      "source": "skills/productivity/to-questionnaire/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "9e8a06c38c8842eea8d4922cb9d1ead8e3ace647bab259b943c994a1b4742bc2",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/agents/openai.yaml": "34d4cd33d295932671559e1fc39e6aa163859540a6bc5074c3c0ef590d9c3672",
+        "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/agents/openai.yaml": "2fc55a9c612e7b0f318acd34d5893e2052f79a46921e6b9b4633973c1262916c",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/wait-what/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/wait-what/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "d961bb37defd975c539427edb8f450cdbccdcdd552e213c1ece46676a7970905",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md": "1401a1c55e07c2d82dbc00b0c200b38198b4ad56a6cec4709e0ffd5d3b891b43",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md": "242522cb238f6a5a6f4eec767d5da749f891449b71b5675b502dcc722292c800",
+        "dsh-market/ghost-matt-skills/skills/wait-what/SKILL.md": "92c8c3bbf72b5748520308daa582ef435a21252f8f1b6633fe5fc0d1336fdc7c"
+      }
+    },
+    {
+      "source": "skills/productivity/wait-what/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "b41faadf741d51e4ea184148b2d1854d93f947aaf754c7844f70a00f04194999",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/agents/openai.yaml": "7bd3834465fd9651f20ae9a04ee60ba6be2aa77eda9ac6e001e3e14738723c58",
+        "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/agents/openai.yaml": "6370658ff2e3146ad0f6434458da911c20d6bce8f3648ed1265eb997040da33b",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    },
+    {
+      "source": "skills/productivity/writing-for-agents/SKILL-MECHANICS.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md",
+        "dsh-market/ghost-matt-skills/skills/writing-for-agents/SKILL-MECHANICS.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md": "b88d61ffa98ddff2412f7aac90d0b32073d0ff6d81b2b5fb72dcfbb0b4d75427",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md": "b88d61ffa98ddff2412f7aac90d0b32073d0ff6d81b2b5fb72dcfbb0b4d75427",
+        "dsh-market/ghost-matt-skills/skills/writing-for-agents/SKILL-MECHANICS.md": "b88d61ffa98ddff2412f7aac90d0b32073d0ff6d81b2b5fb72dcfbb0b4d75427"
+      }
+    },
+    {
+      "source": "skills/productivity/writing-for-agents/SKILL.md",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
+        "dsh-market/ghost-matt-skills/skills/writing-for-agents/SKILL.md"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa",
+        "dsh-market/ghost-matt-skills/skills/writing-for-agents/SKILL.md": "5403de280acc0d51bed490a4eaefb376a944d4d199679d4bdc1401b97d3d4ab2"
+      }
+    },
+    {
+      "source": "skills/productivity/writing-for-agents/agents/openai.yaml",
+      "targets": [
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/agents/openai.yaml",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/agents/openai.yaml",
+        "dsh-market/ghost-matt-skills/catalog.json"
+      ],
+      "status": "existing-translation",
+      "reason": "正式发布的共享译文；平台调用语法、显式调用策略与UI元数据分别适配；DSH由Codex中文源生成",
+      "source_sha256": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
+      "target_sha256": {
+        "claude-code-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/agents/openai.yaml": "bf9d95e00aa0bd693bed81a6d4fa1fbe866641c23089b0ec5f8b03bc2db3f790",
+        "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/agents/openai.yaml": "bf9d95e00aa0bd693bed81a6d4fa1fbe866641c23089b0ec5f8b03bc2db3f790",
+        "dsh-market/ghost-matt-skills/catalog.json": "da5a15dd04ee20ca61faa19252a90a3591e131bbc711d676a06dd4c17a0788e5"
+      }
+    }
+  ]
+}

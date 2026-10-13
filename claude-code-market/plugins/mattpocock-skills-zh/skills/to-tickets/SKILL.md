@@ -60,7 +60,7 @@ disable-model-invocation: true
 发布批准后的工单。具体形式由 `/setup-matt-pocock-skills` 配置的 tracker 决定；工单内容相同，只有阻塞边的表达不同：
 
 - **本地文件**：在 `.scratch/<feature-slug>/issues/<NN>-<slug>.md` 为每张工单写一个文件，从 `01` 开始按依赖顺序编号，阻塞项在前。“Blocked by”列出依赖的编号和标题。严格使用下方模板；每个文件只放一张工单，不能合并成一个文件。
-- **真实 issue tracker（GitHub、Linear 等）**：按依赖顺序逐张发布，先创建阻塞项，使后续工单能引用真实标识。平台支持时使用原生 blocking/sub-issue 关系，否则在 “Blocked by” 中列出阻塞 issue。除非另有要求，添加 `ready-for-agent` 分诊标签；这些工单本来就应能被代理领取。
+- **真实 issue tracker（GitHub、Linear 等）**：按依赖顺序逐张发布，先创建阻塞项，使后续工单能引用真实标识。平台支持时使用原生 blocking 关系，否则在 “Blocked by” 中列出阻塞 issue。来源是现有 issue 时，按跟踪器文档中的操作将每张工单设为它的子 issue。除非另有要求，添加 `ready-for-agent` 分诊标签；这些工单本来就应能被代理领取。
 
 工作从 **frontier** 开始，即所有阻塞项均已完成的工单。纯线性链按从上到下执行。
 
@@ -98,7 +98,7 @@ tracker 上父 issue 的引用。来源不是现有 issue 时省略本节。
 
 ## 被什么阻塞
 
-- 每张阻塞工单的引用；若无则写“无，可立即开始”。
+- 每张阻塞工单的引用；若无则写“无，可立即开始”。已设置原生阻塞边时省略本节。
 
 </issue-template>
 

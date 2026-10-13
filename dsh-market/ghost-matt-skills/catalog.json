@@ -253,12 +253,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
       "target": "skills/ask-matt/SKILL.md",
-      "sha256": "357ca9f0cc2890a6203195b8af614546d4adf4cf29713192e05963a6afe0e100"
+      "sha256": "66770f31c5413515a4c87059e9d0b2c5e5c0dd89919768a80b590190d277c8bd"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
       "target": "skills/code-review/SKILL.md",
-      "sha256": "3a09661ec02205ce2112ce3c516f4140492dbb235cb5cefa70c66185ece5a2d5"
+      "sha256": "99634091f7547cd31d8397b4b1ae406a37708c25d0949278e394d332e304404c"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/codebase-design/DEEPENING.md",
@@ -278,12 +278,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/SKILL.md",
       "target": "skills/diagnosing-bugs/SKILL.md",
-      "sha256": "103cbe6a9cee8c16b49ce304c2e807e586283d7bb68f048442f6fdb87818b628"
+      "sha256": "4d8e533bea007c20243919cbb7502ea20d4aa4cff8f736d42d5ef41fd796a9f0"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
       "target": "skills/diagnosing-bugs/scripts/hitl-loop.template.sh",
-      "sha256": "18ae07e1cc49b32c71767e241a6e8de4be74ef21d5e3b7e39034d9c7335f2d80"
+      "sha256": "7361b3d75fac536b30373183cc71e5e80f638903e418f4367edd5ea9d5068e9c"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/domain-modeling/ADR-FORMAT.md",
@@ -313,17 +313,17 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/grilling/SKILL.md",
       "target": "skills/grilling/SKILL.md",
-      "sha256": "591729b6d9ba99afe0dfb549c5d32716ae62b15deb11f9640bfdde9b7d71a111"
+      "sha256": "524e0592ebbfc123d6359acd5725d8a9820a0a5b4a02767ea18b5dc00b2257b9"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md",
       "target": "skills/handoff/SKILL.md",
-      "sha256": "5b7cb2d610df66511d4c920d4af964e52cbee513e0b340471506ad8a4ab09dea"
+      "sha256": "6681e814fd83ccacb528303ea404a6b8b978370fb681a15f7ec14e98057705c0"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/implement/SKILL.md",
       "target": "skills/implement/SKILL.md",
-      "sha256": "0e6d995cbe028aff40fce1fbda3e58edfc874a552edce3060624aeb5af7b65c0"
+      "sha256": "ff053cb628aa768bf337f1aac498b0ea7d86c86d828775953e060ce505319334"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md",
@@ -378,7 +378,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
       "target": "skills/setup-matt-pocock-skills/SKILL.md",
-      "sha256": "ca23ba99610c025cca76a09fa2b50df2cdada8239ca665971f0c182fd3b85b69"
+      "sha256": "9fe724adb39ca6d161d64872eecedd9ee5d58c70a04437dbdfd8196e90ab1d5c"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
@@ -388,12 +388,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
       "target": "skills/setup-matt-pocock-skills/issue-tracker-github.md",
-      "sha256": "b641b4e8560996b9e9df3af61c90f8fbb38281624a5451341429451b3c8666a7"
+      "sha256": "cd11e3f01cda179871e7c6fa98df30ccc2eb13b0148d10ac59d77e536c9f7774"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
       "target": "skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
-      "sha256": "0da6a85c95de82f6e0f4afb6248af6b00204b082e269071d4cf6664089bae177"
+      "sha256": "e055619466ee16401ee021e4ceb0d8b4920bddfc0477a0c61790214276d07371"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md",
@@ -403,12 +403,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/triage-labels.md",
       "target": "skills/setup-matt-pocock-skills/triage-labels.md",
-      "sha256": "6804ac9c86c817bd4f260c3a91be7b3e878f49ad35de1f7db7819d02341b51db"
+      "sha256": "82c28b2c3f4c57967aeb74e57178c0390481f99c9c813cb2c03704cdbde1961f"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/SKILL.md",
       "target": "skills/tdd/SKILL.md",
-      "sha256": "009088de6d4f23c098c3e592ee2a03c824edeb6929e4cfe307282a63e4e5e6b0"
+      "sha256": "a463368a5c37c27d6d89c0c7ca9eaf8ccf14e17f27e69f2962fd268f91aa33bb"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/tdd/mocking.md",
@@ -443,7 +443,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md",
       "target": "skills/teach/SKILL.md",
-      "sha256": "643a793f1a8e3d085ae9f846027851c700665d3d84e3b9ed041b8b2b2c3799ea"
+      "sha256": "2988f3b383e9892f4cb8e9c6f310e79e232d73acc34387f23e4f076b95a22908"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md",
@@ -458,7 +458,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md",
       "target": "skills/to-tickets/SKILL.md",
-      "sha256": "987ef6465dd79d9a3fe89997799a6b80a8ac2f73c12b2b9eb3d2720c64e49b4a"
+      "sha256": "160e42b64fe85f40306b5a92ad7fec57341448131662f0ffc0594e4b0356463f"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/triage/AGENT-BRIEF.md",
@@ -483,7 +483,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",
       "target": "skills/wayfinder/SKILL.md",
-      "sha256": "61c7167bbcfe044b011ca3ba55c9432e97a186c7bf31a060fd18b23005aafbb6"
+      "sha256": "e630ebc17c31e15108b640b14d056ea18cf7ad20dc8356a6b2720e2badd94eb6"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wizard/SKILL.md",
@@ -493,7 +493,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wizard/template.sh",
       "target": "skills/wizard/template.sh",
-      "sha256": "d43dc3f7b6008779ef55e3935bf1df246b5bc194b7f9e1dee3d9340a00922ce6"
+      "sha256": "acd3dfbd2c1c731af2110a8938244efb7aca8d44bac1b8f1a6c0e76cfe6b7fb2"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL-MECHANICS.md",

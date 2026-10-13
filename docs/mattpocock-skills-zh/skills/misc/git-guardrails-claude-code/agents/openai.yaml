@@ -1,0 +1,3 @@
+interface:
+  display_name: "Claude Code Git 防护"
+  short_description: "拦截危险 Git 命令"

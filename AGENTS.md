@@ -49,7 +49,8 @@ git config user.email
 
 - `claude-code-market/`：Claude Code 本地插件入口
 - `codex-market/`：Codex 本地 marketplace/plugin 入口
-- `SkillOpt/`：`microsoft/SkillOpt` Git submodule
+- `upstream/mattpocock-skills/`：Matt Pocock skills 上游 Git submodule
+- `dsh-market/`：DSH 插件及生成内容
 
 ## 容器化开发
 

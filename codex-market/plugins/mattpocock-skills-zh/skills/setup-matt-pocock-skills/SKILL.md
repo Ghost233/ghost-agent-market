@@ -102,6 +102,8 @@ description: 为当前仓库配置工程类 skills，包括 issue 跟踪器、�
 
 只有安装了 `triage` 且执行过 B 部分时，才包含 `### 分类标签` 子区块并写入 `docs/agents/triage-labels.md`；否则两者均省略。
 
+执行过 B 部分且使用 GitHub 或 GitLab 时，为跟踪器缺少的每个已配置标签运行 `gh label create` 或 `glab label create`。
+
 随后以本 skill 目录中的种子模板为起点写入文档：
 
 - [issue-tracker-github.md](./issue-tracker-github.md)：GitHub issue 跟踪器。

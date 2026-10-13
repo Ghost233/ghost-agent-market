@@ -4,11 +4,11 @@
 
 ## 安装
 
-当前源码版本为 `0.1.3`，只包含 Matt 中文原版技能；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
+当前源码版本为 `0.1.4`，只包含 Matt 中文原版技能；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
 
 ```sh
 npm pack ./dsh-market/ghost-matt-skills --pack-destination /tmp
-dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.3.tgz
+dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.4.tgz
 ```
 
 安装到所用 profile 后检查并启动：
@@ -33,6 +33,8 @@ Matt 中文版维持原始行为；例如 `implement-spec` 在独立 worktree �
 保留全部 references、模板、脚本和 Matt 的 MIT 授权；`resourceBase` 指向安装包内每个技能目录，独立于启动目录。Codex 的 `agents/openai.yaml` 转成 DSH invocation policy，不装入 DSH。
 
 ## 维护与验证
+
+本轮内容同步至 Matt 上游 `49dd158d1076134a641b33efb035946536778336`（上游版本仍为 `1.3.1`）。
 
 源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 27 项，不是网络上未审核的更新。生成文件在 `skills/` 与 `catalog.json`；修改源或平台映射后重新运行构建，增加此包版本。构建不会修改 Codex/Claude/ZCode 源文件；清单数量变化会停止构建，要求核对范围。
 

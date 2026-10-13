@@ -107,7 +107,6 @@
 | goal-dag.mjs | 平台组 | 调度 / 生命周期 / 五条不变量，产出 progress.json / events.jsonl | 领域脚本 CLI（同步） | 平台组 |
 | owner-registry.mjs → expert-registry | 治理组 | ACL / handoff / Capsule / propose-current-approve-apply / route | 领域脚本 CLI（同步） | 治理组 |
 | sub-thread-coordination | 沿用组 | 唯一协调入口 / 硬边界 / 单 Main | 通用 skill（同步） | 沿用组 |
-| SkillOpt submodule | 平台组 | 技能资产 | git submodule（同步） | 平台组 |
 | AGENTS.md 同步规则 | 平台组 | 两端同步 / Git 身份 / 在线连接 | 文档约定（编辑时遵循） | 平台组 |
 
 ---

@@ -1,0 +1,23 @@
+name: 分诊标签
+
+# 每个新 issue 都添加 needs-triage，确保进入分诊队列。
+# issue 表单已经添加此标签；这里处理以其他方式创建的 issue。
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 添加 needs-triage
+        run: gh issue edit "$NUMBER" --add-label needs-triage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}

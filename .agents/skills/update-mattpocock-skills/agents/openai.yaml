@@ -1,0 +1,4 @@
+interface:
+  display_name: "更新 Matt Pocock 中文 Skills"
+  short_description: "更新本仓库 Matt 子模块，输出版本差异，翻译并同步相关插件，经子代理审查修复"
+  default_prompt: "使用 $update-mattpocock-skills 更新本仓库 Matt 子模块，记录版本差异，翻译 skills 和相关资料，同步全部相关插件，并用一个子代理审查后修复问题。"

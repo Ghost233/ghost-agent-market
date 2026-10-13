@@ -1,0 +1,38 @@
+name: 关闭 needs-info
+
+# 带 needs-info 标签的 issue 若 14 天没有回复，则关闭。
+# 仅处理带此标签的 issue，不自行把其他 issue 标为过期。
+# 加上标签后出现评论，会移除 needs-info 并把 issue
+# 放回 needs-triage，因此应在提问后添加标签。
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: write # 此 Action 在 Actions 缓存中保存状态
+    steps:
+      - uses: actions/stale@v10
+        with:
+          only-issue-labels: needs-info
+          stale-issue-label: needs-info
+          days-before-issue-stale: -1
+          days-before-issue-close: 14
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          remove-issue-stale-when-updated: true
+          labels-to-add-when-unstale: needs-triage
+          close-issue-reason: not_planned
+          close-issue-message: >
+            我们在 14 天前请求了更多信息，
+            至今未收到回复，因此关闭本项。感谢报告。如果可以补充
+            详情，请在这里评论，我们会重新打开本项。
+            参见 [CONTRIBUTING.md](https://github.com/mattpocock/skills/blob/main/CONTRIBUTING.md)
+            了解有效报告应包含的内容。

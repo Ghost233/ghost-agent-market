@@ -10,7 +10,7 @@ description: 从固定点（commit、branch、tag 或 merge-base）开始，沿 
 
 两个轴由**并行子代理**执行，避免上下文互相污染，再由本 skill 汇总发现。
 
-你应该已经获得 issue 跟踪器配置。若缺少 `docs/agents/issue-tracker.md`，告知用户运行 `/setup-matt-pocock-skills`。
+你应该已经获得 issue 跟踪器配置。若没有，告知用户运行 `/setup-matt-pocock-skills`。
 
 ## 流程
 
@@ -26,14 +26,14 @@ description: 从固定点（commit、branch、tag 或 merge-base）开始，沿 
 
 按以下顺序寻找来源规格：
 
-1. commit 消息中的 issue 引用（`#123`、`Closes #45`、GitLab `!67` 等），按 `docs/agents/issue-tracker.md` 中的流程获取。
+1. commit 消息中的 issue 引用（`#123`、`Closes #45`、GitLab `!67` 等），按跟踪器文档中的流程获取。
 2. 用户作为参数传入的路径。
 3. `docs/`、`specs/` 或 `.scratch/` 下与分支名或功能匹配的规格文件。
 4. 仍未找到时询问用户。用户确认不存在规格时跳过 **Spec** 子代理，并报告“没有可用规格”。
 
 ### 3. 确定标准来源
 
-查找仓库中说明代码编写方式的所有内容，例如 `CODING_STANDARDS.md` 或 `CONTRIBUTING.md`。
+搜索仓库中所有说明代码编写方式的文件。若存在 `CODING_STANDARDS.md` 或 `CONTRIBUTING.md`，必须把它们列入清单。
 
 除仓库文档外，Standards 轴始终包含下方**坏味道基线**：Fowler《重构》第 3 章的一组固定代码坏味道，即使仓库没有记录标准也适用。遵守两条规则：
 
@@ -56,6 +56,8 @@ description: 从固定点（commit、branch、tag 或 merge-base）开始，沿 
 - **Refused Bequest（拒绝遗赠）**：子类或实现者忽略或覆盖大部分继承内容。→ 放弃继承，改用组合。
 
 ### 4. 并行启动两个子代理
+
+同时在前台发起两个子代理调用，并汇总它们返回的报告。
 
 **Standards 子代理提示**包含：
 

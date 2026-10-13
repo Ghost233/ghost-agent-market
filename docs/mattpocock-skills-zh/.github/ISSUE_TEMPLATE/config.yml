@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 问题与讨论
+    url: https://github.com/mattpocock/skills/discussions
+    about: 使用方法问题、希望交流的想法，以及不属于 skill 具体失败的其他内容。
