@@ -242,6 +242,15 @@
         "userInvocable": true
       },
       "group": "mattpocock-skills-zh"
+    },
+    {
+      "name": "spec-delivery",
+      "description": "使用 DSH 原生 agent team 并行实施已确认 spec，逐阶段审查、复盘并修复 P0/P1/P2，合并阶段 PR 后总审查并提交总 PR。用于完整开发交付；讨论或编辑本 skill 不启动开发。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "ghost-agent-skills"
     }
   ],
   "files": [
@@ -504,6 +513,11 @@
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
       "target": "skills/writing-for-agents/SKILL.md",
       "sha256": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa"
+    },
+    {
+      "source": "dsh-market/skills/spec-delivery/SKILL.md",
+      "target": "skills/spec-delivery/SKILL.md",
+      "sha256": "0c97f47c3e58f3b97da7ae166834e80aaddcf1e64a7159e7c986fc68ba328e5d"
     }
   ]
 }

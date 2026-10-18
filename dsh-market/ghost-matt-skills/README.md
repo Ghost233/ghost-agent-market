@@ -1,14 +1,14 @@
 # Ghost Matt Skills for DSH
 
-原生 DSH Bundle，包含仓库当前的 **27 个 `mattpocock-skills-zh` 中文原版技能**。使用 `package.json` 的 `dsh.bundle.patch` 和 Cordis provider 注册到 `ctx.skills`，没有复用 Codex plugin/marketplace 清单。
+原生 DSH Bundle，包含 **27 个 `mattpocock-skills-zh` 中文原版技能和 1 个 DSH 专用 `spec-delivery`**，共 28 项。使用 `package.json` 的 `dsh.bundle.patch` 和 Cordis provider 注册到 `ctx.skills`，没有复用 Codex plugin/marketplace 清单。
 
 ## 安装
 
-当前源码版本为 `0.1.4`，只包含 Matt 中文原版技能；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
+当前源码版本为 `0.1.6`；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
 
 ```sh
 npm pack ./dsh-market/ghost-matt-skills --pack-destination /tmp
-dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.4.tgz
+dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.6.tgz
 ```
 
 安装到所用 profile 后检查并启动：
@@ -28,7 +28,11 @@ dsh --profile web
 
 Matt 中文版维持原始行为；例如 `implement-spec` 在独立 worktree 上并发构建并合入集成分支，PR 仅在跟踪器需要或用户要求时创建。
 
-平台适配仅转换技能引用、调用策略和子代理接口。子代理通过实际可用的 DSH spawn 型工具委派，继承宿主模型设置；不强制安装 Codex、不假装 DSH 支持 Terra/xhigh 参数。配置缺少必要委派能力时明确报告限制。Bundle 不注册新模型、不开启额外权限、不执行技能内脚本。
+`spec-delivery` 使用 DSH 原生 agent team：Lead 协调共享任务板，实现成员按文件归属并行开发，审查成员按 Standards 和 Spec 两个轴并行审查。成员共享 checkout，Git 与集成由 Lead 串行执行；逐阶段审查、复盘并清零 P0/P1/P2，合并阶段 PR 后总审查并提交总 PR。仅在用户明确要求时合并总 PR。
+
+运行 `spec-delivery` 前，需在宿主 Plugins 中启用 [Agent Teams](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/experimental/agent-team-profile/README.md)，确认存在 `spawn_teammate` 和 `team_task_*` 工具。缺少能力时报告阻塞，不退回普通子代理或单代理实施。此 Bundle 只提供技能，不代替用户安装或启用 team 插件。
+
+Matt 技能的平台适配仅转换技能引用、调用策略和子代理接口。子代理通过实际可用的 DSH spawn 型工具委派，继承宿主模型设置；不强制安装 Codex、不假装 DSH 支持 Terra/xhigh 参数。配置缺少必要委派能力时明确报告限制。Bundle 不注册新模型、不开启额外权限、不执行技能内脚本。
 
 保留全部 references、模板、脚本和 Matt 的 MIT 授权；`resourceBase` 指向安装包内每个技能目录，独立于启动目录。Codex 的 `agents/openai.yaml` 转成 DSH invocation policy，不装入 DSH。
 
@@ -36,7 +40,7 @@ Matt 中文版维持原始行为；例如 `implement-spec` 在独立 worktree �
 
 本轮内容同步至 Matt 上游 `49dd158d1076134a641b33efb035946536778336`（上游版本仍为 `1.3.1`）。
 
-源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 27 项，不是网络上未审核的更新。生成文件在 `skills/` 与 `catalog.json`；修改源或平台映射后重新运行构建，增加此包版本。构建不会修改 Codex/Claude/ZCode 源文件；清单数量变化会停止构建，要求核对范围。
+Matt 源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 27 项；DSH 专用源为 `dsh-market/skills/spec-delivery`，其平台差异在 skill 中说明。生成文件在 Bundle 的 `skills/` 与 `catalog.json`。修改源或平台映射后，运行 `node tooling/build-dsh-matt.mjs` 并增加此包版本；用 `--check` 只校验生成内容是否与源一致。构建不会修改 Codex/Claude/ZCode 源文件；Matt 清单数量变化会停止构建，要求核对范围。
 
 验证不需要 API key 或付费模型，使用 DSH `0.1.6-alpha.1`（Node 24），验证依赖中包含 CLI 安装插件所需的固定 `pnpm 11.24.0`：
 
@@ -45,7 +49,7 @@ npm ci --prefix tests/dsh-runtime --ignore-scripts --no-audit --no-fund
 node tooling/verify-dsh-release.mjs
 ```
 
-测试覆盖实际 Cordis/DSH registry 注册、27 项完整加载、资源定位、手动/自动调用策略、卸载与重载。可传第三个参数为安装后的 Bundle 目录，对 tarball 安装副本执行同样测试。此验证证明打包和加载，不代表已运行 27 个技能的所有业务流程。
+测试覆盖实际 Cordis/DSH registry 注册、28 项完整加载、资源定位、手动/自动调用策略、卸载与重载。可向 `tests/test_dsh_matt_bundle.mjs` 传第三个参数作为安装后的 Bundle 目录，对 tarball 安装副本执行同样测试。此验证证明打包和加载，未运行付费模型、Agent Teams 开发或全部技能业务流程。
 
 `0.1.1` 发布还使用 DSH-Workflow 固定的子模块 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`（CLI `0.1.6-alpha.1`）现有本地构建，在隔离 `DSH_HOME` 下完成 tarball 安装、`--dump-config` 组合及安装副本的 31 项 registry 测试；没有修改 DSH 源码或用户 profile，也没有重新构建该宿主。
 
