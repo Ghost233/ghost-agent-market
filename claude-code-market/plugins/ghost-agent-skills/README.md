@@ -10,7 +10,7 @@
 /ghost-agent-skills:git-commit 检查当前改动并创建清晰的 Git 提交
 /ghost-agent-skills:git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突
 /ghost-agent-skills:configure-gh-account 为目标项目配置 Codex GitHub 账号环境
-/ghost-agent-skills:spec-delivery 并行实施已确认 spec，逐阶段审查复盘并提交总 PR
+/ghost-agent-skills:spec-delivery 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付
 /ghost-agent-skills:container-dev-workflow 按项目容器入口完成依赖准备、构建、验证和产物更新
 /ghost-agent-skills:apple-container 使用本机 Apple container 与 Orchard 运行、构建和诊断容器
 /ghost-agent-skills:zh-tech-writing 编写或修改中文技术文档

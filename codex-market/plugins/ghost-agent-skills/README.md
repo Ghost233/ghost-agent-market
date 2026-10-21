@@ -7,7 +7,7 @@
 | `$git-commit` | 检查改动并通过安全脚本创建 Git 提交 |
 | `$git-merge-conflict` | 考古两侧历史并解决严重 Git 冲突 |
 | `$configure-gh-account` | 配置项目的 Codex GitHub 账号环境 |
-| `$spec-delivery` | 并行实施 spec，逐阶段审查复盘并提交总 PR；依赖 `mattpocock-skills-zh` |
+| `$spec-delivery` | 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付；依赖 `mattpocock-skills-zh` |
 | `$container-dev-workflow` | 使用项目容器入口，按输入变化准备依赖、构建、验证和更新产物 |
 | `$apple-container` | 使用本机 Apple container 与 Orchard 运行、构建和诊断容器 |
 | `$zh-tech-writing` | 编写和修改中文技术文档，检查句子、结构、排版和 AI 腔 |

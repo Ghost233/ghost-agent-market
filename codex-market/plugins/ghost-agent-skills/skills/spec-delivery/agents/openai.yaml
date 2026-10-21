@@ -1,4 +1,4 @@
 interface:
   display_name: "Spec 完整交付"
-  short_description: "并行实施 spec，逐阶段审查复盘修复问题并提交总 PR"
-  default_prompt: "建立持续 goal，使用 $spec-delivery 交付当前已确认的 spec。"
+  short_description: "按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付"
+  default_prompt: "建立持续 goal，使用 $spec-delivery 交付当前已确认的 spec；涉及多仓时，创建实施和验收聊天，授权主聊天与验收聊天向本需求的实施聊天派发后续任务与修复要求。"
