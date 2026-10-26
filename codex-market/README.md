@@ -10,6 +10,7 @@
 - `git-commit`
 - `git-merge-conflict`
 - `configure-gh-account`：配置 Git 本地身份、HTTPS 认证和 Codex 账号环境，复用已有 gh 登录并验证身份
+- `refine-issue`：自动识别本次任务，用子代理逐项检查工单粒度，必要时衔接 Matt `to-tickets`
 - `container-dev-workflow`：使用项目现有容器入口，按输入变化准备依赖、构建、验证和更新产物
 - `apple-container`：使用 Orchard、Apple container 和原生 Compose 操作本机容器
 

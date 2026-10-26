@@ -10,6 +10,7 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `configure-gh-account`：配置 Git 本地身份与 HTTPS 认证，复用 gh 登录为项目的 `.codex/config.toml` 配置独立账号目录，支持多个仓库并行操作 GitHub
 - `spec-delivery`：按任务规模选择实施流程，协调单仓或多仓 spec 的开发、审查、验收和交付；依赖 `mattpocock-skills-zh` 插件
+- `refine-issue`：自动识别本次任务及关联工单，用子代理逐项检查粒度，必要时衔接 Matt `to-tickets`；依赖 `mattpocock-skills-zh` 插件
 - `container-dev-workflow`：使用项目现有容器入口，按输入变化准备依赖、构建、验证和更新产物
 - `apple-container`：使用 Orchard、Apple container 和原生 Compose 操作本机容器，核验运行时、网络和作业结果
 - `zh-tech-writing`：编写和修改中文技术文档，检查句子、结构、排版和 AI 腔；引自 [leter/zh-tech-writing](https://github.com/leter/zh-tech-writing)，采用 MIT 许可
@@ -46,6 +47,7 @@ ghost-agent-market/
 │       │       ├── container-dev-workflow/
 │       │       ├── git-commit/
 │       │       ├── git-merge-conflict/
+│       │       ├── refine-issue/
 │       │       ├── spec-delivery/
 │       │       └── zh-tech-writing/
 │       └── mattpocock-skills-zh/

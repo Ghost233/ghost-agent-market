@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./claude-code-market/plugins/ghost-agent-skills",
-      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, spec delivery, container-based development, native Apple container operations, and Chinese technical writing.",
-      "version": "0.5.1",
+      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, issue refinement, spec delivery, container-based development, native Apple container operations, and Chinese technical writing.",
+      "version": "0.5.3",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -29,6 +29,7 @@
         "read-only-analysis",
         "configure-gh-account",
         "spec-delivery",
+        "refine-issue",
         "zh-tech-writing",
         "container-dev-workflow",
         "apple-container"

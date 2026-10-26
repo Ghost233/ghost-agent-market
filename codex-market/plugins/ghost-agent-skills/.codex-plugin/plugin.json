@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "version": "0.5.5+codex.20261021083421",
-  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作。",
+  "version": "0.5.7+codex.20261025202139",
+  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作。",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com",
@@ -26,6 +26,7 @@
     "history-archaeology",
     "configure-gh-account",
     "spec-delivery",
+    "refine-issue",
     "zh-tech-writing",
     "container-dev-workflow",
     "apple-container"
@@ -33,8 +34,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ghost Agent Skills",
-    "shortDescription": "Git 提交、合并冲突、账号配置、spec 交付、容器化开发、Apple 容器操作和中文技术文档写作。",
-    "longDescription": "七个独立技能：安全创建 Git 提交、解决复杂合并冲突、配置项目 GitHub 账号环境、按 spec 并行实施与交付、遵循项目现有容器开发流程、使用本机 Apple container 和 Orchard，以及编写和修改中文技术文档。",
+    "shortDescription": "Git 提交、合并冲突、账号配置、工单粒度检查、spec 交付、容器化开发、Apple 容器操作和中文技术文档写作。",
+    "longDescription": "八个独立技能：安全创建 Git 提交、解决复杂合并冲突、配置项目 GitHub 账号环境、识别本次任务并用子代理检查工单粒度、衔接 Matt 拆票、按 spec 并行实施与交付、遵循项目现有容器开发流程、使用本机 Apple container 和 Orchard，以及编写和修改中文技术文档。",
     "developerName": "Ghost233",
     "category": "Productivity",
     "capabilities": [
@@ -44,6 +45,7 @@
       "使用 $git-commit 递归检查当前仓库及已授权子模块，创建规范的中文 Git 提交。",
       "使用 $git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突。",
       "使用 $configure-gh-account 为当前项目配置独立的 GitHub 账号环境。",
+      "使用 $refine-issue 自动识别本次任务，用子代理逐项检查粒度，必要时衔接 Matt to-tickets。",
       "使用 $spec-delivery 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付。",
       "使用 $container-dev-workflow，按当前项目的容器指引和检查入口完成本次开发与验证。",
       "使用 $apple-container，按项目入口使用本机 Apple container 与 Orchard 运行、构建和诊断容器。",

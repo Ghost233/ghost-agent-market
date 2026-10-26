@@ -1,6 +1,6 @@
 # Ghost Agent Skills Claude Code 插件
 
-包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作七个独立 skill。
+包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作八个独立 skill。
 
 推荐入口：
 
@@ -10,12 +10,15 @@
 /ghost-agent-skills:git-commit 检查当前改动并创建清晰的 Git 提交
 /ghost-agent-skills:git-merge-conflict 考古两侧历史并解决当前严重的 Git 冲突
 /ghost-agent-skills:configure-gh-account 为目标项目配置 Codex GitHub 账号环境
+/ghost-agent-skills:refine-issue 自动识别本次任务，用子代理逐项检查粒度，必要时衔接 Matt to-tickets
 /ghost-agent-skills:spec-delivery 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付
 /ghost-agent-skills:container-dev-workflow 按项目容器入口完成依赖准备、构建、验证和产物更新
 /ghost-agent-skills:apple-container 使用本机 Apple container 与 Orchard 运行、构建和诊断容器
 /ghost-agent-skills:zh-tech-writing 编写或修改中文技术文档
 \`\`\`
 
-`spec-delivery` 依赖 `mattpocock-skills-zh` 插件。
+`spec-delivery` 和 `refine-issue` 依赖 `mattpocock-skills-zh` 插件。
+
+`refine-issue` 是实施前单独运行的检查入口，未接入 `spec-delivery`。无需指定 issue：默认从当前对话识别本次任务，用子代理逐项检查，再由主代理汇总；没有正式 issue 时检查已有计划或已确认要求。明确给出 issue 可以限定范围，只有对象仍不明确时才补问。宿主无子代理能力时会说明限制；要求显式调用 `to-tickets` 时会保留拆分简报并给出后续入口。发布沿用 Matt 的确认流程。
 
 `zh-tech-writing` 引自 [leter/zh-tech-writing](https://github.com/leter/zh-tech-writing)，同步自上游 [ffda935](https://github.com/leter/zh-tech-writing/commit/ffda9353768dece8aabd26ccb3a4978025e9437c)。保留原始 skill、参考文档和 MIT 许可文件。`autocorrect` 是可选工具；未安装时按 skill 规则手动检查排版。
