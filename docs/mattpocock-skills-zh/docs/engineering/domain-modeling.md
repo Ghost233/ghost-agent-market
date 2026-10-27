@@ -54,8 +54,8 @@ ADR 三项测试缺任何一项都不写。容易撤销的选择直接撤销即�
 **我的 `GLOSSARY.md` 有 500、1,000、3,000 行，怎么办？**
 体积是症状，原因是混入了实现细节与不属于术语表的决策。直接要求：`/grill-with-docs make my GLOSSARY.md more concise and remove any implementation details from it`。大部分膨胀内容会移除。只有文件已精简、仍涵盖读者不愿同时记住的两个领域时，才用 `GLOSSARY-MAP.md` 拆分。拆膨胀文件只会得到多个膨胀文件。skill 目前指引不足以预防增长，跟踪 issue 仍未关闭。
 
-**为何叫 `GLOSSARY.md` 而不是 `GLOSSARY.md`？**
-这是整套中争论最多、没有定论的命名问题。反对当前名字的理由充分：既然“只是一份术语表”，`GLOSSARY.md` 就能说明；一位读者说，“对 AI 代理，一切都是[上下文](https://www.aihero.dev/ai-coding-dictionary/context)”。支持理由是地图：`GLOSSARY-MAP.md` 指向多个 `GLOSSARY.md` 读起来自然，而 `GLOSSARY-MAP.md` 不如此；`context` 是 DDD 对模型有界区域的惯用词。至少一人仅为重命名维护本地 fork。你也能做，但整套其他 skills 都找 `GLOSSARY.md`，因此须全部修改。
+**为何叫 `GLOSSARY.md` 而不是 `CONTEXT.md`？**
+在 1.3.0 之前，它叫 `CONTEXT.md`（及 `CONTEXT-MAP.md`）。文件只是一份术语表，`GLOSSARY.md` 更准确；一位读者说，“对 AI 代理，一切都是[上下文](https://www.aihero.dev/ai-coding-dictionary/context)”。如果仓库仍有 `CONTEXT.md`，重新运行 `/setup-matt-pocock-skills`：它会提议用 `git mv` 重命名，并更新 `docs/agents/domain.md`。整套 skills 都查找 `GLOSSARY.md`，保留旧名称就需要逐一修改。
 
 **`/ubiquitous-language` 去哪里了？**
 它被移除，而非弃用。职责进入 `domain-modeling`，持续维护完整模型，而不从一次对话导出术语表。词汇约束如今更重要。在追问、分诊、映射底层运行，不再是要另外记得执行的步骤。

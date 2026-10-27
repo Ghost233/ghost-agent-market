@@ -262,7 +262,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/ask-matt/SKILL.md",
       "target": "skills/ask-matt/SKILL.md",
-      "sha256": "66770f31c5413515a4c87059e9d0b2c5e5c0dd89919768a80b590190d277c8bd"
+      "sha256": "dd4b86406c823b8e41cdccd08abd5df8b9a72cd8c4548185d0b73b745f0221ba"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/code-review/SKILL.md",
@@ -387,7 +387,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/SKILL.md",
       "target": "skills/setup-matt-pocock-skills/SKILL.md",
-      "sha256": "9fe724adb39ca6d161d64872eecedd9ee5d58c70a04437dbdfd8196e90ab1d5c"
+      "sha256": "bf8eaf3104ab47a2fcc8e16a1ab70b19f56702c41e10ec409e6fc5bf7722623f"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/domain.md",
@@ -397,12 +397,12 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-github.md",
       "target": "skills/setup-matt-pocock-skills/issue-tracker-github.md",
-      "sha256": "cd11e3f01cda179871e7c6fa98df30ccc2eb13b0148d10ac59d77e536c9f7774"
+      "sha256": "5ec3acbe76e867a05a8a117da2f371ab9740e5fa96be4c002bc0846838d7f659"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
       "target": "skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
-      "sha256": "e055619466ee16401ee021e4ceb0d8b4920bddfc0477a0c61790214276d07371"
+      "sha256": "6bdb18fda05f4e823b70adc21ecbbf9798328b94fc864060443378a48eb26246"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/setup-matt-pocock-skills/issue-tracker-local.md",
@@ -487,7 +487,7 @@
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md",
       "target": "skills/wait-what/SKILL.md",
-      "sha256": "242522cb238f6a5a6f4eec767d5da749f891449b71b5675b502dcc722292c800"
+      "sha256": "1dcd75b8ff623615147135789f831206b5a12d20afd2ae515d12b54b80bd8925"
     },
     {
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/wayfinder/SKILL.md",

@@ -1,4 +1,4 @@
-> 译者说明：本目录是上游 `49dd158d1076134a641b33efb035946536778336` 的资料参考快照，供阅读使用。27 个正式中文 skill 位于仓库的插件目录，安装和使用见[根 README](../../README.md)。这里保留的上游维护命令、脚本和机器发布清单按完整上游仓库布局解释；执行维护命令时，请切换到 `upstream/mattpocock-skills/` 子模块。此参考快照中的 `skills/` 仅收录未发布内容及分类说明，机器清单保留原始路径供对照。
+> 译者说明：本目录是上游 `59db609eb1e18aaf59b63284d0e52255aff0c63c` 的资料参考快照，供阅读使用。27 个正式中文 skill 位于仓库的插件目录，安装和使用见[根 README](../../README.md)。这里保留的上游维护命令、脚本和机器发布清单按完整上游仓库布局解释；执行维护命令时，请切换到 `upstream/mattpocock-skills/` 子模块。此参考快照中的 `skills/` 仅收录未发布内容及分类说明，机器清单保留原始路径供对照。
 
 <p>
   <a href="https://www.aihero.dev/s/skills-newsletter">
@@ -252,7 +252,7 @@ npx skills@latest add mattpocock/skills -a <agent>  # cursor、opencode、devin�
 - **[handoff](../../claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md)**：把当前对话压缩成交接文档，让另一个代理继续工作。
 - **[teach](../../claude-code-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md)**：在多次会话中教你新的技能或概念，以当前目录作为保存状态的教学工作区。
 - **[to-questionnaire](../../claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md)**：把你无法独自回答的决策整理为 Markdown 问卷，交给能够回答的那个人。可以异步填写，也可开会时一起回答。它追问发送安排（发给谁、希望获得什么），不追问主题本身。
-- **[wait-what](../../claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md)**：消息没听懂时立即调用。代理会补足缺失背景，用清楚的英语重新解释，并使用 `GLOSSARY.md` 中的词汇。
+- **[wait-what](../../claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md)**：消息没听懂时立即调用。代理会补足缺失背景，用清楚的中文重新解释，并使用 `GLOSSARY.md` 中的词汇。
 
 **模型调用**
 

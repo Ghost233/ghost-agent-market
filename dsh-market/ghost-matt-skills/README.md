@@ -4,11 +4,11 @@
 
 ## 安装
 
-当前源码版本为 `0.1.6`；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
+当前源码版本为 `0.1.8`；旧发布包的内容保持其发布时的状态。在仓库根目录打包并安装当前源码：
 
 ```sh
 npm pack ./dsh-market/ghost-matt-skills --pack-destination /tmp
-dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.6.tgz
+dsh plugin --profile web add /tmp/dsh-ghost-matt-skills-0.1.8.tgz
 ```
 
 安装到所用 profile 后检查并启动：
@@ -38,7 +38,7 @@ Matt 技能的平台适配仅转换技能引用、调用策略和子代理接口
 
 ## 维护与验证
 
-本轮内容同步至 Matt 上游 `49dd158d1076134a641b33efb035946536778336`（上游版本仍为 `1.3.1`）。
+本轮内容同步至 Matt 上游 `59db609eb1e18aaf59b63284d0e52255aff0c63c`（上游版本仍为 `1.3.1`）。
 
 Matt 源为仓库 `codex-market/plugins/mattpocock-skills-zh/skills` 的 27 项；DSH 专用源为 `dsh-market/skills/spec-delivery`，其平台差异在 skill 中说明。生成文件在 Bundle 的 `skills/` 与 `catalog.json`。修改源或平台映射后，运行 `node tooling/build-dsh-matt.mjs` 并增加此包版本；用 `--check` 只校验生成内容是否与源一致。构建不会修改 Codex/Claude/ZCode 源文件；Matt 清单数量变化会停止构建，要求核对范围。
 

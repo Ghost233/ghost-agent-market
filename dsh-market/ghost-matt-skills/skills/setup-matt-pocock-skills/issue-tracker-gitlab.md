@@ -21,7 +21,7 @@
 设为 `yes` 时，MR 使用与 issue 相同的标签和状态，并改用对应的 `glab mr` 命令：
 
 - **读取 MR**：`glab mr view <number> --comments`，并用 `glab mr diff <number>` 获取 diff。
-- **列出待分类外部 MR**：`glab mr list -F json`，只保留作者不是项目成员或 owner 的 MR，即贡献者提交而非维护者正在进行的工作。
+- **列出待分类外部 MR**：`glab mr list -O json`，只保留作者不是项目成员或 owner 的 MR，即贡献者提交而非维护者正在进行的工作。
 - **评论/标签/关闭**：`glab mr note`、`glab mr update --label`/`--unlabel`、`glab mr close`。
 
 与 GitHub 不同，GitLab 分别为 issue 和 MR 编号；确认维护者所指入口后，`#42` 不存在歧义。
@@ -39,8 +39,8 @@
 供 `wayfinder` 使用。**地图**是一个 issue，**子 issue**作为工单。
 
 - **地图**：带 `wayfinder:map` 标签的单个 issue，正文保存 Notes / Decisions-so-far / Fog。使用 `glab issue create --label wayfinder:map`。支持原生 epic 的 GitLab 层级也可用 epic 承载地图；带标签 issue 在所有层级都可用。
-- **子工单**：正文顶部包含 `Part of #<map>`，标签为 `wayfinder:<type>`（`research`/`prototype`/`grilling`/`task`）的 issue。认领后把工单分配给主导开发者。
+- **子工单**：正文顶部包含 `Part of #<map>`，通过 `glab issue create --linked-issues <map> --link-type relates_to` 链接到地图，标签为 `wayfinder:<type>`（`research`/`prototype`/`grilling`/`task`）的 issue。认领后把工单分配给主导开发者。
 - **阻塞**：优先使用 GitLab **原生阻塞链接**，这是规范且 UI 可见的表示。通过 note 发布 `/blocked_by #<n>` quick action：`glab issue note <child> --message "/blocked_by #<blocker>"`。原生阻塞链接属于 Premium/Ultimate 功能；免费层级或不可用时，在描述顶部使用 `Blocked by: #<n>, #<n>`。所有阻塞项关闭后工单解除阻塞。
-- **前沿查询**：运行 `glab issue list -O json` 并限定到地图子项，排除存在开放阻塞项——即通过 `glab api projects/:id/issues/<child-iid>/links` 查到指向开放 issue 的原生 `blocked_by` 链接，或 `Blocked by` 行中的某个 issue 仍然开放——或已有 assignee 的工单；按地图顺序取第一个。
+- **前沿查询**：运行 `glab api projects/:id/issues/<map>/links` 列出地图子项，只保留开放且带 `wayfinder:<type>` 标签的 issue，排除存在开放阻塞项——即通过 `glab api projects/:id/issues/<child-iid>/links` 查到指向开放 issue 的原生 `blocked_by` 链接，或 `Blocked by` 行中的某个 issue 仍然开放——或已有 assignee 的工单；按地图顺序取第一个。
 - **认领**：`glab issue update <n> --assignee @me`，这是会话第一次写操作。
 - **解决**：运行 `glab issue note <n> --message "<answer>"`，再运行 `glab issue close <n>`，最后把上下文指针（摘要 + 链接）追加到地图的 Decisions-so-far。

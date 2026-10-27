@@ -10,7 +10,7 @@
 - **[handoff](../../../../claude-code-market/plugins/mattpocock-skills-zh/skills/handoff/SKILL.md)**：将当前对话压缩成交接文档，让另一个代理继续工作。
 - **[teach](../../../../claude-code-market/plugins/mattpocock-skills-zh/skills/teach/SKILL.md)**：跨多个会话教授新技能或概念，使用当前目录作为有状态的教学工作区。
 - **[to-questionnaire](../../../../claude-code-market/plugins/mattpocock-skills-zh/skills/to-questionnaire/SKILL.md)**：将你无法独自决定的问题，转成给唯一能回答者的 Markdown 问卷，异步填写或在会议中一起完成。
-- **[wait-what](../../../../claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md)**：一条消息没理解时立即调用。代理补上你缺少的背景，使用 `GLOSSARY.md` 的词汇，用简单的英语重新解释。
+- **[wait-what](../../../../claude-code-market/plugins/mattpocock-skills-zh/skills/wait-what/SKILL.md)**：一条消息没理解时立即调用。代理补上你缺少的背景，使用 `GLOSSARY.md` 的词汇，用清楚的中文重新解释。
 
 ## 模型调用型
 

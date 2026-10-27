@@ -1,5 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 问题与讨论
-    url: https://github.com/mattpocock/skills/discussions
-    about: 使用方法问题、希望交流的想法，以及不属于 skill 具体失败的其他内容。
+  - name: 问题或使用方法
+    url: https://github.com/mattpocock/skills/discussions/categories/q-a
+    about: 在 Q&A 提问。Issue 只用于缺陷和现有 skill 的修改。
+  - name: 新 skill 的想法或希望贡献的 skill
+    url: https://github.com/mattpocock/skills/discussions/categories/ideas
+    about: 发布到 Ideas。新 skill 不从 issue 开始。
+  - name: 支持其他宿主或 issue 跟踪器
+    url: https://github.com/mattpocock/skills/discussions/categories/ideas
+    about: 发布到 Ideas。请先阅读范围之外的说明，多数跟踪器已被排除。
+  - name: 我的请求是否超出范围
+    url: https://github.com/mattpocock/skills/blob/main/SCOPE.md
+    about: 每个 issue 须达到的门槛，以及仓库已决定不接受的请求。

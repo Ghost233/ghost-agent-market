@@ -1,5 +1,6 @@
 name: 想法或反馈
-description: 基于你观察到的失败，修改现有 skill。
+description: 基于你观察到的失败，修改现有 skill。每个 issue 只记录一个修改。
+labels: [enhancement, needs-triage]
 body:
   - type: markdown
     attributes:
@@ -16,6 +17,10 @@ body:
       label: 提交前
       options:
         - label: 我已阅读 `SCOPE.md` 并检查 `.out-of-scope/`，本项不属于两者覆盖的范围。
+          required: true
+        - label: 这个 issue 只涉及一个问题。
+          required: true
+        - label: 我已搜索开放和已关闭的 issue，确认没有重复。
           required: true
   - type: input
     id: skill
@@ -35,6 +40,6 @@ body:
     id: change
     attributes:
       label: 修改建议
-      description: 具体说明你建议修改 skill 的哪些内容。
+      description: 描述能修复问题的最小修改，不要粘贴重写后的 SKILL.md。
     validations:
       required: true

@@ -1,10 +1,12 @@
 name: 缺陷
-description: 某个 skill 在真实会话中采取了错误行动。
-labels: ["bug"]
+description: 某个 skill 在真实会话中采取了错误行动。每个 issue 只记录一个缺陷。
+labels: [bug, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
+        保持简短，将复现步骤放在最前面。如果代理为你编写了内容，发布前先精简至复现步骤。参见 [CONTRIBUTING.md](https://github.com/mattpocock/skills/blob/main/CONTRIBUTING.md)。
+
         `skills/misc/` 中的缺陷不再修复（见 [`.out-of-scope/frozen-misc-skills.md`](https://github.com/mattpocock/skills/blob/main/.out-of-scope/frozen-misc-skills.md)）。`npx skills` 安装器的问题应提交到 skills.sh。
   - type: input
     id: skill
@@ -14,10 +16,18 @@ body:
     validations:
       required: true
   - type: input
+    id: version
+    attributes:
+      label: 版本或提交
+      description: 安装的插件版本或提交 SHA。许多缺陷已在 `main` 修复。
+      placeholder: 1.3.1，或 4588b32
+    validations:
+      required: true
+  - type: input
     id: harness
     attributes:
       label: 宿主及版本
-      description: 例如 Claude Code 2.3.1、Codex CLI 0.40 或 Cursor。说明安装方式（插件或 skills.sh）及 skills 版本。
+      description: 例如 Claude Code 2.3.1、Codex CLI 0.40 或 Cursor。说明安装方式（插件或 skills.sh）。
     validations:
       required: true
   - type: input
@@ -31,7 +41,7 @@ body:
     id: what-happened
     attributes:
       label: 发生了什么
-      description: 你运行了什么，skill 做了什么。粘贴会话中相关部分。
+      description: 展现缺陷的最小步骤，以及 skill 做了什么。粘贴会话中相关部分。
     validations:
       required: true
   - type: textarea
@@ -41,3 +51,12 @@ body:
       description: skill 应该采取什么行动？如果 SKILL.md 有相应要求，指出具体行。
     validations:
       required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 检查
+      options:
+        - label: 这个 issue 只涉及一个问题。
+          required: true
+        - label: 我已搜索开放和已关闭的 issue，确认没有重复。
+          required: true

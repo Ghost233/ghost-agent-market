@@ -88,7 +88,7 @@ disable-model-invocation: true
 - **`/research`**：把阅读跑腿工作委托给**后台代理**；它对照**一手来源**调查，并在仓库留下带引用的 Markdown。调研结果为 `/grill-with-docs` 主流程提供思考材料，不替代思考。
 - **`/to-questionnaire`**：阻塞信息存在于**他人**而非用户或代码库中时，为对方编写问卷。它不访谈主题，而是询问发送对象和所需答案，把问题对准知识差距。返回内容供 `/grill-with-docs` 或 `/to-spec` 使用。
 - **`/wizard`**：用于只有**人类**能执行的步骤，例如配置基础设施、设置凭据或 CI secret、操作陌生控制台、执行一次性迁移或切换。它生成交互式 Bash，打开 URL、捕获值并写入 `.env` 与 GitHub secrets。代理能自行完成时不要使用。
-- **`/wait-what`**：上一条消息未被理解时，在对话或其他 skill 内重新解释，补足上下文，使用简单英语和 `GLOSSARY.md` 词汇。
+- **`/wait-what`**：上一条消息未被理解时，在对话或其他 skill 内用清楚易懂的中文重新解释，补足上下文，使用 `GLOSSARY.md` 词汇。
 - **`/teach`**：以当前目录作为有状态工作区，通过多次会话学习概念。
 - **`/writing-for-agents`**：编写代理读取文档的参考，包括 skill、AGENTS.md 和指针目标文档。
 

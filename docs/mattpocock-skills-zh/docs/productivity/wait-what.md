@@ -1,6 +1,6 @@
 ## 它做什么
 
-没听懂一条消息时，输入 `wait-what`。[代理](https://www.aihero.dev/ai-coding-dictionary/agent)会重新解释刚才的内容，补足缺失背景，用清楚的英语表达，并使用项目 `GLOSSARY.md` 中的词汇。
+没听懂一条消息时，输入 `wait-what`。[代理](https://www.aihero.dev/ai-coding-dictionary/agent)会重新解释刚才的内容，补足缺失背景，用清楚的中文表达，并使用项目 `GLOSSARY.md` 中的词汇。
 
 Skill 只有三行，这是有意设计。针对啰嗦的 skills 经常因自身太长而失败。400 行的简洁 skill 仍会让[模型](https://www.aihero.dev/ai-coding-dictionary/model)啰嗦，因为模型模仿 skill 的长度，而非它的要求。这个 skill 只有一个准确的引导词。
 
@@ -20,7 +20,7 @@ Skill 要求重新解释**那件事**，而非“最后一条消息”。让你�
 
 ## 复用现有语言
 
-正文复用全局 `CLAUDE.md` 和项目 `GLOSSARY.md` 中已有的引导词。ASD-STE100 简化技术英语决定表达方式，通用语言提供名词。Skill、`CLAUDE.md` 和 `GLOSSARY.md` 使用相同的 [tokens](https://www.aihero.dev/ai-coding-dictionary/token)，因此调用它是在提醒代理已经同意的要求。
+正文复用全局 `CLAUDE.md` 和项目 `GLOSSARY.md` 中已有的引导词。清楚易懂的中文决定表达方式，通用语言提供名词。Skill、`CLAUDE.md` 和 `GLOSSARY.md` 使用相同的 [tokens](https://www.aihero.dev/ai-coding-dictionary/token)，因此调用它是在提醒代理已经同意的要求。
 
 没有 `GLOSSARY.md`，也没有 `GLOSSARY-MAP.md` 指向当前背景对应的术语表时，skill 仍然有效，只是缺少领域词汇这一部分。
 

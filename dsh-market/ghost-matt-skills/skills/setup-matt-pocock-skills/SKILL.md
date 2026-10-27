@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 # 设置 Matt Pocock Skills
 
+面向用户的说明和回复使用中文。
+
 创建工程类 skills 所依赖的仓库级配置：
 
 - **Issue 跟踪器**：issue 存放位置，默认 GitHub，也原生支持本地 Markdown。
@@ -25,7 +27,7 @@ disable-model-invocation: true
 
 - `git remote -v` 和 `.git/config`：是否为 GitHub 仓库？具体是哪一个？
 - 仓库根目录的 `AGENTS.md` 和 `CLAUDE.md`：是否存在？是否已有 `## Agent skills` 章节？
-- 根目录的 `GLOSSARY.md` 和 `GLOSSARY-MAP.md`。
+- 根目录的 `GLOSSARY.md`、`GLOSSARY-MAP.md`，以及旧的 `CONTEXT.md`、`CONTEXT-MAP.md`。如果旧文件存在，提议用 `git mv` 将其重命名为对应的 `GLOSSARY` 名称，并改写 `docs/agents/domain.md` 中的名称。
 - `docs/adr/` 以及所有 `src/*/docs/adr/` 目录。
 - `docs/agents/`：本 skill 以前是否已经生成过配置？
 - `.scratch/`：是否已有本地 Markdown issue 跟踪约定。
@@ -50,6 +52,8 @@ disable-model-invocation: true
 - **其他**（Jira、Linear 等）：请用户用一个段落描述流程，本 skill 以自由文本记录。
 
 将选择记录到 `docs/agents/issue-tracker.md`。GitHub 和 GitLab 模板包含“把 PR/MR 作为请求入口”的标志，默认**关闭**。保持关闭，也不要主动询问；需要把外部 PR/MR 加入分类队列的用户以后可直接修改文件。
+
+GitHub 或 GitLab 跟踪器需要可访问的仓库。用户选择其中之一，且没有 `git remote` 指向该宿主时，向用户取得仓库 URL，继续之前先配置 remote（必要时先执行 `git init`，再执行 `git remote add origin <url>`）。在当前目录执行 `gh repo view` 或 `glab repo view` 能显示项目才算完成；否则停止并说明缺少什么。
 
 **B 部分——分类标签词汇。** 未安装 `triage` skill 时完全跳过；未安装的 skill 不需要标签。
 
