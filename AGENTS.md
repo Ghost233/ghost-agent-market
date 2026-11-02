@@ -56,7 +56,7 @@ git config user.email
 
 用户或项目指引已要求容器化开发时，读取并遵循 [container-dev-workflow](codex-market/plugins/ghost-agent-skills/skills/container-dev-workflow/SKILL.md)。具体命令使用项目容器指引与现有检查入口。
 
-使用本机原生容器时，读取并遵循 [apple-container](codex-market/plugins/ghost-agent-skills/skills/apple-container/SKILL.md)。服务器继续遵循项目的 Docker / Docker Compose 指引。
+本机使用 OrbStack 提供的 Docker 兼容引擎，服务器沿用项目指定的 Docker 引擎；统一使用标准 Docker Compose。项目容器维护 Compose 文件固定运行参数。本机容器操作遵循 `orbstack` skill。
 
 ## Skill 同步规则
 

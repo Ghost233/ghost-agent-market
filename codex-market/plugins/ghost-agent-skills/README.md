@@ -1,6 +1,6 @@
 # Ghost Agent Skills：Codex
 
-包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作八个独立 skill。
+包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 OrbStack / Docker 容器操作和中文技术文档写作八个独立 skill。
 
 | 入口 | 职责 |
 | --- | --- |
@@ -10,7 +10,7 @@
 | `$refine-issue` | 自动识别本次任务，用子代理逐项检查粒度，必要时衔接 Matt `to-tickets`；依赖 `mattpocock-skills-zh` |
 | `$spec-delivery` | 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付；依赖 `mattpocock-skills-zh` |
 | `$container-dev-workflow` | 使用项目容器入口，按输入变化准备依赖、构建、验证和更新产物 |
-| `$apple-container` | 使用本机 Apple container 与 Orchard 运行、构建和诊断容器 |
+| `$orbstack` | 通过本机 OrbStack 与 Docker Compose 运行、构建和诊断容器 |
 | `$zh-tech-writing` | 编写和修改中文技术文档，检查句子、结构、排版和 AI 腔 |
 
 每个技能目录自包含：必需规则位于自己的 `SKILL.md`，配套参考和脚本位于技能内部，可单独复制使用。

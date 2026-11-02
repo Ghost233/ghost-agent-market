@@ -1,6 +1,6 @@
 # Ghost Agent Skills Claude Code 插件
 
-包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 Apple 容器操作和中文技术文档写作八个独立 skill。
+包含 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、本机 OrbStack / Docker 容器操作和中文技术文档写作八个独立 skill。
 
 推荐入口：
 
@@ -13,7 +13,7 @@
 /ghost-agent-skills:refine-issue 自动识别本次任务，用子代理逐项检查粒度，必要时衔接 Matt to-tickets
 /ghost-agent-skills:spec-delivery 按任务规模选择实施流程，协调单仓或多仓 spec 的审查、验收和交付
 /ghost-agent-skills:container-dev-workflow 按项目容器入口完成依赖准备、构建、验证和产物更新
-/ghost-agent-skills:apple-container 使用本机 Apple container 与 Orchard 运行、构建和诊断容器
+/ghost-agent-skills:orbstack 通过本机 OrbStack 与 Docker Compose 运行、构建和诊断容器
 /ghost-agent-skills:zh-tech-writing 编写或修改中文技术文档
 \`\`\`
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "OrbStack / Docker 容器操作"
+  short_description: "通过 OrbStack 的 Docker 兼容引擎与标准 Compose 运行、构建和诊断容器"
+  default_prompt: "使用 $orbstack，通过本机 OrbStack 的 Docker 兼容引擎及 Docker Compose 运行、构建和诊断容器。"
