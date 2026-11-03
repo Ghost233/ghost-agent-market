@@ -1,7 +1,7 @@
 {
   "name": "ghost-agent-skills",
-  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、工单粒度检查、spec 开发交付、容器化开发、OrbStack / Docker 容器操作和中文技术文档写作。",
-  "version": "0.6.8",
+  "description": "管理 Git 提交、复杂合并冲突、项目 GitHub 账号配置、主线程进度检查、工单粒度检查、spec 开发交付、容器化开发、OrbStack / Docker 容器操作和中文技术文档写作。",
+  "version": "0.7.0",
   "author": {
     "name": "Ghost233",
     "email": "only.yesc@gmail.com"
@@ -24,6 +24,7 @@
     "merge-conflict",
     "history-archaeology",
     "configure-gh-account",
+    "main-thread-progress",
     "spec-delivery",
     "refine-issue",
     "zh-tech-writing",

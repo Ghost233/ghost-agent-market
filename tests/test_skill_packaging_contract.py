@@ -13,11 +13,22 @@ CODEX_MATT = ROOT / "codex-market/plugins/mattpocock-skills-zh"
 CLAUDE_MATT = ROOT / "claude-code-market/plugins/mattpocock-skills-zh"
 GHOST_SKILLS = {
     "git-commit", "git-merge-conflict", "configure-gh-account", "spec-delivery", "refine-issue",
-    "zh-tech-writing", "container-dev-workflow", "orbstack",
+    "zh-tech-writing", "container-dev-workflow", "orbstack", "main-thread-progress",
 }
 
 
 class SkillPackagingContractTests(unittest.TestCase):
+    def test_main_thread_progress_matches_across_plugins(self) -> None:
+        relative = Path("skills/main-thread-progress")
+        codex = CODEX_GHOST / relative
+        claude = CLAUDE_GHOST / relative
+        codex_files = {path.relative_to(codex) for path in codex.rglob("*") if path.is_file()}
+        claude_files = {path.relative_to(claude) for path in claude.rglob("*") if path.is_file()}
+        self.assertTrue(codex_files)
+        self.assertEqual(codex_files, claude_files)
+        for path in codex_files:
+            self.assertEqual((codex / path).read_bytes(), (claude / path).read_bytes(), str(path))
+
     def test_remaining_ghost_skills_are_self_contained(self) -> None:
         for root, manifest_path in (
             (CODEX_GHOST, ".codex-plugin/plugin.json"),

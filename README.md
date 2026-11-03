@@ -9,6 +9,7 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 - `git-commit`：在单个隔离 executor 中检查改动，并通过 Python 3 安全脚本创建规范的中文 Git 提交
 - `git-merge-conflict`：在修改冲突文件前先用只读 Bash 脚本锁定 merge/rebase/cherry-pick 三方和有界历史，再按考古证据解决高风险冲突
 - `configure-gh-account`：配置 Git 本地身份与 HTTPS 认证，复用 gh 登录为项目的 `.codex/config.toml` 配置独立账号目录，支持多个仓库并行操作 GitHub
+- `main-thread-progress`：在侧线程读取主线程进度，逐项汇总 issue，并判断是否需要介入
 - `spec-delivery`：按任务规模选择实施流程，协调单仓或多仓 spec 的开发、审查、验收和交付；依赖 `mattpocock-skills-zh` 插件
 - `refine-issue`：自动识别本次任务及关联工单，用子代理逐项检查粒度，必要时衔接 Matt `to-tickets`；依赖 `mattpocock-skills-zh` 插件
 - `container-dev-workflow`：使用项目现有容器入口，按输入变化准备依赖、构建、验证和更新产物
@@ -47,6 +48,7 @@ ghost-agent-market/
 │       │       ├── container-dev-workflow/
 │       │       ├── git-commit/
 │       │       ├── git-merge-conflict/
+│       │       ├── main-thread-progress/
 │       │       ├── refine-issue/
 │       │       ├── spec-delivery/
 │       │       └── zh-tech-writing/

@@ -10,8 +10,8 @@
     {
       "name": "ghost-agent-skills",
       "source": "./plugins/ghost-agent-skills",
-      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, issue refinement, spec delivery, container-based development, OrbStack and Docker-compatible container operations, and Chinese technical writing.",
-      "version": "0.6.8",
+      "description": "Git commits, merge-conflict resolution, per-project GitHub accounts, main-thread progress reports, issue refinement, spec delivery, container-based development, OrbStack and Docker-compatible container operations, and Chinese technical writing.",
+      "version": "0.7.0",
       "author": {
         "name": "Ghost233",
         "email": "only.yesc@gmail.com"
@@ -28,6 +28,7 @@
         "claude-code",
         "read-only-analysis",
         "configure-gh-account",
+        "main-thread-progress",
         "spec-delivery",
         "refine-issue",
         "zh-tech-writing",

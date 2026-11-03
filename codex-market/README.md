@@ -10,6 +10,7 @@
 - `git-commit`
 - `git-merge-conflict`
 - `configure-gh-account`：配置 Git 本地身份、HTTPS 认证和 Codex 账号环境，复用已有 gh 登录并验证身份
+- `main-thread-progress`：从侧线程汇总主线程和各 issue 的进度，并判断是否需要介入
 - `refine-issue`：自动识别本次任务，用子代理逐项检查工单粒度，必要时衔接 Matt `to-tickets`
 - `container-dev-workflow`：使用项目现有容器入口，按输入变化准备依赖、构建、验证和更新产物
 - `orbstack`：通过 OrbStack 的 Docker 兼容引擎与标准 Docker Compose 操作本机容器

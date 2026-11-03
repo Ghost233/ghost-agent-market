@@ -1,0 +1,3 @@
+interface:
+  display_name: "主线程进度检查"
+  default_prompt: "使用 $main-thread-progress 读取主线程最新会话，用表格汇总项目和每个 issue 的百分比进度，并判断是否需要介入。"
