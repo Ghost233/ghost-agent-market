@@ -2,7 +2,7 @@
 
 使用标准 `docker pull/push/load/save/tag/image ls/image rm`，归档格式和跨引擎加载以实际结果验证。保留项目已有 Base/业务镜像及标签策略。
 
-- 可复用基础镜像归档沿用 `/Users/ghost233/dockerimage`。已有本地 Registry 数据位于 `/Users/ghost233/dockerimage/registry`，访问端口为 `127.0.0.1:15000`；使用前核对实际服务、绑定挂载和访问端点。容器及 builder 访问 Registry 须分别验证，不将容器内 localhost 当作宿主机。
+- 可复用基础镜像归档沿用 `/Users/ghost233/dockerimage`。已有本地 Registry 数据位于 `/Users/ghost233/dockerimage/registry`，访问端口为 `127.0.0.1:15000`；使用前核对实际服务、绑定挂载和访问端点。访问失败时按容器或 builder 的实际调用入口检查，不将容器内 localhost 当作宿主机。
 - HTTP Registry 按 Docker 当前端点配置验证拉取和推送；调整引擎配置或重启前确认授权与对运行作业的影响，公共仓库继续使用 HTTPS。
 - 镜像层由当前引擎管理，业务数据绑定目录不会移动镜像层。运行时存储迁移另行授权；保留旧引擎中的唯一副本、数据库和卷，直到恢复验证完成。
 - 项目维护资源归属、依赖和替代关系。清理前列出具体对象及依据，由执行 agent 核对范围；仅清理任务授权范围内、已被替代且没有容器引用、有回滚副本或可重建的旧镜像。创建替代资源不自动停止旧服务，全局 prune 不能代替精确清理。
