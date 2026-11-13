@@ -1,0 +1,3 @@
+- insert:
+    - id: ghost-home-repo
+      name: './index.mjs'

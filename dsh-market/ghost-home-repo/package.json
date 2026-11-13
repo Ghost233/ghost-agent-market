@@ -1,0 +1,34 @@
+{
+  "name": "dsh-ghost-home-repo",
+  "version": "0.1.0",
+  "description": "Home Repo 跨仓库协作 skill：初始化、协调、同步。",
+  "type": "module",
+  "main": "index.mjs",
+  "files": [
+    "index.mjs",
+    "cordis.patch.yml",
+    "catalog.json",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "skills",
+    "home-repo",
+    "cross-repo"
+  ],
+  "license": "MIT",
+  "author": "Ghost233 <only.yesc@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ghost233/ghost-agent-market.git",
+    "directory": "dsh-market/ghost-home-repo"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  }
+}

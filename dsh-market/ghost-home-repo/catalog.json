@@ -1,0 +1,22 @@
+{
+  "skills": [
+    {
+      "name": "home-repo-init",
+      "description": "初始化当前目录为 Home Repo，创建 AGENTS.md、scripts/ 和 templates/。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "home-repo"
+    },
+    {
+      "name": "home-repo-coordinate",
+      "description": "协调跨仓库 feature：创建 worktree、启动子代理、同步进度。",
+      "invocation": {
+        "modelInvocable": true,
+        "userInvocable": true
+      },
+      "group": "home-repo"
+    }
+  ]
+}
