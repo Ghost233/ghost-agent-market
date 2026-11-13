@@ -1,4 +1,4 @@
-> 译者说明：本目录是上游 `59db609eb1e18aaf59b63284d0e52255aff0c63c` 的资料参考快照，供阅读使用。27 个正式中文 skill 位于仓库的插件目录，安装和使用见[根 README](../../README.md)。这里保留的上游维护命令、脚本和机器发布清单按完整上游仓库布局解释；执行维护命令时，请切换到 `upstream/mattpocock-skills/` 子模块。此参考快照中的 `skills/` 仅收录未发布内容及分类说明，机器清单保留原始路径供对照。
+> 译者说明：本目录是上游 `5863806dd4e15c63174bee4e7515a4256792ecfa` 的资料参考快照，供阅读使用。27 个正式中文 skill 位于仓库的插件目录，安装和使用见[根 README](../../README.md)。这里保留的上游维护命令、脚本和机器发布清单按完整上游仓库布局解释；执行维护命令时，请切换到 `upstream/mattpocock-skills/` 子模块。此参考快照中的 `skills/` 仅收录未发布内容及分类说明，机器清单保留原始路径供对照。
 
 Skills 按 `skills/` 下的类别目录组织：
 
@@ -25,6 +25,8 @@ Skills 按 `skills/` 下的类别目录组织：
 要把 `deprecated/` 和 `misc/` 之外的每个 skill 链接或重新链接到本地代理运行环境的 skill 目录（`~/.claude/skills`、`~/.agents/skills`），运行 `scripts/link-skills.sh`。每个条目都是指向这个仓库的符号链接，因此 `git pull` 会让已安装的 skills 保持最新。新增、删除或重命名 skill 后，重新运行脚本。
 
 仓库的自然语言内容中不使用长破折号，范围包括 `SKILL.md`、文档、`README.md`、`CHANGELOG.md`、ADRs、changesets 和代码注释。句子需要这种符号时，按语义改用逗号、冒号、句号、括号或连词，不能盲目替换字符。
+
+每个派发子代理的 skill 都要求以全新的上下文窗口启动子代理。部分运行环境（例如 Codex）默认 fork 父对话；fork 会继承本来希望隔离的父上下文。
 
 ## 代理 skills
 

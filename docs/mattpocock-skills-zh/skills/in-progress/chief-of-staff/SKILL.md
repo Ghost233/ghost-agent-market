@@ -21,13 +21,15 @@ disable-model-invocation: true
 
 所有工作都应由子代理完成。保护你的上下文窗口。
 
-使用后台代理，让你能持续与用户对话。
+使用后台代理，让你能持续与用户对话。每个子代理都以全新的上下文窗口启动。
+
+> **Codex 平台说明：** 调用 `spawn_agent` 时，显式传入 `fork_turns: "none"`，让子代理使用全新的上下文。
 
 与子代理之间的通信应尽量少，主要通过**上下文指针**传递：研究笔记、以往提交、Wiki 页面等。已有指针可取得的信息，不重复传递。
 
 ## Wiki
 
-把记忆保存在跨会话保留的**Wiki** 中：一个由互相链接的 Markdown 页面组成的目录。只留在上下文中的团队知识会在压缩时丢失；Wiki 让知识延续到下次会话。如果目标尚无 Wiki，首次写入前与用户确定位置。
+把记忆保存在跨会话保留的**Wiki** 中：一个由互相链接的 Markdown 页面组成的目录。只留在上下文中的团队知识会在压缩时丢失；Wiki 让知识延续到下次会话。先查找用户或其他代理已经维护的共享 Wiki，将页面写入其中；若现有惯例与下文不同，遵循现有惯例。只有没有共享 Wiki 时，才在首次写入前与用户确定位置。
 
 - `index.md` 按类别列出每个页面、链接和一句摘要。
 - 其他页面各自记录一件事，例如决策、反复出现的问题、子系统或用户偏好；相关页面互相链接。
@@ -47,6 +49,13 @@ Wiki 是历史记录，不能跟上代码，因此不宣称描述现状。
 - 涉及代码时，注明断言成立时的仓库和提交，例如“截至 `mattpocock/skills@abc1234`，`retro` 在第 1 步加载 `writing-for-agents`”。
 - 描述代码时，“当前”“现在”或“是”必须伴随日期或提交。
 - 发生变化时新增带日期的断言，将旧断言标为已被取代，不改写旧记录。
+
+## 流程
+
+部分流程位于与本 skill 一起安装的其他 skill 中。运行流程时，读取对应 skill 的 `SKILL.md` 并遵循其说明。上游路径相对于本 skill 目录；此参考快照的正式中文 skill 位于仓库插件目录，以下链接指向 Codex 版本。
+
+- **复盘**（上游 `../retro/SKILL.md`；本仓库[中文源](../../../../../codex-market/plugins/mattpocock-skills-zh/skills/retro/SKILL.md)）：约每五次子代理会话执行一次复盘，包括 `implement-spec` 派出的子代理；优先选择发生问题的会话。将 `retro` 的最后一步替换为自行决定哪些候选项值得推进，然后自行推进。
+- **大块工作**：依次读取 [to-spec](../../../../../codex-market/plugins/mattpocock-skills-zh/skills/to-spec/SKILL.md)、[to-tickets](../../../../../codex-market/plugins/mattpocock-skills-zh/skills/to-tickets/SKILL.md) 和 [implement-spec](../../../../../codex-market/plugins/mattpocock-skills-zh/skills/implement-spec/SKILL.md)。用 `to-spec` 编写规格，使用 `to-tickets` 拆分工单，把规格和工单都发布到工单跟踪器，然后用 `implement-spec` 实施。上游路径分别是 `../to-spec/SKILL.md`、`../to-tickets/SKILL.md` 和 `../implement-spec/SKILL.md`。
 
 ## 战略视角
 

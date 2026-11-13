@@ -18,9 +18,9 @@ DSH（DeepSeek Harness）安装包见 [Ghost Matt DSH Bundle](dsh-market/ghost-m
 
 `mattpocock-skills-zh` 是 Matt Pocock《Skills for Real Engineers》的非官方中文翻译版，收录上游发布的 27 个稳定 skill，包括 `implement-spec`、`pr` 和 `retro`。推荐整包安装这个 plugin，无需逐个复制 skill 目录。
 
-当前翻译同步至上游 [59db609](https://github.com/mattpocock/skills/commit/59db609eb1e18aaf59b63284d0e52255aff0c63c)（1.3.1）。本轮更新配置和 tracker 模板，并补充实验 skill 与上游维护资料；正式发布清单保持 27 项。
+当前翻译同步至上游 [5863806](https://github.com/mattpocock/skills/commit/5863806dd4e15c63174bee4e7515a4256792ecfa)（1.3.2）。本轮同步子代理上下文要求、实验 skill 和上游维护资料；正式发布清单保持 27 项。
 
-[相关资料中文译文](docs/mattpocock-skills-zh/README.md)包含上游使用与维护说明，实验和未发布 skills 保留原状态，不加入安装插件。版本差异、覆盖范围、审查和验证见 [更新记录](docs/mattpocock-updates/20261027T155447Z-49dd158-59db609.md)。
+[相关资料中文译文](docs/mattpocock-skills-zh/README.md)包含上游使用与维护说明，实验和未发布 skills 保留原状态，不加入安装插件。版本差异、覆盖范围、审查和验证见 [更新记录](docs/mattpocock-updates/20261113T101837Z-59db609-5863806.md)。
 
 后续在本仓库调用 `$update-mattpocock-skills`，执行[专用更新流程](.agents/skills/update-mattpocock-skills/SKILL.md)。
 

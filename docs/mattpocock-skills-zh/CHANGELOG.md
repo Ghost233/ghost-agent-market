@@ -1,5 +1,49 @@
 # mattpocock-skills
 
+## 1.3.2
+
+### 补丁变更
+
+- [#1194](https://github.com/mattpocock/skills/pull/1194) [`b645f47`](https://github.com/mattpocock/skills/commit/b645f47de3e17ed3bf60586c9bebb8092e0f79fd) 感谢 [@mattpocock](https://github.com/mattpocock)。`ask-matt` 在说明 skill 的功能或建议跳过步骤之前，先读取其 `SKILL.md`，不再依赖自己的一句话摘要（[#614](https://github.com/mattpocock/skills/issues/614)）。
+
+- [#1304](https://github.com/mattpocock/skills/pull/1304) [`5beb35b`](https://github.com/mattpocock/skills/commit/5beb35b040e3de97e54fa9e386d7e42d15c295c2) 感谢 [@mattpocock](https://github.com/mattpocock)。`chief-of-staff` 将记忆保存在 LLM Wiki 中，包括 `index.md` 和每个主题的页面，通过摄取、查询和检查维护；Wiki 作为历史记录，每条断言标注日期，涉及代码的断言引用其成立时的提交。
+
+- [#1208](https://github.com/mattpocock/skills/pull/1208) [`3da8c01`](https://github.com/mattpocock/skills/commit/3da8c01116264675eeefbd6e9d59c734de9095cc) 感谢 [@mattpocock](https://github.com/mattpocock)。`code-review` 搜索仓库标准文件，始终把 `CODING_STANDARDS.md` / `CONTRIBUTING.md` 交给 Standards 子代理（[#1065](https://github.com/mattpocock/skills/issues/1065)）；在前台运行两个子代理并使用返回报告（[#1073](https://github.com/mattpocock/skills/issues/1073)）；通过提供的跟踪器文档定位 issue 跟踪器，不再硬编码路径（[#937](https://github.com/mattpocock/skills/issues/937)）。
+
+- [#1209](https://github.com/mattpocock/skills/pull/1209) [`f3fc563`](https://github.com/mattpocock/skills/commit/f3fc5632f401156837ee3872f14fe33ccf1024ea) 感谢 [@mattpocock](https://github.com/mattpocock)。`diagnosing-bugs` 第 5 阶段在信任红灯之前，将强制变异与原始副本做 `diff`，避免实际未产生变化的编辑被当成失败测试（[#955](https://github.com/mattpocock/skills/issues/955)）。
+
+- [#1187](https://github.com/mattpocock/skills/pull/1187) [`e0efb6e`](https://github.com/mattpocock/skills/commit/e0efb6e7435ebb420d8a25d6816ed1ebaa2d23d2) 感谢 [@mattpocock](https://github.com/mattpocock)。修复 GitHub 跟踪器模板中外部 PR 列表因 `authorAssociation` 失败的问题（[#468](https://github.com/mattpocock/skills/issues/468)，感谢 @lofi-coding）。重新运行 `/setup-matt-pocock-skills` 可刷新 `docs/agents/issue-tracker.md`。
+
+- [#1169](https://github.com/mattpocock/skills/pull/1169) [`59db609`](https://github.com/mattpocock/skills/commit/59db609eb1e18aaf59b63284d0e52255aff0c63c) 感谢 [@mattpocock](https://github.com/mattpocock)。`setup-matt-pocock-skills` 写入的 GitHub issue 跟踪器模板要求代理只在用户自己的仓库创建 issue，不得提交到 `mattpocock/skills`，并在首次执行 `gh issue create` 前检查目标仓库。此前有代理在本仓库克隆或 fork 中工作时，将规格和工单提交到上游（[#541](https://github.com/mattpocock/skills/issues/541) 至 [#550](https://github.com/mattpocock/skills/issues/550)）。
+
+- [#1193](https://github.com/mattpocock/skills/pull/1193) [`95249b0`](https://github.com/mattpocock/skills/commit/95249b0b49782349740fd9b8c6ce32b4e59e497a) 感谢 [@mattpocock](https://github.com/mattpocock)。`grilling` 将每个问题表述为回答“是”即接受推荐答案，避免同意时需要回答“否”（[#706](https://github.com/mattpocock/skills/issues/706)）。
+
+- [#1184](https://github.com/mattpocock/skills/pull/1184) [`4f4e943`](https://github.com/mattpocock/skills/commit/4f4e9433bbb7c4957ef33b1ea26686fb7c2a4cf4) 感谢 [@mattpocock](https://github.com/mattpocock)。`handoff` 明确操作系统临时目录：优先 `$TMPDIR`，否则 `/tmp`；Windows 使用 `%TEMP%`，避免代理猜测（[#272](https://github.com/mattpocock/skills/issues/272)）。
+
+- [#1189](https://github.com/mattpocock/skills/pull/1189) [`e48341a`](https://github.com/mattpocock/skills/commit/e48341a3d412cfeba4b9a79d3fd0331fc376ba82) 感谢 [@mattpocock](https://github.com/mattpocock)。`implement` 通过 Skill 工具调用 `tdd` 和 `code-review`，不再只写 `/skill`，与 [#878](https://github.com/mattpocock/skills/issues/878) 一致。
+
+- [#1196](https://github.com/mattpocock/skills/pull/1196) [`6d6a5b9`](https://github.com/mattpocock/skills/commit/6d6a5b9072f47ee7ba1d972d8ce0ee98b7ed4394) 感谢 [@mattpocock](https://github.com/mattpocock)。`implement` 从 issue 跟踪器读取传入的工单引用，开始前说明标题；引用有歧义时询问用户（[#700](https://github.com/mattpocock/skills/issues/700)）。
+
+- [#1228](https://github.com/mattpocock/skills/pull/1228) [`ed0de59`](https://github.com/mattpocock/skills/commit/ed0de59eb5de8c2730a650cc69f588ffa64c1040) 感谢 [@mattpocock](https://github.com/mattpocock)。`setup-matt-pocock-skills` 写入 GitHub/GitLab 跟踪器配置前先连接 Git 远端，避免生成不可访问的配置（[#1201](https://github.com/mattpocock/skills/issues/1201)）；提供使用 `git mv` 将旧 `CONTEXT.md` / `CONTEXT-MAP.md` 改为 `GLOSSARY` 名称的选项（[#1176](https://github.com/mattpocock/skills/issues/1176)）。GitHub 模板在关闭前评论（[#873](https://github.com/mattpocock/skills/issues/873)），读取 PR 正文及评论（[#1138](https://github.com/mattpocock/skills/issues/1138)），将 **Blocking** 和原生 `gh` 标志移入 Conventions（[#855](https://github.com/mattpocock/skills/issues/855)），并给出统计开放阻塞项的命令（[#1118](https://github.com/mattpocock/skills/issues/1118)）。GitLab 模板用 `-O json` 列出 MR，并给出 frontier 查询命令（[#1143](https://github.com/mattpocock/skills/issues/1143)）。重新运行 `/setup-matt-pocock-skills` 可刷新 `docs/agents/`。
+
+- [#1197](https://github.com/mattpocock/skills/pull/1197) [`5b7cade`](https://github.com/mattpocock/skills/commit/5b7cade4d68947f34dae71326a0ce89f09e22c9c) 感谢 [@mattpocock](https://github.com/mattpocock)。`setup-matt-pocock-skills` 在 GitHub/GitLab 创建缺失的分诊标签（[#616](https://github.com/mattpocock/skills/issues/616)），修复 GitLab 模板的 `glab` 命令（[#635](https://github.com/mattpocock/skills/issues/635)），通过 `--json` 读取 GitHub issue 的标签和正文（[#733](https://github.com/mattpocock/skills/issues/733)），并在 `triage-labels.md` 指定 “Label in our tracker” 列（[#801](https://github.com/mattpocock/skills/issues/801)）。重新运行 `/setup-matt-pocock-skills` 可刷新 `docs/agents/`。
+
+- [#1341](https://github.com/mattpocock/skills/pull/1341) [`7739eae`](https://github.com/mattpocock/skills/commit/7739eaed7f8f3915437a8def198a6d0d7206dbc7) 感谢 [@mattpocock](https://github.com/mattpocock)。派发子代理的 skills（`implement-spec`、`code-review`、`codebase-design`、`improve-codebase-architecture`、`wayfinder`、`research`、`grilling`、`chief-of-staff`）现在要求每个子代理使用全新的上下文窗口，而不是 fork 当前对话；部分运行环境（例如 Codex）默认 fork，继承的父上下文会抵消隔离效果。
+
+- [#1192](https://github.com/mattpocock/skills/pull/1192) [`3f59913`](https://github.com/mattpocock/skills/commit/3f599139104dfceabc7754eeb91319802f85e042) 感谢 [@mattpocock](https://github.com/mattpocock)。`tdd` 为每个候选接缝用一行说明能发现什么、会漏掉什么，让接缝选择有依据（[#607](https://github.com/mattpocock/skills/issues/607)）。
+
+- [#1183](https://github.com/mattpocock/skills/pull/1183) [`ad5400b`](https://github.com/mattpocock/skills/commit/ad5400b930b297b0c0cb231ff1ffe42a7da666aa) 感谢 [@mattpocock](https://github.com/mattpocock)。`teach` 测验会变换正确答案的位置（[#611](https://github.com/mattpocock/skills/issues/611)）。
+
+- [#1183](https://github.com/mattpocock/skills/pull/1183) [`ad5400b`](https://github.com/mattpocock/skills/commit/ad5400b930b297b0c0cb231ff1ffe42a7da666aa) 感谢 [@mattpocock](https://github.com/mattpocock)。`teach` 把工作区写到调用它时所在的目录，而不是 skill 目录（[#377](https://github.com/mattpocock/skills/issues/377)）。
+
+- [#1188](https://github.com/mattpocock/skills/pull/1188) [`cffab50`](https://github.com/mattpocock/skills/commit/cffab50350e3d96688f63f890f4d7ca0e6007cfe) 感谢 [@mattpocock](https://github.com/mattpocock)。`to-tickets` 将每张工单建为来源 issue 的子 issue（GitHub 跟踪器模板已提供命令）；使用原生阻塞关系时省略 `## Blocked by`。重新运行 `/setup-matt-pocock-skills` 可刷新 `docs/agents/issue-tracker.md`。感谢 @richardwhatever（[#554](https://github.com/mattpocock/skills/issues/554)）和 @adamslowe（[#262](https://github.com/mattpocock/skills/issues/262)）。
+
+- [#1181](https://github.com/mattpocock/skills/pull/1181) [`8295b8e`](https://github.com/mattpocock/skills/commit/8295b8e10d4cdb6cce772a56dda7b7c37075074d) 感谢 [@mattpocock](https://github.com/mattpocock)。`wayfinder` 不再为地图或工单添加 `ready-for-agent`（[#518](https://github.com/mattpocock/skills/issues/518)）；交叉引用只使用真实 issue ID（[#507](https://github.com/mattpocock/skills/issues/507)）；research 分支不创建 PR（[#576](https://github.com/mattpocock/skills/issues/576)）；每张工单按其标签类型处理（[#625](https://github.com/mattpocock/skills/issues/625)）。感谢 @jcwayne、@baob、@rynz 和 @sponge-b0b。
+
+- [#1237](https://github.com/mattpocock/skills/pull/1237) [`49dd158`](https://github.com/mattpocock/skills/commit/49dd158d1076134a641b33efb035946536778336) 感谢 [@mattpocock](https://github.com/mattpocock)。`wizard` 模板修复：`_existing` 解码双引号 `.env` 值，保留默认值时不再把引号存入值（[#1220](https://github.com/mattpocock/skills/issues/1220)）；各阶段在 `run_wizard` 内运行，运行时编辑脚本不会导致退出（[#1142](https://github.com/mattpocock/skills/issues/1142)）；`tput clear` 失败时 `_clear` 回退到 ANSI（[#1081](https://github.com/mattpocock/skills/issues/1081)）；`write_env` 同时设置 shell 变量（[#1041](https://github.com/mattpocock/skills/issues/1041)）；删除未使用的 `RED`（[#1003](https://github.com/mattpocock/skills/issues/1003)）。
+
+- [#1198](https://github.com/mattpocock/skills/pull/1198) [`868c4cf`](https://github.com/mattpocock/skills/commit/868c4cf20cb7e08bc805c388ff1f305dbedd261a) 感谢 [@mattpocock](https://github.com/mattpocock)。`wizard` 模板修复：`ask` 使用 Readline，方向键可移动光标（[#741](https://github.com/mattpocock/skills/issues/741)）；`write_env` 使用单引号，空格、`#`、`$` 和引号可经 `source` 与 dotenv 保留（[#770](https://github.com/mattpocock/skills/issues/770)）；没有浏览器打开器时 `open_url` 提示用户自行打开（[#774](https://github.com/mattpocock/skills/issues/774)）；`write_env` 跟随符号链接写入 `.env` 并保留已有文件权限（[#811](https://github.com/mattpocock/skills/issues/811)）；`ask` 与 `ask_secret` 遇到 EOF 时失败，不再循环（[#852](https://github.com/mattpocock/skills/issues/852)）。
+
 ## 1.3.1
 
 ### 补丁变更

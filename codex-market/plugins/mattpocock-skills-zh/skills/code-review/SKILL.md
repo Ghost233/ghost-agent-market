@@ -3,14 +3,16 @@ name: code-review
 description: 从固定点（commit、branch、tag 或 merge-base）开始，沿 Standards（代码是否遵循仓库记录的编码标准）与 Spec（代码是否符合来源 issue/规格）两个轴审查变更。两个审查由并行子代理执行并并排报告。适用于用户要审查分支、PR、进行中的变更，或要求“review since X”时。
 ---
 
-> **Codex 平台说明：** 本版本使用 `$skill-name` 引用或调用其他 skill；Claude Code 版本使用 `/skill-name`。
+面向用户的说明和回复使用中文；用户明确要求其他语言时按要求处理。
+
+> **Codex 平台说明：** 本版本使用 `$skill-name` 引用或调用其他 skill。调用 `spawn_agent` 时，显式传入 `fork_turns: "none"`，让子代理使用全新的上下文。
 
 从用户提供的固定点到 `HEAD`，对 diff 执行双轴审查：
 
 - **Standards**：代码是否符合仓库记录的编码标准？
 - **Spec**：代码是否忠实实现来源 issue/规格？
 
-两个轴由**并行子代理**执行，避免上下文互相污染，再由本 skill 汇总发现。
+两个轴由**并行子代理**执行，避免上下文互相污染，再由本 skill 汇总发现。每个子代理都以全新的上下文窗口启动。
 
 你应该已经获得 issue 跟踪器配置。若没有，告知用户运行 `$setup-matt-pocock-skills`。
 
