@@ -11,6 +11,7 @@ on:
       - 'tests/test_dsh_matt_bundle.mjs'
       - 'tests/dsh-runtime/**'
       - 'codex-market/plugins/mattpocock-skills-zh/skills/**'
+      - 'codex-market/plugins/ghost-agent-skills/skills/refine-issue/**'
   workflow_dispatch:
 
 permissions:

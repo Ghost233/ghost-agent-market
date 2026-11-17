@@ -15,9 +15,9 @@ const { Context } = await import(pathToFileURL(requireRuntime.resolve('@deepseek
 const { default: SkillRegistry, renderSkillContent, isModelInvocable, isUserInvocable } = await import(pathToFileURL(requireRuntime.resolve('@deepseek-ai/dsh-skill')));
 const bundle = await import(pathToFileURL(join(bundlePath, 'index.mjs')));
 const catalog = JSON.parse(readFileSync(join(bundlePath, 'catalog.json'), 'utf8'));
-assert.equal(catalog.skills.length, 28);
+assert.equal(catalog.skills.length, 29);
 assert.equal(catalog.skills.filter(s => s.group === 'mattpocock-skills-zh').length, 27);
-assert.deepEqual(catalog.skills.filter(s => s.group === 'ghost-agent-skills').map(s => s.name), ['spec-delivery']);
+assert.deepEqual(catalog.skills.filter(s => s.group === 'ghost-agent-skills').map(s => s.name), ['refine-issue', 'spec-delivery']);
 assert(catalog.files.some(f => f.source === 'dsh-market/skills/spec-delivery/SKILL.md' && f.target === 'skills/spec-delivery/SKILL.md'));
 assert.deepEqual(readdirSync(join(bundlePath, 'skills')).sort(), catalog.skills.map(s => s.name).sort());
 for (const file of catalog.files) {
@@ -31,7 +31,7 @@ const mounted = await ctx.plugin(bundle);
 try {
   const snapshot = await ctx.skills.snapshot();
   assert.equal(snapshot.complete, true);
-  assert.equal(snapshot.skills.length, 28);
+  assert.equal(snapshot.skills.length, 29);
   for (const expected of catalog.skills) {
     const skill = await ctx.skills.get(expected.name);
     assert(skill, expected.name);
@@ -47,15 +47,22 @@ try {
   }
   assert.equal((await ctx.skills.get('implement-spec')).invocation.modelInvocable, false);
   assert.equal((await ctx.skills.get('tdd')).invocation.modelInvocable, true);
+  const refine = await ctx.skills.get('refine-issue');
+  assert.equal(isModelInvocable(refine), true);
+  assert.match(refine.content, /当前 DSH 技能包中的 `to-tickets`/);
+  assert.match(refine.content, /显式入口为 DSH 界面技能选择器中的 `to-tickets`/);
+  assert(!refine.content.includes('$to-tickets'));
+  assert(!refine.content.includes('/mattpocock-skills-zh:to-tickets'));
+  assert.equal(isModelInvocable(await ctx.skills.get('to-tickets')), false);
   const delivery = await ctx.skills.get('spec-delivery');
   assert.equal(isModelInvocable(delivery), true);
   assert.equal(delivery.content, readFileSync(join(root, 'dsh-market/skills/spec-delivery/SKILL.md'), 'utf8').replace(/^---\n[\s\S]*?\n---\n/, ''));
   await mounted.dispose();
   assert.equal((await ctx.skills.list()).length, 0, 'Unload must remove all contributions.');
   const reloaded = await ctx.plugin(bundle);
-  assert.equal((await ctx.skills.list()).length, 28, 'Reload must not duplicate contributions.');
+  assert.equal((await ctx.skills.list()).length, 29, 'Reload must not duplicate contributions.');
   await reloaded.dispose();
-  console.log('PASS: 27 original skills + DSH spec-delivery, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
+  console.log('PASS: 27 original skills + refine-issue + DSH spec-delivery, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
 } finally {
   await mounted.dispose();
   await registry.dispose();

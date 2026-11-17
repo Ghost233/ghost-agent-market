@@ -1,4 +1,4 @@
-// Deterministic DSH adaptation; Matt sources stay in codex-market, native sources in dsh-market/skills.
+// Deterministic DSH adaptation; shared sources stay in codex-market, native sources in dsh-market/skills.
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ const names = readdirSync(matt).filter(n => existsSync(join(matt, n, 'SKILL.md')
 if (names.length !== 27) throw Error('Skill inventory changed; review the 27 Matt skills scope.');
 const sources = [
   ...names.map(name => ({ name, source: join(matt, name), group: 'mattpocock-skills-zh', adapted: true })),
+  { name: 'refine-issue', source: join(root, 'codex-market/plugins/ghost-agent-skills/skills/refine-issue'), group: 'ghost-agent-skills', adapted: true },
   { name: 'spec-delivery', source: join(root, 'dsh-market/skills/spec-delivery'), group: 'ghost-agent-skills', adapted: false },
 ];
 const check = process.argv.includes('--check');
@@ -22,6 +23,8 @@ const platform = '> **DSH 平台适配：** 保留仓库中文原版流程；技
 
 function adapt(text) {
   text = text.replace(/^> \*\*Codex 平台说明：\*\*.*\n/gm, '');
+  text = text.replaceAll('当前安装的 `mattpocock-skills-zh` 中的', '当前 DSH 技能包中的');
+  text = text.replaceAll('显式入口为 Codex 的 `$to-tickets` 或 Claude Code 的 `/mattpocock-skills-zh:to-tickets`', '显式入口为 DSH 界面技能选择器中的 `to-tickets`');
   for (const name of names) text = text.replaceAll('$' + name, name);
   return text;
 }
@@ -59,7 +62,7 @@ for (const { name, source, group, adapted } of sources) {
   const manual = /^\s*allow_implicit_invocation: false\s*$/m.test(policy) || /^disable-model-invocation: true$/m.test(frontmatter);
   copyTree(source, target, adapted);
   const body = adapted ? adapt(original).replace(/^---\n([\s\S]*?)\n---\n/, (_match, fields) =>
-    `---\n${fields}${manual && !fields.includes('disable-model-invocation:') ? '\ndisable-model-invocation: true' : ''}\n---\n\n${platform}`) : original;
+    `---\n${fields}${manual && !fields.includes('disable-model-invocation:') ? '\ndisable-model-invocation: true' : ''}\n---\n\n${platform}${group === 'ghost-agent-skills' ? '\n面向用户的解释和回复使用中文。\n' : ''}`) : original;
   if (body.includes('collaboration.spawn_agent')) throw Error(`Unadapted delegation: ${name}`);
   output(join(target, 'SKILL.md'), body.trimEnd() + '\n', statSync(join(source, 'SKILL.md')).mode);
   skills.push({ name, description: field(frontmatter, 'description'), invocation: { modelInvocable: !manual, userInvocable: true }, group });

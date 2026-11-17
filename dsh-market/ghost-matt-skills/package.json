@@ -1,7 +1,7 @@
 {
   "name": "dsh-ghost-matt-skills",
-  "version": "0.1.9",
-  "description": "27 个 Matt Pocock 中文原版技能及使用原生 agent team 的 spec-delivery DSH Bundle。",
+  "version": "0.2.0",
+  "description": "27 个 Matt Pocock 中文原版技能、工单粒度检查 refine-issue 及使用原生 agent team 的 spec-delivery DSH Bundle。",
   "type": "module",
   "main": "index.mjs",
   "files": ["index.mjs", "cordis.patch.yml", "catalog.json", "skills", "README.md", "LICENSE"],
