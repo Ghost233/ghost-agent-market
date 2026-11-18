@@ -1,6 +1,6 @@
 {
   "name": "dsh-ghost-home-repo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Home Repo 跨仓库协作 skill：初始化、协调、同步。",
   "type": "module",
   "main": "index.mjs",

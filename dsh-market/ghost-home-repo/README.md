@@ -14,11 +14,28 @@ Home Repo 是一个统一的 git 仓库，用于：
 - **home-repo-init**：初始化当前目录为 Home Repo
 - **home-repo-coordinate**：协调跨仓库 feature 的开发
 
+## 子仓库 Skill 发现
+
+插件注册的动态 Provider 会在每次编目时扫描会话工作目录的**一层子目录**，
+把各成员仓库里的专有 skill 自动带进 catalog：
+
+- 扫描 `<子目录>/.dsh/skills/` 与 `<子目录>/.agents/skills/`（两者都收，.dsh 优先）
+- 跳过隐藏目录、`*.worktrees`、`node_modules`
+- 注册名为 `<仓库前缀>-<skill名>`，前缀由仓库目录名归一化得到：
+  转小写、仅保留小写字母与连字符、合并连续连字符（不分词、不拆驼峰）。
+  例：`GhostCodexSentinel/.agents/skills/deploy-release` → `ghostcodexsentinel-deploy-release`
+- 菜单描述带 `[仓库名]` 标签，同名 skill 一眼区分归属
+- 模型可自动路由调用（各仓库同名的发布类 skill 通过前缀区分）
+- 编辑 SKILL.md 零延迟生效；新增/删除 skill 通过文件监听自动刷新 catalog，无需重启
+
+设计决策记录见 [docs/adr/0001-subrepo-skill-discovery.md](docs/adr/0001-subrepo-skill-discovery.md)，
+术语见 [docs/GLOSSARY.md](docs/GLOSSARY.md)。
+
 ## 安装
 
 ```bash
 npm pack ./dsh-market/ghost-home-repo --pack-destination /tmp
-dsh plugin --profile web add /tmp/dsh-ghost-home-repo-0.1.0.tgz
+dsh plugin --profile web add /tmp/dsh-ghost-home-repo-0.1.1.tgz
 ```
 
 ## 使用
