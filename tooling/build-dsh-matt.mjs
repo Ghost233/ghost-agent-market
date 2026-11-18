@@ -11,6 +11,7 @@ const names = readdirSync(matt).filter(n => existsSync(join(matt, n, 'SKILL.md')
 if (names.length !== 27) throw Error('Skill inventory changed; review the 27 Matt skills scope.');
 const sources = [
   ...names.map(name => ({ name, source: join(matt, name), group: 'mattpocock-skills-zh', adapted: true })),
+  { name: 'git-merge-conflict', source: join(root, 'codex-market/plugins/ghost-agent-skills/skills/git-merge-conflict'), group: 'ghost-agent-skills', adapted: true, manualOnly: true },
   { name: 'refine-issue', source: join(root, 'codex-market/plugins/ghost-agent-skills/skills/refine-issue'), group: 'ghost-agent-skills', adapted: true },
   { name: 'spec-delivery', source: join(root, 'dsh-market/skills/spec-delivery'), group: 'ghost-agent-skills', adapted: false },
 ];
@@ -52,14 +53,14 @@ function copyTree(source, target, adapted) {
 }
 
 const skills = [];
-for (const { name, source, group, adapted } of sources) {
+for (const { name, source, group, adapted, manualOnly = false } of sources) {
   const target = join(out, 'skills', name);
   const original = readFileSync(join(source, 'SKILL.md'), 'utf8');
   const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(original)?.[1];
   if (!frontmatter || field(frontmatter, 'name') !== name) throw Error(`Invalid identity: ${name}`);
   const policyPath = join(source, 'agents/openai.yaml');
   const policy = existsSync(policyPath) ? readFileSync(policyPath, 'utf8') : '';
-  const manual = /^\s*allow_implicit_invocation: false\s*$/m.test(policy) || /^disable-model-invocation: true$/m.test(frontmatter);
+  const manual = manualOnly || /^\s*allow_implicit_invocation: false\s*$/m.test(policy) || /^disable-model-invocation: true$/m.test(frontmatter);
   copyTree(source, target, adapted);
   const body = adapted ? adapt(original).replace(/^---\n([\s\S]*?)\n---\n/, (_match, fields) =>
     `---\n${fields}${manual && !fields.includes('disable-model-invocation:') ? '\ndisable-model-invocation: true' : ''}\n---\n\n${platform}${group === 'ghost-agent-skills' ? '\n面向用户的解释和回复使用中文。\n' : ''}`) : original;

@@ -1,10 +1,11 @@
 // Usage: node tests/test_dsh_matt_bundle.mjs <DSH npm prefix> [installed bundle directory]
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, realpathSync, accessSync, constants } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const prefix = process.argv[2];
@@ -15,9 +16,9 @@ const { Context } = await import(pathToFileURL(requireRuntime.resolve('@deepseek
 const { default: SkillRegistry, renderSkillContent, isModelInvocable, isUserInvocable } = await import(pathToFileURL(requireRuntime.resolve('@deepseek-ai/dsh-skill')));
 const bundle = await import(pathToFileURL(join(bundlePath, 'index.mjs')));
 const catalog = JSON.parse(readFileSync(join(bundlePath, 'catalog.json'), 'utf8'));
-assert.equal(catalog.skills.length, 29);
+assert.equal(catalog.skills.length, 30);
 assert.equal(catalog.skills.filter(s => s.group === 'mattpocock-skills-zh').length, 27);
-assert.deepEqual(catalog.skills.filter(s => s.group === 'ghost-agent-skills').map(s => s.name), ['refine-issue', 'spec-delivery']);
+assert.deepEqual(catalog.skills.filter(s => s.group === 'ghost-agent-skills').map(s => s.name), ['git-merge-conflict', 'refine-issue', 'spec-delivery']);
 assert(catalog.files.some(f => f.source === 'dsh-market/skills/spec-delivery/SKILL.md' && f.target === 'skills/spec-delivery/SKILL.md'));
 assert.deepEqual(readdirSync(join(bundlePath, 'skills')).sort(), catalog.skills.map(s => s.name).sort());
 for (const file of catalog.files) {
@@ -31,7 +32,7 @@ const mounted = await ctx.plugin(bundle);
 try {
   const snapshot = await ctx.skills.snapshot();
   assert.equal(snapshot.complete, true);
-  assert.equal(snapshot.skills.length, 29);
+  assert.equal(snapshot.skills.length, 30);
   for (const expected of catalog.skills) {
     const skill = await ctx.skills.get(expected.name);
     assert(skill, expected.name);
@@ -47,6 +48,14 @@ try {
   }
   assert.equal((await ctx.skills.get('implement-spec')).invocation.modelInvocable, false);
   assert.equal((await ctx.skills.get('tdd')).invocation.modelInvocable, true);
+  const merge = await ctx.skills.get('git-merge-conflict');
+  assert.equal(isModelInvocable(merge), false);
+  const archaeology = 'scripts/archaeology.sh';
+  assert.match(merge.content, /scripts\/archaeology\.sh/);
+  assert(catalog.files.some(file => file.target === `skills/git-merge-conflict/${archaeology}`));
+  const script = join(merge.resourceBase.path, archaeology);
+  accessSync(script, constants.X_OK);
+  execFileSync('bash', ['-n', script]);
   const refine = await ctx.skills.get('refine-issue');
   assert.equal(isModelInvocable(refine), true);
   assert.match(refine.content, /当前 DSH 技能包中的 `to-tickets`/);
@@ -60,9 +69,9 @@ try {
   await mounted.dispose();
   assert.equal((await ctx.skills.list()).length, 0, 'Unload must remove all contributions.');
   const reloaded = await ctx.plugin(bundle);
-  assert.equal((await ctx.skills.list()).length, 29, 'Reload must not duplicate contributions.');
+  assert.equal((await ctx.skills.list()).length, 30, 'Reload must not duplicate contributions.');
   await reloaded.dispose();
-  console.log('PASS: 27 original skills + refine-issue + DSH spec-delivery, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
+  console.log('PASS: 27 original skills + git-merge-conflict + refine-issue + DSH spec-delivery, source fingerprints, resources, invocation policy, real DSH registry load/unload/reload.');
 } finally {
   await mounted.dispose();
   await registry.dispose();

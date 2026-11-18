@@ -244,6 +244,15 @@
       "group": "mattpocock-skills-zh"
     },
     {
+      "name": "git-merge-conflict",
+      "description": "用于用户明确要求处理严重、复杂或高风险的 merge、rebase 或 cherry-pick 冲突，需要在解决前考古两侧提交历史、理解各自修改意图并避免简单选择 ours/theirs；不用于空白、生成文件或只有 1–2 处的简单冲突。",
+      "invocation": {
+        "modelInvocable": false,
+        "userInvocable": true
+      },
+      "group": "ghost-agent-skills"
+    },
+    {
       "name": "refine-issue",
       "description": "从当前对话识别本次任务及关联工单，用子代理逐项检查粒度，需要时衔接 Matt to-tickets 细分。也接受明确的 issue 引用；讨论或编辑本 skill 不启动检查。",
       "invocation": {
@@ -522,6 +531,16 @@
       "source": "codex-market/plugins/mattpocock-skills-zh/skills/writing-for-agents/SKILL.md",
       "target": "skills/writing-for-agents/SKILL.md",
       "sha256": "06e9b8896ff7d8c3590fd54ee6b2d71daf644c611e167710760a3b01b78eddaa"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/git-merge-conflict/SKILL.md",
+      "target": "skills/git-merge-conflict/SKILL.md",
+      "sha256": "d6eb33e9419de84052446d664cfa74694ed3f96fe2ba9a540acb90c234887109"
+    },
+    {
+      "source": "codex-market/plugins/ghost-agent-skills/skills/git-merge-conflict/scripts/archaeology.sh",
+      "target": "skills/git-merge-conflict/scripts/archaeology.sh",
+      "sha256": "86dd13d545c17152d86617b4ff1e10d0e9f9d745e0c1dccfdc5eaed42565791f"
     },
     {
       "source": "codex-market/plugins/ghost-agent-skills/skills/refine-issue/SKILL.md",
