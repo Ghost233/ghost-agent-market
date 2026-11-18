@@ -27,8 +27,9 @@ for (const bad of ['GhostNexus.worktrees/fix-1', 'node_modules/pkg', '.hidden'])
 
 const plugin = await import(new URL('../dsh-market/ghost-home-repo/index.mjs', import.meta.url));
 let provider;
+const ac = new AbortController();
 const fakeCtx = {
-  skills: { registerProvider(create) { provider = create({ signal: new AbortController().signal, invalidate() {} }); } },
+  skills: { registerProvider(create) { provider = create({ signal: ac.signal, invalidate() {} }); } },
   logger: console,
 };
 plugin.apply(fakeCtx);
@@ -56,3 +57,8 @@ assert.ok(def.content.includes('步骤一'));
 assert.ok(!def.content.includes('---'));
 
 console.log('PASS: 子仓库 skill 发现 Provider 全部断言通过（' + names.length + ' 个 catalog 条目）');
+
+// 显式关闭 watcher 并退出：Linux 上 fs.watch 递归监听可用且可能拖住事件循环，
+// 冒烟测试断言完成后直接退出，不依赖 unref 语义。
+ac.abort();
+process.exit(0);
