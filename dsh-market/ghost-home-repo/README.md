@@ -33,10 +33,22 @@ Home Repo 是一个统一的 git 仓库，用于：
 
 ## 安装
 
-```bash
-npm pack ./dsh-market/ghost-home-repo --pack-destination /tmp
-dsh plugin --profile web add /tmp/dsh-ghost-home-repo-0.1.1.tgz
+在 DSH profile 的 `package.json` 中加入依赖（指向 GitHub release 资产）：
+
+```json
+"dsh-ghost-home-repo": "https://github.com/Ghost233/ghost-agent-market/releases/download/dsh-ghost-home-repo-v0.1.1/dsh-ghost-home-repo-0.1.1.tgz"
 ```
+
+并把 `"dsh-ghost-home-repo"` 加入 `dsh.profile.bundles`，然后 `pnpm install` 并重启 DSH。
+
+## 发布新版本
+
+发布由 GitHub Actions 完成（`.github/workflows/release-dsh-home-repo.yml`），不手动打包上传：
+
+1. 更新 `dsh-market/ghost-home-repo/package.json` 的 `version`
+2. 合入 main，打 tag `dsh-ghost-home-repo-v<version>` 并推送
+3. CI 自动：冒烟测试 → 打包校验 → 创建 release（带 SHA256SUMS 与下载一致性校验）
+4. 更新 profile 里的依赖 URL 版本号，`pnpm install` 后重启 DSH
 
 ## 使用
 

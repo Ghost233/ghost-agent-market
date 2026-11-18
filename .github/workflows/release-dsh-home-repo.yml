@@ -1,0 +1,100 @@
+name: Release DSH Home Repo Bundle
+
+on:
+  push:
+    tags: ['dsh-ghost-home-repo-v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release-dsh-home-repo.yml'
+      - 'dsh-market/ghost-home-repo/**'
+      - 'tests/test_dsh_home_repo_bundle.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsh-home-repo-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.12.0'
+      - name: Smoke-test discovery provider
+        run: node tests/test_dsh_home_repo_bundle.mjs
+      - name: Pack bundle and stage release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/dsh-release
+          version=$(node -p "require('./dsh-market/ghost-home-repo/package.json').version")
+          asset="dsh-ghost-home-repo-$version.tgz"
+          npm pack ./dsh-market/ghost-home-repo --pack-destination dist/dsh-release
+          cd dist/dsh-release
+          test -f "$asset"
+          for f in package/index.mjs package/catalog.json package/cordis.patch.yml package/skills/home-repo-init/SKILL.md package/skills/home-repo-coordinate/SKILL.md; do
+            tar -tzf "$asset" | grep -qx "$f" || { echo "tgz 缺少 $f" >&2; exit 1; }
+          done
+          sha256sum "$asset" > SHA256SUMS
+          {
+            echo "## dsh-ghost-home-repo $version"
+            echo
+            echo "子仓库 skill 动态发现 + 内置 home-repo-init / home-repo-coordinate。"
+            echo
+            echo "安装：在 DSH profile 的 package.json 中加入依赖："
+            echo "\"dsh-ghost-home-repo\": \"https://github.com/Ghost233/ghost-agent-market/releases/download/dsh-ghost-home-repo-v$version/$asset\""
+            echo "并将 dsh-ghost-home-repo 加入 dsh.profile.bundles，pnpm install 后重启 DSH。"
+          } > release-notes.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dsh-home-repo-release
+          path: dist/dsh-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dsh-home-repo-release
+          path: release
+      - name: Publish new release only; never replace existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^dsh-ghost-home-repo-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          version="${RELEASE_TAG#dsh-ghost-home-repo-v}"
+          asset="dsh-ghost-home-repo-$version.tgz"
+          test -f "$asset"
+          sha256sum --check SHA256SUMS
+          existing=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[].tag_name')
+          if printf '%s\n' "$existing" | grep -Fxq "$RELEASE_TAG"; then
+            echo "Release already exists; refusing to overwrite: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "$asset" SHA256SUMS --verify-tag --latest=false \
+            --title "DSH Ghost Home Repo $version" --notes-file release-notes.md
+          download_dir=$(mktemp -d)
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$asset" \
+            --output "$download_dir/$asset"
+          cmp "$asset" "$download_dir/$asset"
